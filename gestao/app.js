@@ -186,6 +186,7 @@ const rota = (padrao, fn) => (ROTAS[padrao] = fn);
 
 // Catálogo de telas do menu: [rótulo, rota, perfis que podem ver (null = todos), ícone, pendência, subitem]
 const P_FIN = ['administrador', 'diretoria', 'financeiro'];
+const P_RH = ['administrador', 'rh', 'dp', 'diretoria'];
 const MENU = [
   ['Início', '#/inicio', null, '🏠'],
   ['Aprovações', '#/aprovacoes', null, '✅', 'aprovar'],
@@ -210,7 +211,18 @@ const MENU = [
   ['Bancos e caixa', '#/cadastros/contas_bancarias', P_FIN, '🏦', null, true],
   ['Equipamentos', '#/cadastros/equipamentos', [...P_FIN, 'operacao', 'manutencao'], '🚚', null, true],
   ['Documentos a vencer', '#/frota/documentos', [...P_FIN, 'operacao', 'manutencao'], '📑', 'docs_vencendo', true],
+  ['grupo', 'RH'],
+  ['Painel do RH', '#/rh', P_RH, '🧑‍💼', null, true],
+  ['Colaboradores', '#/rh/colaboradores', P_RH, '👷', null, true],
+  ['Admissões', '#/rh/admissoes', P_RH, '📝', 'admissoes_andamento', true],
+  ['Documentos dos colaboradores', '#/rh/documentos', P_RH, '🪪', 'rh_docs_vencendo', true],
+  ['Cargos e funções', '#/cadastros/cargos', P_RH, '🏷️', null, true],
+  ['Tipos de documento', '#/cadastros/rh_tipos_documento', ['administrador', 'rh'], '🗂️', null, true],
+  ['grupo', 'Biblioteca'],
+  ['Modelos de documentos', '#/modelos', null, '📄', null, true],
   ['grupo', 'Configurações'],
+  ['Dados da empresa', '#/cadastros/empresa', ['administrador'], '🏢', null, true],
+  ['Setores', '#/cadastros/setores', ['administrador', 'rh'], '🧩', null, true],
   ['Usuários e perfis', '#/config/usuarios', ['administrador'], '👥', null, true],
   ['Auditoria', '#/config/auditoria', P_FIN, '🔎', null, true],
   ['Calendário do CRLV', '#/config/calendario_crlv', ['administrador'], '📅', 'calendario_crlv', true],
@@ -233,9 +245,10 @@ async function desenharCasca() {
   try { (await api.rpc('minhas_pendencias')).forEach(p => (pend[p.tipo] = Number(p.quantidade))); } catch {}
   estado.pendencias = pend;
   const atual = location.hash || '#/inicio';
+  const melhor = menu().filter(i => i[0] !== 'grupo' && (atual === i[1] || atual.startsWith(i[1] + '/') || atual.startsWith(i[1] + '?'))).sort((a, b) => b[1].length - a[1].length)[0]?.[1];
   const links = menu().map(i => i[0] === 'grupo'
     ? `<div class="menu-grupo">${esc(i[1])}</div>`
-    : `<a href="${i[1]}" class="${atual.startsWith(i[1]) ? 'ativo' : ''} ${i[5] ? 'sub-item' : ''}"><span>${esc(i[0])}</span>${i[4] && pend[i[4]] ? `<span class="tag amarelo">${pend[i[4]]}</span>` : ''}</a>`).join('');
+    : `<a href="${i[1]}" class="${i[1] === melhor ? 'ativo' : ''} ${i[5] ? 'sub-item' : ''}"><span>${esc(i[0])}</span>${i[4] && pend[i[4]] ? `<span class="tag amarelo">${pend[i[4]]}</span>` : ''}</a>`).join('');
   const ehMot = tem('motorista') && !veTudo() && !tem('comprador', 'aprovador');
   $('#app').innerHTML = `
     <div class="casca">
@@ -269,7 +282,7 @@ async function navegar() {
     const re = new RegExp('^' + padrao.replace(/:(\w+)/g, '([^/]+)') + '$');
     const m = h.match(re);
     if (m) {
-      try { await ROTAS[padrao](tela, ...m.slice(1).map(decodeURIComponent)); }
+      try { await ROTAS[padrao](tela, ...m.slice(1).map(decodeURIComponent)); if (typeof ferramentasExportacao === 'function') ferramentasExportacao(tela); }
       catch (e) { tela.innerHTML = `<div class="cartao erro-txt">Não foi possível abrir esta tela: ${esc(e.message)}</div>`; console.error(e); }
       window.scrollTo(0, 0);
       return;
@@ -400,6 +413,9 @@ rota('/inicio', async tela => {
       ${p.pedidos_a_receber ? `<a class="cartao kpi" href="#/compras/pedidos"><div class="n">${p.pedidos_a_receber}</div><div class="r">pedido(s) de compra a receber</div></a>` : ''}
       ${p.calendario_crlv ? `<a class="cartao kpi alerta" href="#/config/calendario_crlv"><div class="n">${p.calendario_crlv}</div><div class="r">calendário(s) do CRLV do próximo ano para conferir</div></a>` : ''}
       ${p.docs_vencendo ? `<a class="cartao kpi alerta" href="#/frota/documentos"><div class="n">${p.docs_vencendo}</div><div class="r">documento(s) de equipamentos vencidos ou vencendo em 30 dias</div></a>` : ''}
+      ${tem('administrador', 'rh', 'dp') && p.admissoes_andamento ? `<a class="cartao kpi" href="#/rh/admissoes"><div class="n">${p.admissoes_andamento}</div><div class="r">admissão(ões) em andamento</div></a>` : ''}
+      ${tem('administrador', 'rh', 'dp') && p.rh_docs_vencendo ? `<a class="cartao kpi alerta" href="#/rh/documentos"><div class="n">${p.rh_docs_vencendo}</div><div class="r">documento(s) de colaboradores vencidos ou vencendo em 30 dias</div></a>` : ''}
+      ${tem('administrador', 'rh', 'dp') && p.experiencia_vencendo ? `<a class="cartao kpi alerta" href="#/rh"><div class="n">${p.experiencia_vencendo}</div><div class="r">contrato(s) de experiência vencendo em 15 dias</div></a>` : ''}
       ${veTudo() && p.prestacao_vencida ? `<a class="cartao kpi alerta" href="#/financeiro/adiantamentos"><div class="n">${p.prestacao_vencida}</div><div class="r">prestação(ões) de contas vencida(s)</div></a>` : ''}
       ${veTudo() ? `<a class="cartao kpi ${p.a_verificar ? 'alerta' : ''}" href="#/financeiro/verificar"><div class="n">${p.a_verificar || 0}</div><div class="r">lançamentos a verificar</div></a>` : ''}
     </div>

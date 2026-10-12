@@ -31,24 +31,54 @@ const CADASTROS = {
              ['categoria', 'Calendário (geral ou caminhao)', 'lista', true, ['geral', 'caminhao']], ['final_placa', 'Final da placa (0 a 9)', 'numero', true],
              ['mes', 'Mês do vencimento (1 a 12)', 'numero', true], ['dia', 'Dia (vazio = último dia do mês)', 'numero'], ['fonte', 'Fonte (portaria / ano)']],
     colunas: ['uf', 'categoria', 'final_placa', 'mes', 'dia', 'fonte'] },
+  setores: { titulo: 'Setores', ordem: 'nome', edita: () => tem('administrador', 'rh'),
+    campos: [['nome', 'Nome do setor', 'texto', true], ['sigla', 'Sigla'], ['gestor_usuario_id', 'Gestor do setor', 'usuario'], ['centro_custo_id', 'Centro de custo', 'cc']],
+    colunas: ['nome', 'sigla', 'gestor_usuario_id', 'centro_custo_id'] },
+  cargos: { titulo: 'Cargos e funções', ordem: 'nome', edita: () => tem('administrador', 'rh', 'dp'),
+    campos: [['nome', 'Nome do cargo', 'texto', true], ['cbo', 'CBO (ex.: 7825-10)'], ['setor_id', 'Setor', 'setor'],
+             ['salario_base', 'Salário base (R$)', 'valor'], ['experiencia_dias', 'Contrato de experiência (dias)', 'numero', true],
+             ['motorista', 'É motorista profissional (exige CNH, EAR e exame toxicológico)', 'bool', false, false],
+             ['cnh_minima', 'Categoria mínima de CNH', 'lista', false, ['A', 'B', 'C', 'D', 'E']],
+             ['descricao', 'Descrição das atividades', 'textoLongo'], ['requisitos', 'Requisitos (escolaridade, cursos, experiência)', 'textoLongo']],
+    colunas: ['nome', 'cbo', 'setor_id', 'cnh_minima', 'experiencia_dias'] },
+  rh_tipos_documento: { titulo: 'Tipos de documento do colaborador', ordem: 'ordem,nome', edita: () => tem('administrador', 'rh'),
+    campos: [['nome', 'Nome do documento', 'texto', true],
+             ['categoria', 'Categoria', 'lista', true, ['identificacao', 'trabalhista', 'pessoal', 'habilitacao', 'saude', 'curso', 'contrato', 'outro']],
+             ['exigido_admissao', 'Exigido na admissão', 'lista', true, ['todos', 'motoristas', 'opcional', 'nao']],
+             ['tem_validade', 'Tem validade (gera alerta de vencimento)', 'bool', false, false], ['validade_meses', 'Validade padrão (meses)', 'numero'],
+             ['ordem', 'Ordem na lista', 'numero'], ['orientacao', 'Orientação ao colaborador', 'textoLongo']],
+    colunas: ['nome', 'categoria', 'exigido_admissao', 'validade_meses'] },
+  empresa: { titulo: 'Dados da empresa (usados nos documentos gerados)', ordem: 'razao_social', edita: () => tem('administrador'),
+    campos: [['razao_social', 'Razão social', 'texto', true], ['nome_fantasia', 'Nome fantasia'], ['cnpj', 'CNPJ'], ['inscricao_estadual', 'Inscrição estadual'],
+             ['endereco', 'Endereço completo'], ['cidade', 'Cidade'], ['uf', 'UF', 'lista', false, ['AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO']],
+             ['telefone', 'Telefone'], ['email', 'E-mail'], ['responsavel_rh', 'Responsável pelo RH (assina os documentos)']],
+    colunas: ['razao_social', 'cnpj', 'cidade', 'responsavel_rh'] },
 };
 
 async function valorExibido(campo, v) {
   if (v == null || v === '') return '—';
   if (campo === 'responsavel_id' || campo === 'motorista_padrao_id') return porId(await usuarios())[v]?.nome || '—';
   if (campo === 'centro_custo_id') return porId(await centros())[v]?.nome || '—';
+  if (campo === 'gestor_usuario_id') return porId(await usuarios())[v]?.nome || '—';
+  if (campo === 'setor_id') return porId(await setoresCad())[v]?.nome || '—';
+  if (campo === 'categoria' && typeof CATEG_DOC_RH !== 'undefined' && CATEG_DOC_RH[v]) return CATEG_DOC_RH[v];
+  if (campo === 'exigido_admissao') return ({ todos: 'Todos', motoristas: 'Só motoristas', opcional: 'Opcional', nao: 'Não' })[v] || v;
   if (campo === 'saldo_inicial') return brl(v);
   return v;
 }
 
+const setoresCad = async () => (estado.cache.setores ||= await api.listar('setores', 'order=nome'));
+
 async function campoHTML([nome, rotulo, tipo = 'texto', obrig, ops], v) {
   const req = obrig ? 'required' : '';
-  if (tipo === 'bool') return `<label class="check largo"><input type="checkbox" name="${nome}" ${v ?? true ? 'checked' : ''}> ${esc(rotulo)}</label>`;
+  if (tipo === 'bool') return `<label class="check largo"><input type="checkbox" name="${nome}" ${v ?? (ops ?? true) ? 'checked' : ''}> ${esc(rotulo)}</label>`;
   let input;
   if (tipo === 'lista') input = `<select name="${nome}" ${req}><option value=""></option>${ops.map(o => `<option ${o === v ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
   else if (tipo === 'conta') input = `<select name="${nome}">${await opcoesContas(v)}</select>`;
   else if (tipo === 'usuario') input = `<select name="${nome}">${opcoes((await usuarios()).filter(u => u.ativo), null, u => u.nome, v, 'Nenhum')}</select>`;
   else if (tipo === 'cc') input = `<select name="${nome}">${opcoes((await centros()).filter(c => c.ativo), null, c => c.nome, v, 'Nenhum')}</select>`;
+  else if (tipo === 'setor') input = `<select name="${nome}">${opcoes((await setoresCad()).filter(c => c.ativo), null, c => c.nome, v, 'Nenhum')}</select>`;
+  else if (tipo === 'textoLongo') return `<label class="campo largo">${esc(rotulo)}${obrig ? ' *' : ''}<textarea name="${nome}" rows="3" ${req}>${esc(v ?? '')}</textarea></label>`;
   else if (tipo === 'data') input = `<input type="date" name="${nome}" value="${esc(v || hojeISO())}" ${req}>`;
   else if (tipo === 'valor') input = `<input name="${nome}" inputmode="decimal" value="${v != null ? String(v).replace('.', ',') : ''}" ${req}>`;
   else if (tipo === 'numero') input = `<input type="number" name="${nome}" value="${esc(v ?? '')}" ${req}>`;
@@ -99,7 +129,7 @@ const PERFIS = [['administrador', 'Administrador', 'Configura tudo'], ['diretori
                 ['aprovador', 'Aprovador', 'Aprova o seu centro de custo'], ['solicitante', 'Solicitante', 'Lança reembolsos e pedidos'],
                 ['motorista', 'Motorista', 'Abastecimentos e reembolsos de viagem'], ['operacao', 'Operação', 'Equipamentos, documentos da frota e clientes'],
                 ['manutencao', 'Manutenção', 'Equipamentos e documentos da frota'], ['almoxarifado', 'Almoxarifado', 'Estoque (em breve)'],
-                ['rh', 'RH', 'Colaboradores (em breve)'], ['dp', 'DP', 'Folha e encargos (em breve)']];
+                ['rh', 'RH', 'Colaboradores, admissões, documentos e modelos'], ['dp', 'DP', 'Vê o RH; folha e encargos (em breve)']];
 const SETORES = ['Administrativo', 'Comercial', 'Diretoria', 'Financeiro', 'Frota', 'Operação', 'Qualidade', 'Recursos Humanos'];
 const soDigitos = v => String(v || '').replace(/\D/g, '');
 function cpfValido(c) {
