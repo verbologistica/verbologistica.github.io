@@ -29,9 +29,10 @@ function tagDoc(d) {
 // ---------- Lista ----------
 rota('/cadastros/equipamentos', async tela => {
   const inativos = estado.params.get('inativos') === '1', q = (estado.params.get('q') || '').toLowerCase();
-  const [eqs, venc] = await Promise.all([
+  const [eqs, venc, soltas] = await Promise.all([
     api.listar('equipamentos', `select=*,comps:veiculos(placa,codigo_frota,ordem,ativo)${inativos ? '' : '&ativo=eq.true'}&order=codigo_frota.asc.nullslast`),
-    api.listar('v_documentos_vencimento', 'select=equipamento_id,faixa').catch(() => [])]);
+    api.listar('v_documentos_vencimento', 'select=equipamento_id,faixa').catch(() => []),
+    api.listar('veiculos', 'select=id,placa,codigo_frota,descricao_composicao,modelo&equipamento_id=is.null&ativo=eq.true&order=placa').catch(() => [])]);
   const st = {}; venc.forEach(v => { (st[v.equipamento_id] ||= { vencido: 0, vence_30: 0 }); if (v.faixa in st[v.equipamento_id]) st[v.equipamento_id][v.faixa]++; });
   const lista_ = eqs.filter(e => !q || [e.codigo_frota, nomeTipoEq(e), e.marca, e.modelo, ...e.comps.map(c => c.placa + ' ' + (c.codigo_frota || ''))].join(' ').toLowerCase().includes(q));
   tela.innerHTML = `
@@ -47,7 +48,11 @@ rota('/cadastros/equipamentos', async tela => {
         <td data-r="Placas" class="mono">${cs.map(c => esc(c.placa)).join('<br>')}</td>
         <td data-r="Situação"><span class="tag ${SITUACOES_EQ[e.situacao]?.[1] || ''}">${esc(SITUACOES_EQ[e.situacao]?.[0] || e.situacao)}</span>${e.ativo ? '' : ' <span class="tag">Inativo</span>'}</td>
         <td data-r="Documentos">${s.vencido ? `<span class="tag vermelho">${s.vencido} vencido(s)</span> ` : ''}${s.vence_30 ? `<span class="tag amarelo">${s.vence_30} vencendo</span>` : ''}${!s.vencido && !s.vence_30 ? '<span class="muted">ok</span>' : ''}</td></tr>`; }).join('')}
-    </tbody></table></div>` : '<div class="vazio">Nenhum equipamento cadastrado.</div>'}</div>`;
+    </tbody></table></div>` : '<div class="vazio">Nenhum equipamento cadastrado.</div>'}</div>
+    ${soltas.length ? `<div class="cartao"><h2>Placas sem conjunto (${soltas.length})</h2><p class="muted">Desatreladas: paradas, em manutenção ou aguardando um conjunto. Os documentos continuam com elas.</p>
+      <ul class="lista-simples">${soltas.map(v => `<li><span><a href="#/cadastros/placas/ver/${v.id}" class="mono"><b>${esc(v.placa)}</b></a> ${esc([v.descricao_composicao, v.codigo_frota && 'frota ' + v.codigo_frota].filter(Boolean).join(' · '))}</span>
+        ${editaFrota() ? `<button class="btn peq" data-atrelar="${v.id}">Atrelar a um equipamento</button>` : ''}</li>`).join('')}</ul></div>` : ''}`;
+  $$('[data-atrelar]', tela).forEach(b => b.addEventListener('click', () => modalTroca(soltas.find(v => v.id === b.dataset.atrelar), null)));
   $('#filtros').onsubmit = e => { e.preventDefault(); const v = formDados(e.target).q;
     location.hash = '#/cadastros/equipamentos?' + new URLSearchParams({ ...(v ? { q: v } : {}), ...(inativos ? { inativos: 1 } : {}) }); };
 });
@@ -74,7 +79,8 @@ async function formEquipamento(tela, e = null) {
       <label class="campo">Estado do registro (UF)<select name="c_uf"><option value=""></option>${UFS.map(u => `<option ${u === c.uf_registro ? 'selected' : ''}>${u}</option>`).join('')}</select></label>
       <label class="campo">Calendário do CRLV<select name="c_cat"><option value="caminhao" ${c.categoria_licenciamento === 'caminhao' ? 'selected' : ''}>Caminhão / cavalo mecânico</option>
         <option value="geral" ${c.categoria_licenciamento === 'geral' ? 'selected' : ''}>Demais (carro, moto, reboque, semirreboque)</option></select></label>
-      <label class="campo">Capacidade<input name="c_cap" value="${esc(c.capacidade || '')}" placeholder="Ex.: 30 t, 60 m³"></label></div></div>`;
+      <label class="campo">Capacidade<input name="c_cap" value="${esc(c.capacidade || '')}" placeholder="Ex.: 30 t, 60 m³"></label>
+      ${c.id ? '' : `<label class="campo">No conjunto desde<input type="date" name="c_desde" value="${hojeISO()}"></label>`}</div></div>`;
   tela.innerHTML = `
     <div class="topo"><div><h1>${e ? 'Editar ' + esc(rotuloEq(e)) : 'Novo equipamento'}</h1>
       <p class="sub">Um equipamento é o conjunto que trabalha junto (ex.: um tritrem). Cada composição tem sua placa, código de frota e documentos.</p></div></div>
@@ -148,9 +154,11 @@ async function formEquipamento(tela, e = null) {
             combustivel: i === 0 ? dados.combustivel : null, centro_custo_id: dados.centro_custo_id, motorista_padrao_id: dados.motorista_padrao_id,
             ativo: dados.ativo ?? true };
           if (c.id) { await api.alterar('veiculos', `id=eq.${c.id}`, v); usados.add(c.id); }
-          else { const [nv] = await api.inserir('veiculos', v); usados.add(nv.id); }
+          else { const [nv] = await api.inserir('veiculos', v); usados.add(nv.id);
+                 if (c.c_desde && c.c_desde < hojeISO()) await api.rpc('ajustar_inicio_atrelamento', { p_veiculo: nv.id, p_inicio: new Date(c.c_desde + 'T00:00:00').toISOString() }); }
         }
-        for (const old of comps) if (!usados.has(old.id)) await api.alterar('veiculos', `id=eq.${old.id}`, { ativo: false });
+        // composição retirada no cadastro: fica sem conjunto (com histórico), não é apagada
+        for (const old of comps) if (!usados.has(old.id)) await api.rpc('atrelar_placa', { p_veiculo: old.id, p_equipamento: null, p_motivo: 'Retirada do conjunto no cadastro' });
         delete estado.cache.veiculos; aviso('Equipamento salvo.'); location.hash = '#/cadastros/equipamentos/ver/' + id;
       } catch (err) {
         falha(/veiculos_placa_key|duplicate.*placa/i.test(err.message) ? new Error('Essa placa já está cadastrada em outro equipamento.')
@@ -165,10 +173,10 @@ rota('/cadastros/equipamentos/ver/:id', async (tela, id) => {
   const e = await api.um('equipamentos', `id=eq.${id}&select=*`);
   if (!e) { tela.innerHTML = '<div class="cartao vazio">Equipamento não encontrado.</div>'; return; }
   const hist = estado.params.get('historico') === '1';
-  const [comps, docs, ccs, users] = await Promise.all([
+  const [comps, docs, ccs, users, hists] = await Promise.all([
     api.listar('veiculos', `equipamento_id=eq.${id}&ativo=eq.true&order=ordem`),
     api.listar('equipamento_documentos', `equipamento_id=eq.${id}&ativo=eq.true${hist ? '' : '&substituido_em=is.null'}&order=tipo,vencimento.desc`),
-    centros(), usuarios()]);
+    centros(), usuarios(), api.listar('v_atrelamentos', `equipamento_id=eq.${id}&order=inicio.desc&limit=200`).catch(() => [])]);
   const anx = {}; await Promise.all(docs.map(async d => (anx[d.id] = await htmlAnexos('documento_equipamento', d.id))));
   const pode = editaFrota();
   const tabelaDocs = ds => ds.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Documento</th><th>Vencimento</th><th>Situação</th><th>Arquivo</th><th></th></tr></thead><tbody>
@@ -203,13 +211,61 @@ rota('/cadastros/equipamentos/ver/:id', async (tela, id) => {
     ${comps.map(c => `<div class="cartao"><div class="topo" style="margin:0 0 8px"><div><h2 style="margin:0">${esc(c.descricao_composicao || 'Composição ' + c.ordem)} · <span class="mono">${esc(c.placa)}</span></h2>
         <div class="muted">${esc([c.codigo_frota && 'Frota ' + c.codigo_frota, c.renavam && 'Renavam ' + c.renavam, c.chassi && 'Chassi ' + c.chassi, c.uf_registro && 'Registro ' + c.uf_registro,
           c.categoria_licenciamento === 'caminhao' ? 'CRLV: calendário de caminhão' : 'CRLV: calendário geral', c.capacidade].filter(Boolean).join(' · '))}</div></div>
-        ${pode ? `<button class="btn peq" data-doc="${c.id}">+ Documento desta placa</button>` : ''}</div>
+        <div class="acoes">${pode ? `<button class="btn peq" data-doc="${c.id}">+ Documento</button><button class="btn peq" data-trocar="${c.id}">Trocar / desatrelar</button>` : ''}
+          <a class="btn peq" href="#/cadastros/placas/ver/${c.id}">Histórico da placa</a></div></div>
       ${tabelaDocs(docs.filter(d => d.veiculo_id === c.id))}</div>`).join('')}
     <div class="cartao"><div class="topo" style="margin:0 0 8px"><h2 style="margin:0">Documentos do conjunto</h2>${pode ? '<button class="btn peq" data-doc="">+ Documento do conjunto</button>' : ''}</div>
-      ${tabelaDocs(docs.filter(d => !d.veiculo_id))}</div>`;
+      ${tabelaDocs(docs.filter(d => !d.veiculo_id))}</div>
+    <div class="cartao"><div class="topo" style="margin:0 0 8px"><h2 style="margin:0">Histórico de atrelamentos</h2>
+        <form class="filtros" id="f-data" style="margin:0"><label class="muted" style="align-self:center">Composição em</label><input type="datetime-local" name="quando" required><button class="btn peq">Ver</button></form></div>
+      <div id="na-data"></div>
+      ${tabelaHistorico(hists, 'placa')}</div>`;
 
-  const novoDoc = async alvo => {
+  const novoDoc = alvo => modalDocumento(comps, id, alvo);
+  $('#novo-doc')?.addEventListener('click', () => novoDoc(''));
+  $$('[data-trocar]', tela).forEach(b => b.addEventListener('click', () => modalTroca(comps.find(c => c.id === b.dataset.trocar), e)));
+  $('#f-data').onsubmit = async ev => { ev.preventDefault(); const q = formDados(ev.target).quando;
+    try { const r = await api.rpc('composicao_na_data', { p_equipamento: id, p_data: new Date(q).toISOString() });
+      $('#na-data').innerHTML = `<div class="conferencia" style="margin-bottom:10px">Em ${dataHoraBR(new Date(q).toISOString())}: ${r.length ? r.map(x => `<b>${esc(x.descricao_composicao || 'Composição ' + x.ordem)}</b> <span class="mono">${esc(x.placa)}</span>`).join(' · ') : 'nenhuma placa registrada neste conjunto'}</div>`;
+    } catch (err) { falha(err); } };
+  $$('[data-doc]', tela).forEach(b => b.addEventListener('click', () => novoDoc(b.dataset.doc)));
+  $$('[data-rem]', tela).forEach(b => b.addEventListener('click', async () => {
+    const motivo = await confirmar('Remover este documento?', { comMotivo: true, botao: 'Remover' });
+    if (!motivo) return;
+    try { await api.alterar('equipamento_documentos', `id=eq.${b.dataset.rem}`, { ativo: false, observacao: 'Removido: ' + motivo }); aviso('Documento removido.'); navegar(); }
+    catch (err) { falha(err); }
+  }));
+});
+
+// ---------- Documentos a vencer ----------
+rota('/frota/documentos', async tela => {
+  const faixa = estado.params.get('faixa') || 'proximos';
+  const filtro = { vencidos: '&faixa=eq.vencido', proximos: '&faixa=in.(vencido,vence_30,vence_60)', todos: '' }[faixa] ?? '';
+  const ds = await api.listar('v_documentos_vencimento', `select=*${filtro}&order=vencimento`);
+  const n = f => ds.filter(d => d.faixa === f).length;
+  tela.innerHTML = `
+    <div class="topo"><div><h1>Documentos a vencer</h1><p class="sub">CRLV, seguros, aferições e demais documentos com validade de todos os equipamentos</p></div>
+      <a class="btn" href="#/cadastros/equipamentos">Equipamentos</a></div>
+    <div class="grade" style="margin-bottom:16px">
+      <a class="cartao kpi ${n('vencido') ? 'alerta' : ''}" href="#/frota/documentos?faixa=vencidos"><div class="n">${n('vencido')}</div><div class="r">vencidos</div></a>
+      <div class="cartao kpi ${n('vence_30') ? 'alerta' : ''}"><div class="n">${n('vence_30')}</div><div class="r">vencem em até 30 dias</div></div>
+      <div class="cartao kpi"><div class="n">${n('vence_60')}</div><div class="r">vencem de 31 a 60 dias</div></div>
+    </div>
+    <form class="filtros" id="filtros"><select name="faixa">${[['proximos', 'Vencidos e próximos 60 dias'], ['vencidos', 'Só vencidos'], ['todos', 'Todos com validade']].map(([v, t]) => `<option value="${v}" ${v === faixa ? 'selected' : ''}>${t}</option>`).join('')}</select><button class="btn">Filtrar</button></form>
+    <div class="cartao">${ds.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Equipamento</th><th>Placa</th><th>Documento</th><th>Vencimento</th><th>Situação</th></tr></thead><tbody>
+      ${ds.map(d => `<tr class="clicavel" onclick="location.hash='${d.equipamento_id ? '#/cadastros/equipamentos/ver/' + d.equipamento_id : '#/cadastros/placas/ver/' + d.veiculo_id}'">
+        <td data-r="Equipamento"><b>${esc(d.equipamento_id ? d.equipamento_codigo || 'Sem código' : 'Sem conjunto')}</b> <span class="muted">${esc(TIPOS_EQ[d.equipamento_tipo]?.[0] || '')}</span></td>
+        <td data-r="Placa" class="mono">${esc(d.placa || 'Conjunto')}${d.descricao_composicao ? `<div class="muted">${esc(d.descricao_composicao)}</div>` : ''}</td>
+        <td data-r="Documento">${esc(d.nome)}<div class="muted">${esc(d.tipo)}</div></td>
+        <td data-r="Vencimento" class="nowrap">${dataBR(d.vencimento)}</td><td data-r="Situação">${tagDoc({ tem_validade: true, vencimento: d.vencimento })}</td></tr>`).join('')}
+    </tbody></table></div>` : '<div class="vazio">Nenhum documento nesta situação. 🎉</div>'}</div>`;
+  $('#filtros').onsubmit = ev => { ev.preventDefault(); location.hash = '#/frota/documentos?faixa=' + formDados(ev.target).faixa; };
+});
+
+// ---------- Anexar documento (equipamento ou placa) ----------
+async function modalDocumento(comps, equipamentoId, alvo) {
     const anoAtual = new Date().getFullYear();
+    const cal = await api.listar('v_calendario_crlv_status', 'select=uf,ano_confirmado').catch(() => []);
     const r = await modal(`<form><h2>Anexar documento</h2><div class="form">
       <label class="campo largo">De qual placa?<select name="alvo"><option value="">Conjunto (equipamento inteiro)</option>
         ${comps.map(c => `<option value="${c.id}" ${c.id === alvo ? 'selected' : ''}>${esc((c.descricao_composicao || 'Composição ' + c.ordem) + ' · ' + c.placa)}</option>`).join('')}</select></label>
@@ -233,7 +289,9 @@ rota('/cadastros/equipamentos/ver/:id', async (tela, id) => {
           if (!c) { $('#crlv-calc', raiz).innerHTML = '<span class="erro-txt">O CRLV é de uma placa: escolha a composição acima.</span>'; return; }
           try {
             const v = await api.rpc('vencimento_crlv', { p_uf: f.uf.value, p_categoria: c.categoria_licenciamento, p_placa: c.placa, p_exercicio: Number(f.exercicio.value) });
-            if (v) { f.vencimento.value = v; $('#crlv-calc', raiz).innerHTML = `Placa final <b>${c.placa.replace(/\D/g, '').slice(-1)}</b> · ${c.categoria_licenciamento === 'caminhao' ? 'calendário de caminhão' : 'calendário geral'} de ${f.uf.value}: este CRLV vale até <b>${dataBR(v)}</b> (prazo do licenciamento ${Number(f.exercicio.value) + 1}). Se o Detran mudar a data, altere abaixo.`; }
+            if (v) { f.vencimento.value = v; $('#crlv-calc', raiz).innerHTML = `Placa final <b>${c.placa.replace(/\D/g, '').slice(-1)}</b> · ${c.categoria_licenciamento === 'caminhao' ? 'calendário de caminhão' : 'calendário geral'} de ${f.uf.value}: este CRLV vale até <b>${dataBR(v)}</b> (prazo do licenciamento ${Number(f.exercicio.value) + 1}). Se o Detran mudar a data, altere abaixo.`
+              + (() => { const k = cal.find(x => x.uf === f.uf.value); return k && k.ano_confirmado < Number(f.exercicio.value) + 1
+                  ? `<br><span class="erro-txt">Atenção: o calendário ${Number(f.exercicio.value) + 1} de ${f.uf.value} ainda não foi confirmado; a data foi estimada pela regra de ${k.ano_confirmado}.</span>` : ''; })(); }
             else { f.vencimento.value = ''; $('#crlv-calc', raiz).innerHTML = `<span class="erro-txt">Não há calendário de ${f.uf.value} cadastrado. Informe o vencimento abaixo (ou cadastre o estado em Configurações → Calendário do CRLV).</span>`; }
           } catch (err) { $('#crlv-calc', raiz).textContent = err.message; }
         };
@@ -261,44 +319,131 @@ rota('/cadastros/equipamentos/ver/:id', async (tela, id) => {
     if (!r) return;
     try {
       const crlv = r.tipo === 'CRLV';
-      const [doc] = await api.inserir('equipamento_documentos', { equipamento_id: id, veiculo_id: r.alvo || null, tipo: r.tipo, nome: r.nome, numero: r.numero || null,
+      const [doc] = await api.inserir('equipamento_documentos', { equipamento_id: equipamentoId, veiculo_id: r.alvo || null, tipo: r.tipo, nome: r.nome, numero: r.numero || null,
         tem_validade: crlv || !!r.validade, vencimento: (crlv || r.validade) ? r.vencimento : null, uf: crlv ? r.uf : null, exercicio: crlv ? Number(r.exercicio) : null,
         observacao: r.observacao || null });
       await anexar('documento_equipamento', doc.id, r.arquivos);
       aviso('Documento salvo.'); navegar();
     } catch (err) { falha(err); }
-  };
-  $('#novo-doc')?.addEventListener('click', () => novoDoc(''));
-  $$('[data-doc]', tela).forEach(b => b.addEventListener('click', () => novoDoc(b.dataset.doc)));
-  $$('[data-rem]', tela).forEach(b => b.addEventListener('click', async () => {
-    const motivo = await confirmar('Remover este documento?', { comMotivo: true, botao: 'Remover' });
-    if (!motivo) return;
-    try { await api.alterar('equipamento_documentos', `id=eq.${b.dataset.rem}`, { ativo: false, observacao: 'Removido: ' + motivo }); aviso('Documento removido.'); navegar(); }
-    catch (err) { falha(err); }
-  }));
+  }
+
+// ---------- Histórico de atrelamentos ----------
+function tabelaHistorico(hs, foco) {
+  if (!hs.length) return '<div class="vazio">Sem histórico ainda.</div>';
+  return `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>${foco === 'placa' ? 'Placa' : 'Equipamento'}</th><th>Posição</th><th>Entrou</th><th>Saiu</th><th>Motivo</th></tr></thead><tbody>
+    ${hs.map(h => `<tr><td data-r="${foco === 'placa' ? 'Placa' : 'Equipamento'}">${foco === 'placa' ? `<a class="mono" href="#/cadastros/placas/ver/${h.veiculo_id}">${esc(h.placa)}</a>`
+        : `<a href="#/cadastros/equipamentos/ver/${h.equipamento_id}"><b>${esc(h.equipamento_codigo || 'Sem código')}</b></a> <span class="muted">${esc(h.equipamento_tipo === 'outro' ? h.tipo_outro || '' : TIPOS_EQ[h.equipamento_tipo]?.[0] || '')}</span>`}</td>
+      <td data-r="Posição">${esc(h.descricao_composicao || (h.ordem ? 'Composição ' + h.ordem : '—'))}</td>
+      <td data-r="Entrou" class="nowrap">${dataHoraBR(h.inicio)}${h.km_inicio != null ? `<div class="muted">${Number(h.km_inicio).toLocaleString('pt-BR')} km</div>` : ''}</td>
+      <td data-r="Saiu" class="nowrap">${h.fim ? dataHoraBR(h.fim) : '<span class="tag verde">Atual</span>'}${h.km_fim != null ? `<div class="muted">${Number(h.km_fim).toLocaleString('pt-BR')} km</div>` : ''}</td>
+      <td data-r="Motivo"><span class="muted">${esc([h.motivo_inicio && 'Entrada: ' + h.motivo_inicio, h.motivo_fim && 'Saída: ' + h.motivo_fim].filter(Boolean).join(' · ') || '—')}</span></td></tr>`).join('')}
+  </tbody></table></div>`;
+}
+const agoraLocal = () => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 16); };
+
+// Trocar / desatrelar / atrelar uma placa (eq = conjunto atual, ou nulo se a placa está solta)
+async function modalTroca(placa, eq) {
+  const [eqs, placas] = await Promise.all([
+    api.listar('equipamentos', 'select=id,codigo_frota,tipo,tipo_outro,marca,modelo&ativo=eq.true&order=codigo_frota.asc.nullslast'),
+    api.listar('veiculos', 'select=id,placa,codigo_frota,descricao_composicao,equipamento_id,ordem&ativo=eq.true&order=placa')]);
+  const rotE = x => [x.codigo_frota || 'Sem código', nomeTipoEq(x), [x.marca, x.modelo].filter(Boolean).join(' ')].filter(Boolean).join(' · ');
+  const porE = porId(eqs);
+  const outras = placas.filter(v => v.id !== placa.id && (!eq || v.equipamento_id !== eq.id));
+  const r = await modal(`<form><h2>${eq ? 'Trocar atrelamento' : 'Atrelar placa'} · <span class="mono">${esc(placa.placa)}</span></h2>
+    ${eq ? `<p class="muted">Hoje no conjunto <b>${esc(rotE(eq))}</b> como ${esc(placa.descricao_composicao || 'composição ' + placa.ordem)}.</p>` : '<p class="muted">Esta placa está sem conjunto.</p>'}
+    <div class="form"><div class="largo">
+      ${eq ? `<label class="opcao"><input type="radio" name="acao" value="substituir" checked> <span><b>Substituir por outra placa</b> — outra placa entra nesta posição</span></label>` : ''}
+      <label class="opcao"><input type="radio" name="acao" value="mover" ${eq ? '' : 'checked'}> <span><b>${eq ? 'Mover para outro equipamento' : 'Atrelar a um equipamento'}</b></span></label>
+      ${eq ? '<label class="opcao"><input type="radio" name="acao" value="desatrelar"> <span><b>Desatrelar</b> — fica sem conjunto (pátio, manutenção, venda…)</span></label>' : ''}</div>
+      <div class="largo form" id="b-subst" style="padding:0">
+        <label class="campo largo">Placa que entra no lugar<select name="outra"><option value="">Selecione…</option>
+          ${outras.map(v => `<option value="${v.id}">${esc(v.placa)} · ${esc(v.descricao_composicao || '')} · ${v.equipamento_id ? 'hoje em ' + esc(rotE(porE[v.equipamento_id] || {})) : 'sem conjunto'}</option>`).join('')}</select></label>
+        <div class="largo" id="b-destino-saida"></div></div>
+      <div class="largo form" id="b-mover" style="padding:0">
+        <label class="campo largo">Equipamento de destino<select name="destino"><option value="">Selecione…</option>
+          ${eqs.filter(x => !eq || x.id !== eq.id).map(x => `<option value="${x.id}">${esc(rotE(x))}</option>`).join('')}</select></label>
+        <label class="campo">Posição no conjunto<input name="descricao" value="${esc(placa.descricao_composicao || '')}" placeholder="Ex.: Cavalo mecânico"></label></div>
+      <label class="campo">Data e hora da troca *<input type="datetime-local" name="quando" value="${agoraLocal()}" required></label>
+      <label class="campo">Km do cavalo (opcional)<input name="km" type="number"></label>
+      <label class="campo largo">Motivo *<input name="motivo" required placeholder="Ex.: cavalo foi para manutenção preventiva"></label></div>
+    <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Registrar troca</button></div></form>`, {
+    aoAbrir: raiz => {
+      const f = $('form', raiz);
+      const sinc = () => {
+        const a = $('[name=acao]:checked', raiz).value;
+        $('#b-subst', raiz).hidden = a !== 'substituir'; $('#b-mover', raiz).hidden = a !== 'mover';
+        const o = placas.find(v => v.id === f.outra?.value);
+        $('#b-destino-saida', raiz).innerHTML = a === 'substituir' && o ? `<div class="muted" style="margin-bottom:4px">E a placa ${esc(placa.placa)}, que sai, vai para:</div>
+          <label class="opcao"><input type="radio" name="saida" value="solta" checked> <span>Fica sem conjunto</span></label>
+          ${o.equipamento_id ? `<label class="opcao"><input type="radio" name="saida" value="troca"> <span>Vai para o conjunto de onde a ${esc(o.placa)} saiu (${esc(rotE(porE[o.equipamento_id] || {}))}) — troca entre conjuntos</span></label>` : ''}` : '';
+      };
+      $$('[name=acao]', raiz).forEach(x => (x.onchange = sinc)); if (f.outra) f.outra.onchange = sinc; sinc();
+    },
+    validar: d => d.acao === 'substituir' && !d.outra ? 'Escolha a placa que entra no lugar.' : d.acao === 'mover' && !d.destino ? 'Escolha o equipamento de destino.'
+      : !d.motivo ? 'Informe o motivo da troca.' : new Date(d.quando) > new Date(Date.now() + 864e5) ? 'A data não pode ser no futuro.' : null });
+  if (!r) return;
+  const quando = new Date(r.quando).toISOString(), km = r.km ? Number(r.km) : null;
+  const mover = (v, destino, ordem, desc, motivo) => api.rpc('atrelar_placa', { p_veiculo: v, p_equipamento: destino, p_ordem: ordem ?? null, p_descricao: desc || null, p_data: quando, p_motivo: motivo, p_km: km });
+  try {
+    if (r.acao === 'desatrelar') await mover(placa.id, null, null, null, r.motivo);
+    else if (r.acao === 'mover') await mover(placa.id, r.destino, null, r.descricao, r.motivo);
+    else {
+      const o = placas.find(v => v.id === r.outra);
+      const origemOutra = o.equipamento_id, ordemOutra = o.ordem, descOutra = o.descricao_composicao;
+      await mover(placa.id, null, null, null, r.motivo);                                                     // sai
+      await mover(o.id, eq.id, placa.ordem, placa.descricao_composicao, `${r.motivo} (entra no lugar da ${placa.placa})`); // entra
+      if (r.saida === 'troca' && origemOutra) await mover(placa.id, origemOutra, ordemOutra, descOutra, `${r.motivo} (troca com a ${o.placa})`);
+    }
+    aviso('Troca registrada no histórico.'); navegar();
+  } catch (err) { falha(err); }
+}
+
+// ---------- Placa (composição): dados, documentos e histórico ----------
+rota('/cadastros/placas/ver/:id', async (tela, id) => {
+  const v = await api.um('veiculos', `id=eq.${id}&select=*`);
+  if (!v) { tela.innerHTML = '<div class="cartao vazio">Placa não encontrada.</div>'; return; }
+  const [eq, docs, hists] = await Promise.all([
+    v.equipamento_id ? api.um('equipamentos', `id=eq.${v.equipamento_id}&select=*`) : null,
+    api.listar('equipamento_documentos', `veiculo_id=eq.${id}&ativo=eq.true&order=tipo,vencimento.desc`),
+    api.listar('v_atrelamentos', `veiculo_id=eq.${id}&order=inicio.desc`).catch(() => [])]);
+  const anx = {}; await Promise.all(docs.map(async d => (anx[d.id] = await htmlAnexos('documento_equipamento', d.id))));
+  const pode = editaFrota();
+  tela.innerHTML = `
+    <div class="topo"><div><h1>Placa <span class="mono">${esc(v.placa)}</span></h1>
+      <p class="sub">${esc(v.descricao_composicao || '')}${eq ? ` · no conjunto <a href="#/cadastros/equipamentos/ver/${eq.id}"><b>${esc(eq.codigo_frota || 'sem código')}</b> ${esc(nomeTipoEq(eq))}</a>` : ' · <span class="tag amarelo">Sem conjunto</span>'}</p></div>
+      <div class="acoes">${pode ? `<button class="btn prim" id="novo-doc">+ Documento</button><button class="btn" id="trocar">${eq ? 'Trocar / desatrelar' : 'Atrelar a um equipamento'}</button>` : ''}
+        <button class="btn" onclick="history.back()">Voltar</button></div></div>
+    <div class="cartao"><div class="form">
+      ${[['Código de frota', v.codigo_frota], ['Renavam', v.renavam], ['Chassi', v.chassi], ['Marca', v.marca], ['Ano', [v.ano_fabricacao, v.ano_modelo].filter(Boolean).join('/')],
+         ['Registro', v.uf_registro], ['Calendário do CRLV', v.categoria_licenciamento === 'caminhao' ? 'Caminhão / cavalo' : 'Geral'], ['Capacidade', v.capacidade]]
+        .map(([k, x]) => `<div><div class="muted">${k}</div><b>${esc(x || '—')}</b></div>`).join('')}
+    </div></div>
+    <div class="cartao"><h2>Documentos desta placa</h2>${docs.length ? `<ul class="lista-simples">${docs.map(d => `<li style="flex-wrap:wrap"><span><b>${esc(d.nome)}</b> <span class="muted">${esc(d.tipo)}</span> ${tagDoc(d)}</span>
+      <span class="nowrap">${d.vencimento ? 'vence ' + dataBR(d.vencimento) : ''}</span><div style="flex-basis:100%">${anx[d.id]}</div></li>`).join('')}</ul>` : '<div class="vazio">Nenhum documento.</div>'}</div>
+    <div class="cartao"><h2>Por onde esta placa passou</h2>${tabelaHistorico(hists, 'equipamento')}</div>`;
+  $('#novo-doc')?.addEventListener('click', () => modalDocumento([v], v.equipamento_id, v.id));
+  $('#trocar')?.addEventListener('click', () => modalTroca(v, eq));
 });
 
-// ---------- Documentos a vencer ----------
-rota('/frota/documentos', async tela => {
-  const faixa = estado.params.get('faixa') || 'proximos';
-  const filtro = { vencidos: '&faixa=eq.vencido', proximos: '&faixa=in.(vencido,vence_30,vence_60)', todos: '' }[faixa] ?? '';
-  const ds = await api.listar('v_documentos_vencimento', `select=*${filtro}&order=vencimento`);
-  const n = f => ds.filter(d => d.faixa === f).length;
+// ---------- Calendário do CRLV: confirmação anual ----------
+rota('/config/calendario_crlv', async tela => {
+  const [st, linhas] = await Promise.all([api.listar('v_calendario_crlv_status', 'order=uf'),
+    api.listar('cronograma_licenciamento', 'select=*&ativo=eq.true&order=uf,categoria,final_placa')]);
+  const MES = ['', 'jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+  const admin = tem('administrador');
   tela.innerHTML = `
-    <div class="topo"><div><h1>Documentos a vencer</h1><p class="sub">CRLV, seguros, aferições e demais documentos com validade de todos os equipamentos</p></div>
-      <a class="btn" href="#/cadastros/equipamentos">Equipamentos</a></div>
-    <div class="grade" style="margin-bottom:16px">
-      <a class="cartao kpi ${n('vencido') ? 'alerta' : ''}" href="#/frota/documentos?faixa=vencidos"><div class="n">${n('vencido')}</div><div class="r">vencidos</div></a>
-      <div class="cartao kpi ${n('vence_30') ? 'alerta' : ''}"><div class="n">${n('vence_30')}</div><div class="r">vencem em até 30 dias</div></div>
-      <div class="cartao kpi"><div class="n">${n('vence_60')}</div><div class="r">vencem de 31 a 60 dias</div></div>
-    </div>
-    <form class="filtros" id="filtros"><select name="faixa">${[['proximos', 'Vencidos e próximos 60 dias'], ['vencidos', 'Só vencidos'], ['todos', 'Todos com validade']].map(([v, t]) => `<option value="${v}" ${v === faixa ? 'selected' : ''}>${t}</option>`).join('')}</select><button class="btn">Filtrar</button></form>
-    <div class="cartao">${ds.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Equipamento</th><th>Placa</th><th>Documento</th><th>Vencimento</th><th>Situação</th></tr></thead><tbody>
-      ${ds.map(d => `<tr class="clicavel" onclick="location.hash='#/cadastros/equipamentos/ver/${d.equipamento_id}'">
-        <td data-r="Equipamento"><b>${esc(d.equipamento_codigo || '—')}</b> <span class="muted">${esc(TIPOS_EQ[d.equipamento_tipo]?.[0] || '')}</span></td>
-        <td data-r="Placa" class="mono">${esc(d.placa || 'Conjunto')}${d.descricao_composicao ? `<div class="muted">${esc(d.descricao_composicao)}</div>` : ''}</td>
-        <td data-r="Documento">${esc(d.nome)}<div class="muted">${esc(d.tipo)}</div></td>
-        <td data-r="Vencimento" class="nowrap">${dataBR(d.vencimento)}</td><td data-r="Situação">${tagDoc({ tem_validade: true, vencimento: d.vencimento })}</td></tr>`).join('')}
-    </tbody></table></div>` : '<div class="vazio">Nenhum documento nesta situação. 🎉</div>'}</div>`;
-  $('#filtros').onsubmit = ev => { ev.preventDefault(); location.hash = '#/frota/documentos?faixa=' + formDados(ev.target).faixa; };
+    <div class="topo"><div><h1>Calendário do CRLV</h1><p class="sub">Vencimento do licenciamento por estado e final de placa. Todo ano, a partir de dezembro, o sistema pede para conferir o calendário do ano seguinte.</p></div>
+      ${admin ? '<a class="btn" href="#/cadastros/cronograma_licenciamento">Editar datas / incluir estado</a>' : ''}</div>
+    ${st.map(x => `<div class="cartao ${x.precisa_conferir ? 'alerta-obs' : ''}"><div class="topo" style="margin:0 0 8px"><div><h2 style="margin:0">${esc(x.uf)}</h2>
+        <div class="muted">Calendário confirmado para <b>${x.ano_confirmado}</b>${x.confirmado_em ? ' em ' + dataBR(x.confirmado_em) : ''}${x.precisa_conferir ? ` · <b>falta conferir o de ${x.ano_exigido}</b>` : ''}</div></div>
+        <div class="acoes"><a class="btn peq" target="_blank" rel="noopener" href="https://www.google.com/search?q=${encodeURIComponent(`calendário licenciamento ${x.precisa_conferir ? x.ano_exigido : x.ano_confirmado + 1} Detran ${x.uf} final de placa`)}">Procurar calendário ${x.precisa_conferir ? x.ano_exigido : x.ano_confirmado + 1}</a>
+          ${admin ? `<button class="btn peq ${x.precisa_conferir ? 'prim' : ''}" data-conf="${x.uf}" data-ano="${x.precisa_conferir ? x.ano_exigido : x.ano_confirmado + 1}">Confirmar ${x.precisa_conferir ? x.ano_exigido : x.ano_confirmado + 1}</button>` : ''}</div></div>
+      ${['caminhao', 'geral'].filter(c => linhas.some(l => l.uf === x.uf && l.categoria === c)).map(c => `<div class="muted" style="margin:6px 0 2px">${c === 'caminhao' ? 'Caminhões / cavalos' : 'Demais (carro, moto, reboque, semirreboque)'}</div>
+        <div class="chips">${linhas.filter(l => l.uf === x.uf && l.categoria === c).sort((a, b) => ((a.final_placa || 10) - (b.final_placa || 10))).map(l => `<span class="chip">final ${l.final_placa}: ${l.dia || 'últ.'} ${MES[l.mes]}</span>`).join('')}</div>`).join('')}
+    </div>`).join('') || '<div class="cartao vazio">Nenhum calendário cadastrado.</div>'}`;
+  $$('[data-conf]', tela).forEach(b => b.addEventListener('click', async () => {
+    const ok = await confirmar(`Conferi no site do Detran-${b.dataset.conf} que o calendário de ${b.dataset.ano} tem os mesmos meses por final de placa desta tabela (se mudou, edite as datas antes).`, { botao: `Confirmar ${b.dataset.ano}` });
+    if (!ok) return;
+    try { await api.rpc('confirmar_calendario_crlv', { p_uf: b.dataset.conf, p_ano: Number(b.dataset.ano) }); aviso('Calendário confirmado.'); navegar(); } catch (err) { falha(err); }
+  }));
 });

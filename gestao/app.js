@@ -213,7 +213,7 @@ const MENU = [
   ['grupo', 'Configurações'],
   ['Usuários e perfis', '#/config/usuarios', ['administrador'], '👥', null, true],
   ['Auditoria', '#/config/auditoria', P_FIN, '🔎', null, true],
-  ['Calendário do CRLV', '#/cadastros/cronograma_licenciamento', ['administrador'], '📅', null, true],
+  ['Calendário do CRLV', '#/config/calendario_crlv', ['administrador'], '📅', 'calendario_crlv', true],
   ['Importar sistema anterior', '#/config/importar', ['administrador'], '📦', null, true],
 ];
 // Telas permitidas: o perfil libera; a lista do cadastro (se houver) restringe. Administrador vê tudo.
@@ -398,6 +398,7 @@ rota('/inicio', async tela => {
       ${editaFin() ? `<a class="cartao kpi ${p.sem_comprovante ? 'alerta' : ''}" href="#/financeiro/pagar?status=semcomp"><div class="n">${p.sem_comprovante || 0}</div><div class="r">pagamentos sem comprovante</div></a>` : ''}
       ${tem('administrador', 'comprador') ? `<a class="cartao kpi ${p.requisicoes_a_cotar ? 'alerta' : ''}" href="#/compras/cotacoes"><div class="n">${p.requisicoes_a_cotar || 0}</div><div class="r">requisições para cotar</div></a>` : ''}
       ${p.pedidos_a_receber ? `<a class="cartao kpi" href="#/compras/pedidos"><div class="n">${p.pedidos_a_receber}</div><div class="r">pedido(s) de compra a receber</div></a>` : ''}
+      ${p.calendario_crlv ? `<a class="cartao kpi alerta" href="#/config/calendario_crlv"><div class="n">${p.calendario_crlv}</div><div class="r">calendário(s) do CRLV do próximo ano para conferir</div></a>` : ''}
       ${p.docs_vencendo ? `<a class="cartao kpi alerta" href="#/frota/documentos"><div class="n">${p.docs_vencendo}</div><div class="r">documento(s) de equipamentos vencidos ou vencendo em 30 dias</div></a>` : ''}
       ${veTudo() && p.prestacao_vencida ? `<a class="cartao kpi alerta" href="#/financeiro/adiantamentos"><div class="n">${p.prestacao_vencida}</div><div class="r">prestação(ões) de contas vencida(s)</div></a>` : ''}
       ${veTudo() ? `<a class="cartao kpi ${p.a_verificar ? 'alerta' : ''}" href="#/financeiro/verificar"><div class="n">${p.a_verificar || 0}</div><div class="r">lançamentos a verificar</div></a>` : ''}
