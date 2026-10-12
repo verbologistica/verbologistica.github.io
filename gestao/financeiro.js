@@ -19,7 +19,7 @@ const TIPO = {
            legado: 'Venda anterior ao sistema (controlar só o recebimento)', exemplo: 'Ex.: frete São Paulo × Campinas, CT-e 123', tiposConta: ['receita', 'financeiro'] },
 };
 const FORMAS_BAIXA = ['Pix', 'Boleto', 'Transferência (TED/DOC)', 'Cartão', 'Débito automático', 'Cheque', 'Dinheiro'];
-const clientes = f => cad('clientes', 'select=id,nome,documento,ativo&order=nome', f);
+const clientes = f => cad('clientes', 'select=id,nome,nome_fantasia,documento,ativo,boleto,prazo_faturamento_dias&order=nome', f);
 
 async function listaTitulos(tela, tipo) {
   const T = TIPO[tipo];
@@ -61,7 +61,7 @@ async function novoTitulo(tela, tipo) {
   const T = TIPO[tipo];
   if (!editaFin()) { tela.innerHTML = '<div class="cartao vazio">Sem permissão.</div>'; return; }
   const [pess, ccs] = await Promise.all([tipo === 'pagar' ? fornecedores(true) : clientes(true), centros()]);
-  const rot = x => tipo === 'pagar' ? x.razao_social : x.nome + (x.documento ? ' · ' + x.documento : '');
+  const rot = x => (tipo === 'pagar' ? x.razao_social : x.nome) + (x.nome_fantasia ? ` (${x.nome_fantasia})` : '') + (x.documento ? ' · ' + fmtDoc(x.documento) : '');
   tela.innerHTML = `
     <div class="topo"><div><h1>${T.novo}</h1><p class="sub">${tipo === 'pagar' ? 'Para compras anteriores ao sistema, marque a opção no fim do formulário.' : 'Fretes e outras receitas. Pode dividir em parcelas.'}</p></div></div>
     <form class="cartao form" id="f-tit">
@@ -91,6 +91,11 @@ async function novoTitulo(tela, tipo) {
   const prev = () => { const d = formDados(f); $('#campo-fav').hidden = !!d.pessoa_id;
     $('#previa').innerHTML = num(d.valor) ? plano(d).map(x => `${x.parcela}ª ${dataBR(x.vencimento)} · ${brl(x.valor)}`).join(' &nbsp;|&nbsp; ') : ''; };
   f.oninput = prev; prev();
+  // prazo de faturamento e conta padrão do cadastro
+  f.pessoa_id.addEventListener('change', () => { const p = pess.find(x => x.id === f.pessoa_id.value); if (!p) return;
+    if (p.prazo_faturamento_dias != null) f.vencimento.value = somaDias(f.data_emissao.value, p.prazo_faturamento_dias);
+    if (p.conta_padrao_id && !f.conta_id.value) f.conta_id.value = p.conta_padrao_id;
+    prev(); });
   f.onsubmit = async e => {
     e.preventDefault();
     const d = formDados(f);
@@ -113,7 +118,7 @@ async function novoTitulo(tela, tipo) {
 
 async function verTitulo(tela, id, tipo) {
   const T = TIPO[tipo];
-  const t = await api.um('titulos', `id=eq.${id}&select=*,conta:plano_contas(codigo,nome),cc:centros_custo(nome),forn:fornecedores(razao_social,chave_pix),cli:clientes(nome,documento),colab:usuarios(nome,chave_pix)`);
+  const t = await api.um('titulos', `id=eq.${id}&select=*,conta:plano_contas(codigo,nome),cc:centros_custo(nome),forn:fornecedores(razao_social,documento,chave_pix,dados_bancarios,boleto,prazo_faturamento_dias),cli:clientes(nome,documento),colab:usuarios(nome,chave_pix)`);
   if (!t) { tela.innerHTML = '<div class="cartao vazio">Conta não encontrada ou sem acesso.</div>'; return; }
   if (t.tipo && t.tipo !== tipo) { location.hash = TIPO[t.tipo].rota + '/ver/' + id; return; }
   const ps = await api.listar('titulo_parcelas', `titulo_id=eq.${id}&order=parcela`);
@@ -130,7 +135,7 @@ async function verTitulo(tela, id, tipo) {
       <div class="acoes">${editaFin() && !['pago', 'cancelado'].includes(t.status) && !baixas.length ? '<button class="btn perigo" id="cancelar">Cancelar conta</button>' : ''}
         <button class="btn" onclick="history.back()">Voltar</button></div></div>
     <div class="cartao"><div class="form">
-      <div><div class="muted">${T.pessoa}</div><b>${esc(pessoa)}</b>${t.cli?.documento ? `<div class="muted">${esc(t.cli.documento)}</div>` : ''}${pix ? `<div class="muted">Pix: ${esc(pix)}</div>` : ''}</div>
+      <div><div class="muted">${T.pessoa}</div><b>${esc(pessoa)}</b>${(t.cli?.documento || t.forn?.documento) ? `<div class="muted">${esc(fmtDoc(t.cli?.documento || t.forn?.documento))}</div>` : ''}${t.forn ? (dadosPagamento(t.forn) ? `<div class="muted" style="white-space:pre-line">${esc(dadosPagamento(t.forn))}</div>` : '') : pix ? `<div class="muted">Pix: ${esc(pix)}</div>` : ''}</div>
       <div><div class="muted">Valor total</div><b>${brl(t.valor_total)}</b></div>
       <div><div class="muted">Documento</div><b>${esc(t.documento || '—')}</b></div>
       <div><div class="muted">Emissão</div><b>${dataBR(t.data_emissao)}</b></div>

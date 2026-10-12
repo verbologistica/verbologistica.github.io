@@ -149,7 +149,7 @@ async function cad(tabela, consulta, forcar = false) {
 const contas = f => cad('plano_contas', 'select=id,codigo,nome,tipo,aceita_lancamento,ativo&order=codigo', f);
 const centros = f => cad('centros_custo', 'select=id,codigo,nome,ativo&order=nome', f);
 const usuarios = f => cad('usuarios', 'select=id,nome,email,ativo,centro_custo_id&order=nome', f);
-const fornecedores = f => cad('fornecedores', 'select=id,razao_social,nome_fantasia,ativo&order=razao_social', f);
+const fornecedores = f => cad('fornecedores', 'select=id,razao_social,nome_fantasia,documento,ativo,boleto,prazo_faturamento_dias,conta_padrao_id&order=razao_social', f);
 const bancos = f => cad('contas_bancarias', 'select=id,nome,tipo,ativo&order=nome', f);
 const veiculos = f => cad('veiculos', 'select=id,placa,modelo,ativo&order=placa', f);
 const porId = arr => Object.fromEntries(arr.map(x => [x.id, x]));
@@ -204,14 +204,16 @@ const MENU = [
   ['A verificar', '#/financeiro/verificar', P_FIN, '⚠️', 'a_verificar', true],
   ['grupo', 'Cadastros'],
   ['Fornecedores', '#/cadastros/fornecedores', [...P_FIN, 'comprador'], '🏢', null, true],
-  ['Clientes', '#/cadastros/clientes', P_FIN, '🤝', null, true],
+  ['Clientes', '#/cadastros/clientes', [...P_FIN, 'operacao'], '🤝', null, true],
   ['Plano de contas', '#/cadastros/plano_contas', P_FIN, '📚', null, true],
   ['Centros de custo', '#/cadastros/centros_custo', P_FIN, '🎯', null, true],
   ['Bancos e caixa', '#/cadastros/contas_bancarias', P_FIN, '🏦', null, true],
-  ['Veículos', '#/cadastros/veiculos', P_FIN, '🚚', null, true],
+  ['Equipamentos', '#/cadastros/equipamentos', [...P_FIN, 'operacao', 'manutencao'], '🚚', null, true],
+  ['Documentos a vencer', '#/frota/documentos', [...P_FIN, 'operacao', 'manutencao'], '📑', 'docs_vencendo', true],
   ['grupo', 'Configurações'],
   ['Usuários e perfis', '#/config/usuarios', ['administrador'], '👥', null, true],
   ['Auditoria', '#/config/auditoria', P_FIN, '🔎', null, true],
+  ['Calendário do CRLV', '#/cadastros/cronograma_licenciamento', ['administrador'], '📅', null, true],
   ['Importar sistema anterior', '#/config/importar', ['administrador'], '📦', null, true],
 ];
 // Telas permitidas: o perfil libera; a lista do cadastro (se houver) restringe. Administrador vê tudo.
@@ -263,7 +265,7 @@ async function navegar() {
   if (!telaPermitida(h)) { aviso('Você não tem acesso a esta tela.', true); location.hash = '#/inicio'; return; }
   await desenharCasca();
   const tela = $('#tela');
-  for (const padrao in ROTAS) {
+  for (const padrao of Object.keys(ROTAS).sort((a, b) => a.includes(':') - b.includes(':'))) {   // rotas fixas antes das genéricas
     const re = new RegExp('^' + padrao.replace(/:(\w+)/g, '([^/]+)') + '$');
     const m = h.match(re);
     if (m) {
@@ -396,6 +398,7 @@ rota('/inicio', async tela => {
       ${editaFin() ? `<a class="cartao kpi ${p.sem_comprovante ? 'alerta' : ''}" href="#/financeiro/pagar?status=semcomp"><div class="n">${p.sem_comprovante || 0}</div><div class="r">pagamentos sem comprovante</div></a>` : ''}
       ${tem('administrador', 'comprador') ? `<a class="cartao kpi ${p.requisicoes_a_cotar ? 'alerta' : ''}" href="#/compras/cotacoes"><div class="n">${p.requisicoes_a_cotar || 0}</div><div class="r">requisições para cotar</div></a>` : ''}
       ${p.pedidos_a_receber ? `<a class="cartao kpi" href="#/compras/pedidos"><div class="n">${p.pedidos_a_receber}</div><div class="r">pedido(s) de compra a receber</div></a>` : ''}
+      ${p.docs_vencendo ? `<a class="cartao kpi alerta" href="#/frota/documentos"><div class="n">${p.docs_vencendo}</div><div class="r">documento(s) de equipamentos vencidos ou vencendo em 30 dias</div></a>` : ''}
       ${veTudo() && p.prestacao_vencida ? `<a class="cartao kpi alerta" href="#/financeiro/adiantamentos"><div class="n">${p.prestacao_vencida}</div><div class="r">prestação(ões) de contas vencida(s)</div></a>` : ''}
       ${veTudo() ? `<a class="cartao kpi ${p.a_verificar ? 'alerta' : ''}" href="#/financeiro/verificar"><div class="n">${p.a_verificar || 0}</div><div class="r">lançamentos a verificar</div></a>` : ''}
     </div>

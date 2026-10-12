@@ -26,10 +26,11 @@ const CADASTROS = {
              ['titular', 'Titular (nome de quem recebe)'], ['banco', 'Banco'], ['agencia', 'Agência'], ['conta', 'Conta'], ['chave_pix', 'Chave Pix'],
              ['responsavel_nome', 'Responsável (caixa / Fundo Fixo)'], ['saldo_inicial', 'Saldo inicial (R$)', 'valor'], ['data_saldo_inicial', 'Data do saldo inicial', 'data']],
     colunas: ['nome', 'tipo', 'banco', 'saldo_inicial'] },
-  veiculos: { titulo: 'Veículos', ordem: 'placa', edita: () => tem('administrador'),
-    campos: [['placa', 'Placa', 'texto', true], ['modelo', 'Modelo'], ['combustivel', 'Combustível', 'lista', false, ['Diesel', 'Diesel S10', 'Gasolina', 'Etanol', 'Flex', 'GNV']],
-             ['centro_custo_id', 'Centro de custo', 'cc'], ['motorista_padrao_id', 'Motorista principal', 'usuario'], ['km_atual', 'Km atual', 'numero']],
-    colunas: ['placa', 'modelo', 'combustivel', 'centro_custo_id'] },
+  cronograma_licenciamento: { titulo: 'Calendário do CRLV (licenciamento por estado)', ordem: 'uf,categoria,final_placa', edita: () => tem('administrador'),
+    campos: [['uf', 'Estado (UF)', 'lista', true, ['AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO']],
+             ['categoria', 'Calendário (geral ou caminhao)', 'lista', true, ['geral', 'caminhao']], ['final_placa', 'Final da placa (0 a 9)', 'numero', true],
+             ['mes', 'Mês do vencimento (1 a 12)', 'numero', true], ['dia', 'Dia (vazio = último dia do mês)', 'numero'], ['fonte', 'Fonte (portaria / ano)']],
+    colunas: ['uf', 'categoria', 'final_placa', 'mes', 'dia', 'fonte'] },
 };
 
 async function valorExibido(campo, v) {
@@ -96,7 +97,9 @@ rota('/cadastros/:tabela', async (tela, tabela) => {
 const PERFIS = [['administrador', 'Administrador', 'Configura tudo'], ['diretoria', 'Diretoria', 'Vê tudo e aprova acima das alçadas'],
                 ['financeiro', 'Financeiro', 'Contas, pagamentos e reembolsos'], ['comprador', 'Comprador', 'Cotações, pedidos e fornecedores'],
                 ['aprovador', 'Aprovador', 'Aprova o seu centro de custo'], ['solicitante', 'Solicitante', 'Lança reembolsos e pedidos'],
-                ['motorista', 'Motorista', 'Abastecimentos e reembolsos de viagem']];
+                ['motorista', 'Motorista', 'Abastecimentos e reembolsos de viagem'], ['operacao', 'Operação', 'Equipamentos, documentos da frota e clientes'],
+                ['manutencao', 'Manutenção', 'Equipamentos e documentos da frota'], ['almoxarifado', 'Almoxarifado', 'Estoque (em breve)'],
+                ['rh', 'RH', 'Colaboradores (em breve)'], ['dp', 'DP', 'Folha e encargos (em breve)']];
 const SETORES = ['Administrativo', 'Comercial', 'Diretoria', 'Financeiro', 'Frota', 'Operação', 'Qualidade', 'Recursos Humanos'];
 const soDigitos = v => String(v || '').replace(/\D/g, '');
 function cpfValido(c) {

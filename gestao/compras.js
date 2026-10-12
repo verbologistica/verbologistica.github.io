@@ -266,7 +266,10 @@ rota('/compras/cotacoes/ver/:id', async (tela, id) => {
       <label class="campo largo">Orçamento (PDF ou foto)${p.id ? '' : ' — obrigatório'}<input type="file" name="arquivos" accept="image/*,application/pdf" multiple></label>
       ${p.id ? '' : '<label class="check largo"><input type="checkbox" name="verbal"> Orçamento por telefone/WhatsApp sem documento (explique na observação)</label>'}</div>
       <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Salvar</button></div></form>`, {
-      aoAbrir: raiz => { const f = $('form', raiz); f.forn.onchange = () => { $('#novo-forn', raiz).hidden = f.forn.value !== 'novo'; }; },
+      aoAbrir: raiz => { const f = $('form', raiz); f.forn.onchange = () => { $('#novo-forn', raiz).hidden = f.forn.value !== 'novo'; };
+        f.nf_doc.addEventListener('input', async () => { f.nf_doc.value = mascaraDoc(f.nf_doc.value); const d = soDigitos(f.nf_doc.value);
+          if (d.length === 14 && cnpjValido(d)) try { const r = await consultarCNPJ(d); f.nf_nome.value = r.razao_social || f.nf_nome.value;
+            if (r.ddd_telefone_1 && !f.nf_tel.value) f.nf_tel.value = fmtTel(r.ddd_telefone_1); if (r.email && !f.nf_email.value) f.nf_email.value = r.email.toLowerCase(); } catch {} }); },
       validar: d => !d.forn ? 'Escolha o fornecedor.' : d.forn === 'novo' && !d.nf_nome ? 'Informe o nome do novo fornecedor.'
         : !(num(d.valor) > 0) ? 'Informe o valor total da proposta.'
         : !p.id && !d.arquivos.length && !(d.verbal && d.obs) ? 'Anexe o orçamento. Se foi verbal, marque a opção e explique na observação.' : null });
@@ -274,7 +277,7 @@ rota('/compras/cotacoes/ver/:id', async (tela, id) => {
   const salvarProposta = async (d, p = {}) => {
     let forn = d.forn;
     if (forn === 'novo') {
-      const [nf] = await api.inserir('fornecedores', { razao_social: d.nf_nome, documento: d.nf_doc || null, telefone: d.nf_tel || null, email: d.nf_email || null });
+      const [nf] = await api.inserir('fornecedores', { razao_social: d.nf_nome, documento: soDigitos(d.nf_doc) || null, telefone: soDigitos(d.nf_tel) || null, email: d.nf_email || null });
       forn = nf.id; await fornecedores(true);
     }
     const dados = { fornecedor_id: forn, valor_total: num(d.valor), prazo_entrega_dias: d.prazo ? parseInt(d.prazo, 10) : null, condicao_pagamento: d.cond || null,
