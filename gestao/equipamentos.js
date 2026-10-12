@@ -87,7 +87,7 @@ async function formEquipamento(tela, e = null) {
     <form id="f-eq">
       <div class="cartao"><h2>Equipamento</h2><div class="form">
         <label class="campo">Código de frota<input name="codigo_frota" value="${esc(e?.codigo_frota || '')}" placeholder="Ex.: TT-01"></label>
-        <label class="campo">Tipo *<select name="tipo" required><option value="">Selecione…</option>${Object.entries(TIPOS_EQ).map(([v, t]) => `<option value="${v}" ${v === tipoIni ? 'selected' : ''}>${t[0]}</option>`).join('')}</select></label>
+        <label class="campo">Tipo *<select name="tipo" data-sem-outro required><option value="">Selecione…</option>${Object.entries(TIPOS_EQ).map(([v, t]) => `<option value="${v}" ${v === tipoIni ? 'selected' : ''}>${t[0]}</option>`).join('')}</select></label>
         <label class="campo" id="campo-outro" ${tipoIni === 'outro' ? '' : 'hidden'}>Qual?<input name="tipo_outro" value="${esc(e?.tipo_outro || '')}" placeholder="Ex.: Prancha, Caminhão-munck"></label>
         <label class="campo">Nº de composições (placas)<input name="qtd" type="number" min="1" max="9" value="${e?.qtd_composicoes || 1}"></label>
         <label class="campo">Marca<input name="marca" value="${esc(e?.marca || '')}"></label>
@@ -269,7 +269,7 @@ async function modalDocumento(comps, equipamentoId, alvo) {
     const r = await modal(`<form><h2>Anexar documento</h2><div class="form">
       <label class="campo largo">De qual placa?<select name="alvo"><option value="">Conjunto (equipamento inteiro)</option>
         ${comps.map(c => `<option value="${c.id}" ${c.id === alvo ? 'selected' : ''}>${esc((c.descricao_composicao || 'Composição ' + c.ordem) + ' · ' + c.placa)}</option>`).join('')}</select></label>
-      <label class="campo">Tipo de documento<select name="tipo">${DOC_TIPOS.map(([t]) => `<option>${esc(t)}</option>`).join('')}</select></label>
+      <label class="campo">Tipo de documento<select name="tipo" data-sem-outro>${DOC_TIPOS.map(([t]) => `<option>${esc(t)}</option>`).join('')}</select></label>
       <label class="campo">Nome do arquivo *<input name="nome" required placeholder="Ex.: CRLV 2026 cavalo"></label>
       <label class="campo">Número (opcional)<input name="numero"></label>
       <label class="check largo" id="campo-val"><input type="checkbox" name="validade"> Este documento tem prazo de validade</label>

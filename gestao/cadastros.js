@@ -39,7 +39,8 @@ const CADASTROS = {
              ['salario_base', 'Salário base (R$)', 'valor'], ['experiencia_dias', 'Contrato de experiência (dias)', 'numero', true],
              ['motorista', 'É motorista profissional (exige CNH, EAR e exame toxicológico)', 'bool', false, false],
              ['cnh_minima', 'Categoria mínima de CNH', 'lista', false, ['A', 'B', 'C', 'D', 'E']],
-             ['descricao', 'Descrição das atividades', 'textoLongo'], ['requisitos', 'Requisitos (escolaridade, cursos, experiência)', 'textoLongo']],
+             ['descricao', 'Descrição das atividades', 'textoLongo'], ['requisitos', 'Requisitos (escolaridade, cursos, experiência)', 'textoLongo'],
+             ['nivel', 'Nível na carreira (1, 2, 3…)', 'numero'], ['proximo_cargo_id', 'Próximo cargo na carreira (promoção)', 'cargo'], ['requisitos_promocao', 'Requisitos para promoção', 'textoLongo']],
     colunas: ['nome', 'cbo', 'setor_id', 'cnh_minima', 'experiencia_dias'] },
   rh_tipos_documento: { titulo: 'Tipos de documento do colaborador', ordem: 'ordem,nome', edita: () => tem('administrador', 'rh'),
     campos: [['nome', 'Nome do documento', 'texto', true],
@@ -60,6 +61,7 @@ async function valorExibido(campo, v) {
   if (campo === 'responsavel_id' || campo === 'motorista_padrao_id') return porId(await usuarios())[v]?.nome || '—';
   if (campo === 'centro_custo_id') return porId(await centros())[v]?.nome || '—';
   if (campo === 'gestor_usuario_id') return porId(await usuarios())[v]?.nome || '—';
+  if (campo === 'proximo_cargo_id') return (await cargosL()).find(c => c.id === v)?.nome || '—';
   if (campo === 'setor_id') return porId(await setoresCad())[v]?.nome || '—';
   if (campo === 'categoria' && typeof CATEG_DOC_RH !== 'undefined' && CATEG_DOC_RH[v]) return CATEG_DOC_RH[v];
   if (campo === 'exigido_admissao') return ({ todos: 'Todos', motoristas: 'Só motoristas', opcional: 'Opcional', nao: 'Não' })[v] || v;
@@ -73,10 +75,11 @@ async function campoHTML([nome, rotulo, tipo = 'texto', obrig, ops], v) {
   const req = obrig ? 'required' : '';
   if (tipo === 'bool') return `<label class="check largo"><input type="checkbox" name="${nome}" ${v ?? (ops ?? true) ? 'checked' : ''}> ${esc(rotulo)}</label>`;
   let input;
-  if (tipo === 'lista') input = `<select name="${nome}" ${req}><option value=""></option>${ops.map(o => `<option ${o === v ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
+  if (tipo === 'lista') input = `<select name="${nome}" data-valor="${esc(v ?? '')}" ${req}><option value=""></option>${ops.map(o => `<option ${o === v ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
   else if (tipo === 'conta') input = `<select name="${nome}">${await opcoesContas(v)}</select>`;
   else if (tipo === 'usuario') input = `<select name="${nome}">${opcoes((await usuarios()).filter(u => u.ativo), null, u => u.nome, v, 'Nenhum')}</select>`;
   else if (tipo === 'cc') input = `<select name="${nome}">${opcoes((await centros()).filter(c => c.ativo), null, c => c.nome, v, 'Nenhum')}</select>`;
+  else if (tipo === 'cargo') input = `<select name="${nome}">${opcoes((await cargosL()).filter(c => c.ativo), null, c => c.nome, v, 'Nenhum')}</select>`;
   else if (tipo === 'setor') input = `<select name="${nome}">${opcoes((await setoresCad()).filter(c => c.ativo), null, c => c.nome, v, 'Nenhum')}</select>`;
   else if (tipo === 'textoLongo') return `<label class="campo largo">${esc(rotulo)}${obrig ? ' *' : ''}<textarea name="${nome}" rows="3" ${req}>${esc(v ?? '')}</textarea></label>`;
   else if (tipo === 'data') input = `<input type="date" name="${nome}" value="${esc(v || hojeISO())}" ${req}>`;

@@ -161,7 +161,8 @@ async function formParceiro(tela, tabela, x = null) {
         <label class="campo largo">Nome fantasia<input name="nome_fantasia" value="${esc(x?.nome_fantasia || '')}"></label>
         <label class="campo">Inscrição estadual<input name="inscricao_estadual" value="${esc(x?.inscricao_estadual || '')}" placeholder="ou ISENTO"></label>
         <label class="campo">Situação na Receita<input name="situacao_cadastral" value="${esc(x?.situacao_cadastral || '')}" readonly></label>
-        <div class="largo"><div class="muted" style="margin-bottom:4px">Categorias</div><div class="chips">${P.categorias.map(c => `<label class="chip"><input type="checkbox" name="cat_${esc(c)}" ${cats.includes(c) ? 'checked' : ''}> ${esc(c)}</label>`).join('')}</div></div>
+        <div class="largo"><div class="muted" style="margin-bottom:4px">Categorias</div><div class="chips">${P.categorias.map(c => { const extra = c === 'Outro' ? cats.filter(x => !P.categorias.includes(x)) : [];
+          return `<label class="chip"><input type="checkbox" name="cat_${esc(c)}" ${cats.includes(c) || extra.length ? 'checked' : ''} ${extra.length ? `data-valor="${esc(extra.join(', '))}"` : ''}> ${esc(c)}</label>`; }).join('')}</div></div>
       </div></div>
       <div class="cartao"><h2>Contato e endereço</h2><div class="form">
         <label class="campo">Pessoa de contato<input name="contato" value="${esc(x?.contato || '')}"></label>
@@ -239,7 +240,7 @@ async function formParceiro(tela, tabela, x = null) {
       contato: d.contato || null, email: d.email || null, telefone: soDigitos(d.telefone) || null, telefone2: soDigitos(d.telefone2) || null,
       cep: soDigitos(d.cep) || null, logradouro: d.logradouro || null, numero: d.numero || null, complemento: d.complemento || null, bairro: d.bairro || null,
       cidade: d.cidade || null, uf: d.uf || null, situacao_cadastral: d.situacao_cadastral || null,
-      categorias: P.categorias.filter(c => d['cat_' + c]), boleto: !!d.boleto, prazo_faturamento_dias: d.prazo === '' ? null : Number(d.prazo),
+      categorias: P.categorias.filter(c => d['cat_' + c]).map(c => c === 'Outro' && d.cat_Outro_outro ? d.cat_Outro_outro : c), boleto: !!d.boleto, prazo_faturamento_dias: d.prazo === '' ? null : Number(d.prazo),
       condicao_padrao: d.condicao_padrao || null, dados_bancarios: contasBanc, observacoes: d.observacoes || null,
     };
     if (receita) Object.assign(dados, { atividade_principal: receita.cnae_fiscal_descricao || null, dados_receita: receita, consultado_em: new Date().toISOString() });

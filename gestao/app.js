@@ -30,9 +30,44 @@ function formDados(form) {
     else if (el.type === 'radio') { if (el.checked) d[el.name] = el.value; }
     else if (el.type === 'file') d[el.name] = [...el.files];
     else d[el.name] = el.value.trim();
+    // opção "Outro": o texto digitado vira o valor (ou vai em <campo>_outro quando a opção é um código)
+    if (el.dataset.outroOk && (el.tagName === 'SELECT' ? el.selectedOptions[0]?.dataset.outro : el.checked)) {
+      const txt = form.querySelector(`[data-outro-de="${CSS.escape(el.name)}"]`)?.value.trim();
+      if (txt) { const op = el.selectedOptions?.[0]; if (op && op.value === op.textContent.trim()) d[el.name] = txt; else d[el.name + '_outro'] = txt; }
+    }
   }
   return d;
 }
+
+// ===================== Opção "Outro" em qualquer lista: abre um campo para nomear =====================
+const EH_OUTRO = /^(outro|outra|outros|outras)\b/i;
+function prepararOutros(raiz = document) {
+  for (const el of raiz.querySelectorAll('select:not([data-outro-ok]):not([data-sem-outro]), input[type=checkbox]:not([data-outro-ok]):not([data-sem-outro])')) {
+    if (!el.name) continue;
+    let op = null;
+    if (el.tagName === 'SELECT') { op = [...el.options].find(o => EH_OUTRO.test(o.textContent.trim())); if (!op) continue; op.dataset.outro = '1'; }
+    else if (!EH_OUTRO.test((el.closest('label')?.textContent || '').trim())) continue;
+    el.dataset.outroOk = '1';
+    const inp = document.createElement('input');
+    inp.className = 'campo-outro'; inp.dataset.outroDe = el.name; inp.placeholder = 'Qual? Escreva o nome'; inp.setAttribute('aria-label', 'Descreva a opção Outro');
+    // valor já salvo que não está na lista: marca "Outro" e mostra o texto
+    const salvo = el.dataset.valor;
+    if (op && salvo && ![...el.options].some(o => o.value === salvo || o.textContent.trim() === salvo)) { op.selected = true; inp.value = salvo; }
+    if (!op && el.dataset.valor) inp.value = el.dataset.valor;
+    (el.closest('label.chip, label.check') || el).after(inp);
+    sincOutro(el);
+  }
+}
+function sincOutro(el) {
+  const inp = el.form ? el.form.querySelector(`[data-outro-de="${CSS.escape(el.name)}"]`) : el.parentElement?.querySelector(`[data-outro-de="${CSS.escape(el.name)}"]`);
+  if (!inp) return;
+  const on = el.tagName === 'SELECT' ? !!el.selectedOptions[0]?.dataset.outro : el.checked;
+  inp.hidden = !on; inp.required = on && el.tagName === 'SELECT'; if (on && document.activeElement === el) setTimeout(() => inp.focus(), 0);
+}
+document.addEventListener('change', e => { if (e.target.dataset?.outroOk) sincOutro(e.target); });
+let _outroPend = false;
+new MutationObserver(() => { if (_outroPend) return; _outroPend = true; requestAnimationFrame(() => { _outroPend = false; prepararOutros(); }); })
+  .observe(document.documentElement, { childList: true, subtree: true });
 
 async function ocupado(btn, fn) {
   if (btn) { btn.disabled = true; btn.dataset.t = btn.textContent; btn.textContent = 'Aguarde…'; }
@@ -217,9 +252,20 @@ const MENU = [
   ['Admissões', '#/rh/admissoes', P_RH, '📝', 'admissoes_andamento', true],
   ['Documentos dos colaboradores', '#/rh/documentos', P_RH, '🪪', 'rh_docs_vencendo', true],
   ['Cargos e funções', '#/cadastros/cargos', P_RH, '🏷️', null, true],
+  ['Férias', '#/rh/ferias', P_RH, '🏖️', 'ferias_vencendo', true],
+  ['Treinamentos', '#/rh/treinamentos', P_RH, '🎓', 'treinamentos_pendentes', true],
+  ['Avaliações', '#/rh/avaliacoes', [...P_RH, 'aprovador'], '📈', null, true],
+  ['Recrutamento', '#/rh/recrutamento', P_RH, '🔍', 'vagas_abertas', true],
+  ['Banco de talentos', '#/rh/talentos', P_RH, '🗃️', null, true],
+  ['Ocorrências disciplinares', '#/rh/disciplinar', P_RH, '⚖️', null, true],
+  ['Desligamentos', '#/rh/desligamentos', P_RH, '🚪', 'desligamentos_andamento', true],
+  ['Pesquisas de clima', '#/rh/clima', P_RH, '🌡️', null, true],
+  ['Organograma', '#/rh/organograma', P_RH, '🏛️', null, true],
+  ['Promoções e cursos', '#/rh/desenvolvimento', P_RH, '🚀', null, true],
   ['Tipos de documento', '#/cadastros/rh_tipos_documento', ['administrador', 'rh'], '🗂️', null, true],
   ['grupo', 'Biblioteca'],
   ['Modelos de documentos', '#/modelos', null, '📄', null, true],
+  ['Pesquisa de clima', '#/clima', null, '💬', 'pesquisa_aberta', true],
   ['grupo', 'Configurações'],
   ['Dados da empresa', '#/cadastros/empresa', ['administrador'], '🏢', null, true],
   ['Setores', '#/cadastros/setores', ['administrador', 'rh'], '🧩', null, true],
@@ -413,6 +459,9 @@ rota('/inicio', async tela => {
       ${p.pedidos_a_receber ? `<a class="cartao kpi" href="#/compras/pedidos"><div class="n">${p.pedidos_a_receber}</div><div class="r">pedido(s) de compra a receber</div></a>` : ''}
       ${p.calendario_crlv ? `<a class="cartao kpi alerta" href="#/config/calendario_crlv"><div class="n">${p.calendario_crlv}</div><div class="r">calendário(s) do CRLV do próximo ano para conferir</div></a>` : ''}
       ${p.docs_vencendo ? `<a class="cartao kpi alerta" href="#/frota/documentos"><div class="n">${p.docs_vencendo}</div><div class="r">documento(s) de equipamentos vencidos ou vencendo em 30 dias</div></a>` : ''}
+      ${p.pesquisa_aberta ? `<a class="cartao kpi alerta" href="#/clima"><div class="n">💬</div><div class="r">Pesquisa de clima aberta: responda de forma anônima</div></a>` : ''}
+      ${tem('administrador', 'rh', 'dp') && p.ferias_vencendo ? `<a class="cartao kpi alerta" href="#/rh/ferias"><div class="n">${p.ferias_vencendo}</div><div class="r">período(s) de férias vencido(s) ou vencendo</div></a>` : ''}
+      ${tem('administrador', 'rh', 'dp') && p.desligamentos_andamento ? `<a class="cartao kpi" href="#/rh/desligamentos"><div class="n">${p.desligamentos_andamento}</div><div class="r">desligamento(s) em andamento</div></a>` : ''}
       ${tem('administrador', 'rh', 'dp') && p.admissoes_andamento ? `<a class="cartao kpi" href="#/rh/admissoes"><div class="n">${p.admissoes_andamento}</div><div class="r">admissão(ões) em andamento</div></a>` : ''}
       ${tem('administrador', 'rh', 'dp') && p.rh_docs_vencendo ? `<a class="cartao kpi alerta" href="#/rh/documentos"><div class="n">${p.rh_docs_vencendo}</div><div class="r">documento(s) de colaboradores vencidos ou vencendo em 30 dias</div></a>` : ''}
       ${tem('administrador', 'rh', 'dp') && p.experiencia_vencendo ? `<a class="cartao kpi alerta" href="#/rh"><div class="n">${p.experiencia_vencendo}</div><div class="r">contrato(s) de experiência vencendo em 15 dias</div></a>` : ''}

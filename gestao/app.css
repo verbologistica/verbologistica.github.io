@@ -166,3 +166,30 @@ details.comprovante[open] summary { margin-bottom: 12px; }
 /* Exportação de tabelas */
 .exportar { display: flex; gap: 6px; justify-content: flex-end; margin-bottom: 6px; }
 @media print { .lateral, .barra-baixo, .exportar, .acoes, .filtros, .abas, .btn { display: none !important; } .conteudo { margin: 0 !important; padding: 0 !important; } }
+.campo-outro { margin-top: 6px; width: 100%; border: 1px dashed #02654D !important; background: rgba(2,101,77,.04); }
+label.chip + .campo-outro, label.check + .campo-outro { max-width: 320px; }
+
+/* Avisos da legislação */
+.aviso-lei { background: #fff8e6; border: 1px solid #f0d58a; border-left: 4px solid #c99a00; border-radius: 10px; padding: 10px 14px; margin: 0 0 14px; font-size: 14px; }
+.aviso-lei summary { cursor: pointer; font-weight: 700; color: #7a5b00; }
+.aviso-lei ul { margin: 6px 0 4px; padding-left: 20px; } .aviso-lei li { margin: 3px 0; line-height: 1.45; }
+.aviso-lei-bloco { margin-top: 8px; }
+/* Matriz de treinamentos */
+table.matriz { border-collapse: collapse; font-size: 13px; width: auto; } table.matriz td, table.matriz th { border: 1px solid var(--borda); padding: 4px 6px; text-align: center; }
+table.matriz td:first-child, table.matriz th:first-child { text-align: left; min-width: 180px; position: sticky; left: 0; background: var(--cartao, #fff); }
+th.girado { height: 150px; vertical-align: bottom; } th.girado span { writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; font-weight: 600; }
+td.c-vencido { background: #fde3e3; } td.c-pendente, td.c-vence_30 { background: #fff4d6; } td.c-em_dia { background: #e3f5ec; } td.c-na { color: #bbb; }
+/* Notas (avaliação e clima) */
+.tabela-notas { width: 100%; border-collapse: collapse; } .tabela-notas td { border-bottom: 1px solid var(--borda); padding: 6px 4px; vertical-align: middle; }
+label.nota { position: relative; display: inline-flex; margin: 2px; cursor: pointer; } label.nota input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+label.nota span { display: inline-block; min-width: 32px; padding: 6px 8px; border: 1px solid var(--borda); border-radius: 8px; text-align: center; font-weight: 600; }
+label.nota input:checked + span { background: #02654D; color: #fff; border-color: #02654D; } label.nota input:focus-visible + span { outline: 2px solid #02654D; }
+.escala { display: flex; flex-wrap: wrap; gap: 2px; margin: 6px 0 2px; } .pergunta-clima { padding: 12px 0; border-bottom: 1px solid var(--borda); }
+.barra-pct { position: relative; background: #eef1ef; border-radius: 6px; height: 20px; min-width: 120px; } .barra-pct div { background: #6cc39a; height: 100%; border-radius: 6px; }
+.barra-pct span { position: absolute; left: 6px; top: 1px; font-size: 12px; font-weight: 600; }
+/* Organograma */
+ul.org, ul.org ul { list-style: none; padding-left: 22px; margin: 0; } ul.org { padding-left: 0; } ul.org li { position: relative; margin: 6px 0; }
+ul.org ul li::before { content: ''; position: absolute; left: -14px; top: 0; bottom: 50%; width: 12px; border-left: 2px solid var(--borda); border-bottom: 2px solid var(--borda); }
+a.org-no { display: inline-flex; flex-direction: column; padding: 6px 12px; border: 1px solid var(--borda); border-left: 4px solid #02654D; border-radius: 8px; background: var(--cartao, #fff); text-decoration: none; color: inherit; }
+a.org-no span { font-size: 12px; opacity: .7; }
+@media print { .aviso-lei { break-inside: avoid; } }

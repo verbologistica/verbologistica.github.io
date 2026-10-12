@@ -9,7 +9,7 @@ const CATEG_DOC_RH = { identificacao: 'Identificação', trabalhista: 'Trabalhis
 const tagColab = s => `<span class="tag ${STATUS_COLAB[s]?.[1] || ''}">${STATUS_COLAB[s]?.[0] || s}</span>`;
 const idade = d => { if (!d) return null; const n = new Date(d + 'T12:00:00'), h = new Date(); let a = h.getFullYear() - n.getFullYear(); if (h < new Date(h.getFullYear(), n.getMonth(), n.getDate())) a--; return a; };
 const setoresL = f => cad('setores', 'select=id,nome,sigla,ativo&order=nome', f);
-const cargosL = f => cad('cargos', 'select=id,nome,cbo,setor_id,motorista,cnh_minima,experiencia_dias,ativo&order=nome', f);
+const cargosL = f => cad('cargos', 'select=id,nome,cbo,setor_id,motorista,cnh_minima,experiencia_dias,proximo_cargo_id,requisitos_promocao,ativo&order=nome', f);
 const tiposDocRH = f => cad('rh_tipos_documento', 'select=*&order=ordem,nome', f);
 const exigidoPara = (t, motorista) => t.exigido_admissao === 'todos' || (t.exigido_admissao === 'motoristas' && motorista);
 
@@ -45,7 +45,10 @@ rota('/rh', async tela => {
         <span class="muted">${em(c.experiencia_fim1) ? '1º período até ' + dataBR(c.experiencia_fim1) : 'termina em ' + dataBR(c.experiencia_fim2)}</span></li>`).join('')}</ul>` : '<div class="vazio">Nenhum nos próximos 15 dias.</div>'}</div>
       <div class="cartao"><h2>Aniversariantes do mês</h2>${aniv.length ? `<ul class="lista-simples">${aniv.map(c => `<li><a href="#/rh/colaboradores/ver/${c.id}">${esc(c.nome)}</a><span class="muted">${c.data_nascimento.slice(8)}/${mes}</span></li>`).join('')}</ul>` : '<div class="vazio">Nenhum aniversariante cadastrado.</div>'}</div>
     </div>
-    ${docs.length ? `<div class="cartao"><h2>Documentos para renovar</h2>${tabelaDocsRH(docs)}</div>` : ''}`;
+    ${docs.length ? `<div class="cartao"><h2>Documentos para renovar</h2>${tabelaDocsRH(docs)}</div>` : ''}
+    <div class="cartao"><h2>Pendências do RH</h2><div class="grade">${[['#/rh/ferias', 'ferias_vencendo', 'períodos de férias vencidos ou vencendo'], ['#/rh/treinamentos?aba=matriz&sit=pendente', 'treinamentos_pendentes', 'treinamentos obrigatórios pendentes ou vencidos'],
+      ['#/rh/desligamentos', 'desligamentos_andamento', 'desligamentos em andamento'], ['#/rh/recrutamento', 'vagas_abertas', 'vagas abertas'], ['#/rh/avaliacoes', 'experiencia_vencendo', 'avaliações de experiência a fazer']]
+      .map(([h, k, t]) => `<a class="cartao kpi ${estado.pendencias?.[k] && k !== 'vagas_abertas' ? 'alerta' : ''}" href="${h}"><div class="n">${estado.pendencias?.[k] || 0}</div><div class="r">${t}</div></a>`).join('')}</div></div>`;
 });
 function tabelaDocsRH(ds) {
   return `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Colaborador</th><th>Cargo</th><th>Documento</th><th>Vencimento</th><th>Situação</th></tr></thead><tbody>
@@ -80,9 +83,10 @@ rota('/rh/colaboradores/editar/:id', async (tela, id) => formColaborador(tela, a
 
 async function formColaborador(tela, c = null) {
   if (!editaRH()) { tela.innerHTML = '<div class="cartao vazio">Sem permissão.</div>'; return; }
-  const [ss, cgs, ccs, us, bancos] = await Promise.all([setoresL(), cargosL(), centros(), usuarios(), listaBancos()]);
+  const [ss, cgs, ccs, us, bancos, cols] = await Promise.all([setoresL(), cargosL(), centros(), usuarios(), listaBancos(),
+    api.listar('colaboradores', 'select=id,nome&ativo=eq.true&status=in.(ativo,ferias,afastado,aviso_previo,em_admissao)&order=nome')]);
   const v = k => esc(c?.[k] ?? '');
-  const sel = (nome, ops, atual, vazio = '') => `<select name="${nome}"><option value="">${vazio}</option>${ops.map(([val, t]) => `<option value="${esc(val)}" ${String(val) === String(atual ?? '') ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>`;
+  const sel = (nome, ops, atual, vazio = '') => `<select name="${nome}" data-valor="${esc(atual ?? '')}"><option value="">${vazio}</option>${ops.map(([val, t]) => `<option value="${esc(val)}" ${String(val) === String(atual ?? '') ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>`;
   const campo = (rot, html, largo) => `<label class="campo ${largo ? 'largo' : ''}">${rot}${html}</label>`;
   const inp = (k, extra = '') => `<input name="${k}" value="${v(k)}" ${extra}>`;
   const dt = k => `<input type="date" name="${k}" value="${v(k)}">`;
@@ -100,6 +104,7 @@ async function formColaborador(tela, c = null) {
         ${campo('Jornada', inp('jornada', 'placeholder="Ex.: 44h semanais / 12x36"'))}
         ${campo('Escala', inp('escala', 'placeholder="Ex.: Turno A, 2MW"'))}
         ${campo('Salário (R$)', `<input name="salario" inputmode="decimal" value="${c?.salario != null ? Number(c.salario).toFixed(2).replace('.', ',') : ''}">`)}
+        ${campo('Gestor imediato', sel('gestor_colaborador_id', cols.filter(x => x.id !== c?.id).map(x => [x.id, x.nome]), c?.gestor_colaborador_id, 'Nenhum'))}
         ${campo('Acesso ao sistema (usuário)', sel('usuario_id', us.filter(u => u.ativo).map(u => [u.id, u.nome + ' · ' + u.email]), c?.usuario_id, 'Sem acesso'))}
         ${c?.status === 'desligado' || c?.data_desligamento ? campo('Data do desligamento', dt('data_desligamento')) + campo('Motivo do desligamento', inp('motivo_desligamento'), true) : ''}
       </div></div>
@@ -109,7 +114,7 @@ async function formColaborador(tela, c = null) {
         ${campo('CPF', `<input name="cpf" value="${esc(fmtCPF(c?.cpf || ''))}" inputmode="numeric">`)}
         ${campo('Data de nascimento', dt('data_nascimento'))}
         ${campo('RG', inp('rg'))}${campo('Órgão emissor', inp('rg_orgao'))}${campo('UF do RG', sel('rg_uf', UFS.map(u => [u, u]), c?.rg_uf))}${campo('Emissão do RG', dt('rg_emissao'))}
-        ${campo('Sexo', sel('sexo', [['F', 'Feminino'], ['M', 'Masculino'], ['O', 'Outro']], c?.sexo))}
+        ${campo('Sexo', sel('sexo', [['F', 'Feminino'], ['M', 'Masculino'], ['Outro', 'Outro']], c?.sexo))}
         ${campo('Estado civil', sel('estado_civil', ['Solteiro(a)', 'Casado(a)', 'União estável', 'Divorciado(a)', 'Viúvo(a)'].map(x => [x, x]), c?.estado_civil))}
         ${campo('Raça/cor (eSocial)', sel('raca_cor', ['Branca', 'Preta', 'Parda', 'Amarela', 'Indígena', 'Não informada'].map(x => [x, x]), c?.raca_cor))}
         ${campo('Escolaridade', sel('escolaridade', ['Fundamental incompleto', 'Fundamental completo', 'Médio incompleto', 'Médio completo', 'Técnico', 'Superior incompleto', 'Superior completo', 'Pós-graduação'].map(x => [x, x]), c?.escolaridade))}
@@ -196,7 +201,7 @@ rota('/rh/colaboradores/ver/:id', async (tela, id) => {
   const faltam = exigidos.filter(t => !atuais.some(d => d.tipo_id === t.id));
   const venc = atuais.filter(d => d.vencimento && !d.dispensado && diasAte(d.vencimento) <= 30);
   const admAtual = adms.find(a => a.status === 'em_andamento');
-  const abas = [['dados', 'Dados'], ['docs', `Documentos${faltam.length ? ` (${faltam.length} faltando)` : ''}`], ['deps', `Dependentes (${deps.length})`], ['admissao', 'Admissão'], ['gerados', 'Documentos gerados']];
+  const abas = [['dados', 'Dados'], ['docs', `Documentos${faltam.length ? ` (${faltam.length} faltando)` : ''}`], ['deps', `Dependentes (${deps.length})`], ['admissao', 'Admissão'], ['ferias', 'Férias'], ['treinamentos', 'Treinamentos'], ['avaliacoes', 'Avaliações'], ['disciplinar', 'Disciplinar'], ['desligamento', 'Desligamento'], ['gerados', 'Documentos gerados']];
   const linha = (k, val) => `<div><div class="muted">${k}</div><b>${val ? esc(val) : '—'}</b></div>`;
   const conteudo = {
     dados: `<div class="cartao"><div class="form">
@@ -215,7 +220,7 @@ rota('/rh/colaboradores/ver/:id', async (tela, id) => {
       </div></div>`,
     docs: `<div class="cartao"><div class="topo" style="margin:0 0 8px"><h2 style="margin:0">Documentos</h2>${pode ? '<button class="btn prim peq" id="novo-doc-rh">+ Documento</button>' : ''}</div>
         ${faltam.length ? `<div class="alerta-obs" style="margin-bottom:10px"><b>Faltam ${faltam.length} documento(s) obrigatório(s) para o cargo:</b> ${faltam.map(t => esc(t.nome)).join(' · ')}</div>` : '<p class="muted">Todos os documentos obrigatórios do cargo foram entregues.</p>'}
-        ${Object.entries(CATEG_DOC_RH).map(([cat, nomeCat]) => { const ts = tipos.filter(t => t.categoria === cat && (atuais.some(d => d.tipo_id === t.id) || exigidoPara(t, cargo?.motorista)));
+        ${[...Object.entries(CATEG_DOC_RH), ...[...new Set(tipos.map(t => t.categoria))].filter(k => !CATEG_DOC_RH[k]).map(k => [k, k])].map(([cat, nomeCat]) => { const ts = tipos.filter(t => t.categoria === cat && (atuais.some(d => d.tipo_id === t.id) || exigidoPara(t, cargo?.motorista)));
           if (!ts.length) return ''; return `<h3 style="margin:14px 0 6px">${nomeCat}</h3><ul class="lista-simples">${ts.map(t => { const d = atuais.find(x => x.tipo_id === t.id);
             return `<li style="flex-wrap:wrap"><span>${d ? (d.dispensado ? '➖' : '✅') : '⏳'} <b>${esc(t.nome)}</b>${d?.numero ? ` <span class="muted">nº ${esc(d.numero)}</span>` : ''}
               ${d?.vencimento && !d.dispensado ? ' ' + tagDoc({ tem_validade: true, vencimento: d.vencimento }) + ` <span class="muted">vence ${dataBR(d.vencimento)}</span>` : ''}${d?.dispensado ? ' <span class="tag">Não se aplica</span>' : ''}${!d ? ' <span class="tag amarelo">Pendente</span>' : ''}</span>
@@ -227,6 +232,7 @@ rota('/rh/colaboradores/ver/:id', async (tela, id) => {
             <td data-r="CPF">${esc(fmtCPF(x.cpf || ''))}</td><td data-r="IR">${x.dependente_ir ? 'Sim' : 'Não'}</td><td data-r="Salário-família">${x.salario_familia ? 'Sim' : 'Não'}</td><td data-r="Plano">${x.plano_saude ? 'Sim' : 'Não'}</td>
             <td>${pode ? `<button class="btn peq perigo" data-rem-dep="${x.id}">Remover</button>` : ''}</td></tr>`).join('')}</tbody></table></div>` : '<div class="vazio">Nenhum dependente.</div>'}</div>`,
     admissao: '<div id="adm-box" class="cartao"><div class="carregando">Carregando…</div></div>',
+    ...Object.fromEntries(['ferias', 'treinamentos', 'avaliacoes', 'disciplinar', 'desligamento'].map(k => [k, '<div id="aba-extra" class="cartao"><div class="carregando">Carregando…</div></div>'])),
     gerados: `<div class="cartao"><div class="topo" style="margin:0 0 8px"><h2 style="margin:0">Documentos gerados</h2><button class="btn prim peq" id="gerar-doc">+ Gerar documento</button></div>
         ${gerados.length ? `<ul class="lista-simples">${gerados.map(g => `<li><span>${esc(g.modelo?.titulo || '')} <span class="muted">${esc(g.modelo?.codigo || '')}</span></span><span class="muted">${dataHoraBR(g.gerado_em)}</span></li>`).join('')}</ul>` : '<div class="vazio">Nenhum documento gerado ainda.</div>'}</div>`,
   };
@@ -263,7 +269,7 @@ rota('/rh/colaboradores/ver/:id', async (tela, id) => {
     if (!r) return;
     try {
       const [doc] = await api.inserir('colaborador_documentos', { colaborador_id: id, tipo_id: r.tipo, numero: r.numero || null, emissao: r.emissao || null,
-        vencimento: r.vencimento || null, dispensado: !!r.dispensado, observacao: r.observacao || null });
+        vencimento: r.vencimento || null, dispensado: !!r.dispensado, observacao: [r.tipo_outro, r.observacao].filter(Boolean).join(' — ') || null });
       await anexar('documento_colaborador', doc.id, r.arquivos); aviso('Documento registrado.'); navegar();
     } catch (err) { falha(err); }
   };
@@ -290,6 +296,7 @@ rota('/rh/colaboradores/ver/:id', async (tela, id) => {
   }));
 
   if (aba === 'admissao') await painelAdmissao($('#adm-box'), c, admAtual, adms, cargo, cgs, faltam);
+  if (typeof ABAS_RH_EXTRA !== 'undefined' && ABAS_RH_EXTRA[aba]) { await ABAS_RH_EXTRA[aba]($('#aba-extra'), c, { cargo, cgs }); if (typeof ferramentasExportacao === 'function') ferramentasExportacao(tela); }
 });
 
 // ---------- Admissão ----------

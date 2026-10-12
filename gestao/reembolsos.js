@@ -76,9 +76,9 @@ async function formReembolso(tela, r = null) {
       <details class="largo comprovante" ${r?.fornecedor_nome || r?.chave_acesso ? 'open' : ''}><summary>Dados do comprovante (opcional)</summary><div class="form">
         <label class="campo">Estabelecimento<input name="fornecedor_nome" value="${esc(r?.fornecedor_nome || '')}" placeholder="Nome do posto, restaurante…"></label>
         <label class="campo">CNPJ / CPF<input name="fornecedor_documento" value="${esc(r?.fornecedor_documento || '')}" inputmode="numeric"></label>
-        <label class="campo">Tipo de comprovante<select name="tipo_comprovante"><option value="">—</option>${TIPOS_COMPROVANTE.map(t => `<option ${r?.tipo_comprovante === t ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+        <label class="campo">Tipo de comprovante<select name="tipo_comprovante" data-valor="${esc(r?.tipo_comprovante || '')}"><option value="">—</option>${TIPOS_COMPROVANTE.map(t => `<option ${r?.tipo_comprovante === t ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
         <label class="campo">Nº da nota / cupom<input name="numero_documento" value="${esc(r?.numero_documento || '')}"></label>
-        <label class="campo">Forma de pagamento<select name="forma_pagamento"><option value="">—</option>${FORMAS_PAGTO.map(t => `<option ${r?.forma_pagamento === t ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+        <label class="campo">Forma de pagamento<select name="forma_pagamento" data-valor="${esc(r?.forma_pagamento || '')}"><option value="">—</option>${FORMAS_PAGTO.map(t => `<option ${r?.forma_pagamento === t ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
         <label class="campo">Cidade / UF<span class="lado"><input name="cidade" value="${esc(r?.cidade || '')}"><input name="uf" maxlength="2" value="${esc(r?.uf || '')}" style="max-width:64px" aria-label="UF"></span></label>
         <label class="campo largo">Chave de acesso (44 dígitos)<input name="chave_acesso" inputmode="numeric" value="${esc(r?.chave_acesso || '')}"></label>
       </div></details>

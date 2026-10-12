@@ -48,6 +48,7 @@ function preencherModelo(html, ctx, respostas = {}) {
     if (chave.startsWith('?')) return esc(respostas[chave.slice(1).trim()] || '__________________');
     if (chave === 'lista_documentos_admissionais') return ctx.lista_documentos_admissionais || '<p><i>(escolha um colaborador para listar os documentos do cargo)</i></p>';
     const v = chave.split('.').reduce((o, k) => (o == null ? o : o[k]), ctx);
+    if (/(^|\.)tabela_/.test(chave) && v) return v;   // tabelas montadas pelo sistema (já escapadas)
     return v == null || v === '' ? '__________' : esc(v);
   });
 }
@@ -70,7 +71,7 @@ function baixarArquivo(conteudo, nome, tipo) {
 }
 
 // Gera um documento a partir de um modelo (com colaborador opcional e lacunas)
-async function gerarDocumento(modelo, colaboradorId = null) {
+async function gerarDocumento(modelo, colaboradorId = null, extra = {}) {
   const arquivo = modelo.formato === 'arquivo' ? (await api.listar('anexos', `entidade=eq.modelo&entidade_id=eq.${modelo.id}&cancelado_em=is.null&order=enviado_em.desc&limit=1`))[0] : null;
   const ehWord = arquivo && /\.docx$/i.test(arquivo.nome_original || '');
   if (modelo.formato === 'arquivo' && !ehWord) {   // PDF, planilha etc.: só baixar
@@ -96,7 +97,7 @@ async function gerarDocumento(modelo, colaboradorId = null) {
       ${ehWord ? '<button class="btn prim" value="docx">Gerar Word (.docx)</button>' : '<button class="btn" value="doc">Baixar Word</button><button class="btn prim" value="pdf">Gerar PDF</button>'}</div></form>`);
   if (!r) return;
   try {
-    const ctx = await contextoDocumento(r.colab || null);
+    const ctx = Object.assign(await contextoDocumento(r.colab || null), extra);
     const respostas = Object.fromEntries(lacunas.map((l, i) => [l, r['l_' + i]]));
     const nomeArq = `${modelo.codigo ? modelo.codigo + ' ' : ''}${modelo.titulo}${ctx.colaborador ? ' - ' + ctx.colaborador.nome : ''}`.replace(/[\\/:*?"<>|]/g, '');
     if (ehWord) {
@@ -144,7 +145,7 @@ async function formModelo(m = null, formato = null, setorIni = '') {
   const anexo = m && formato === 'arquivo' ? await htmlAnexos('modelo', m.id) : '';
   const r = await modal(`<form><h2>${m ? 'Editar modelo' : formato === 'arquivo' ? 'Enviar modelo' : 'Criar modelo preenchível'}</h2><div class="form">
       <label class="campo">Setor *<select name="setor" required>${SETORES_MODELO.map(s => `<option ${s === (m?.setor || setorIni) ? 'selected' : ''}>${s}</option>`).join('')}</select></label>
-      <label class="campo">Categoria<select name="categoria">${CATEG_MODELO.map(s => `<option ${s === m?.categoria ? 'selected' : ''}>${s}</option>`).join('')}</select></label>
+      <label class="campo">Categoria<select name="categoria" data-valor="${esc(m?.categoria || '')}">${CATEG_MODELO.map(s => `<option ${s === m?.categoria ? 'selected' : ''}>${s}</option>`).join('')}</select></label>
       <label class="campo">Código<input name="codigo" value="${esc(m?.codigo || '')}" placeholder="Ex.: RH-TER-001"></label>
       <label class="campo largo">Título *<input name="titulo" required value="${esc(m?.titulo || '')}"></label>
       <label class="campo largo">Para que serve<input name="descricao" value="${esc(m?.descricao || '')}"></label>
