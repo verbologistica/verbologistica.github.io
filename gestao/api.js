@@ -144,6 +144,7 @@ const api = {
     });
   },
   async linkArquivo(caminho) {
+    if (/^https?:\/\//.test(caminho)) return caminho;   // arquivo fora do Storage (ex.: Google Drive)
     await this.garantir();
     const d = await this._fetch(SB_URL + '/storage/v1/object/sign/anexos/' + caminho, {
       method: 'POST',

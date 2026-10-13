@@ -287,6 +287,7 @@ const MENU = [
   ['Minha jornada', '#/operacao/jornada', [...P_OP, 'motorista'], '⏱️', null, true],
   ['Controle de jornada', '#/operacao/jornadas', [...P_OP, 'rh', 'dp'], '📋', 'jornada_alertas', true],
   ['Ocorrências e multas', '#/operacao/ocorrencias', [...P_OP, 'rh', 'dp', 'financeiro'], '🚧', 'multas_indicar', true],
+  ['Abastecimentos', '#/operacao/abastecimentos', [...P_OP, 'financeiro', 'comprador', 'manutencao'], '⛽', 'abast_alertas', true],
   ['grupo', 'Manutenção'],
   ['Painel da manutenção', '#/manut', P_MAN, '🛠️', 'manut_preventivas_vencidas', true],
   ['Ordens de serviço', '#/manut/os', [...P_MAN, 'almoxarifado', 'financeiro'], '🧰', 'manut_os_abertas', true],
@@ -585,6 +586,8 @@ rota('/inicio', async tela => {
       ${p.ssma_acoes_atrasadas ? `<a class="cartao kpi alerta" href="#/ssma/acoes"><div class="n">${p.ssma_acoes_atrasadas}</div><div class="r">ação(ões) de segurança atrasada(s)</div></a>` : ''}
       ${tem('administrador', 'operacao') && p.multas_indicar ? `<a class="cartao kpi alerta" href="#/operacao/ocorrencias?tipo=multa"><div class="n">${p.multas_indicar}</div><div class="r">multa(s) para indicar o condutor (prazo de 30 dias)</div></a>` : ''}
       ${tem('administrador', 'operacao') && p.jornada_alertas ? `<a class="cartao kpi alerta" href="#/operacao/jornadas?alertas=1"><div class="n">${p.jornada_alertas}</div><div class="r">jornada(s) de motorista com alerta (Lei 13.103)</div></a>` : ''}
+      ${p.abast_alertas ? `<a class="cartao kpi alerta" href="#/operacao/abastecimentos"><div class="n">${p.abast_alertas}</div><div class="r">abastecimento(s) com alerta para conferir</div></a>` : ''}
+      ${p.faturas_postos ? `<a class="cartao kpi alerta" href="#/operacao/abastecimentos?aba=faturas"><div class="n">${p.faturas_postos}</div><div class="r">fatura(s) de posto para conferir</div></a>` : ''}
       ${tem('administrador', 'operacao') && p.viagens_atrasadas ? `<a class="cartao kpi alerta" href="#/operacao/viagens?status=em_transito"><div class="n">${p.viagens_atrasadas}</div><div class="r">viagem(ns) atrasada(s)</div></a>` : ''}
       ${tem('administrador', 'rh', 'dp') && (p.ocorrencias_responsabilizacao || p.manut_responsabilizacao || p.patrimonio_avarias) ? `<a class="cartao kpi alerta" href="#/operacao/ocorrencias"><div class="n">${(p.ocorrencias_responsabilizacao || 0) + (p.manut_responsabilizacao || 0) + (p.patrimonio_avarias || 0)}</div><div class="r">caso(s) de responsabilização por dano/multa em análise</div></a>` : ''}
       ${tem('administrador', 'dp') && p.dp_a_importar ? `<a class="cartao kpi alerta" href="#/dp/folha"><div class="n">${p.dp_a_importar}</div><div class="r">pendência(s) dos setores para a folha (descontos, suspensões)</div></a>` : ''}
