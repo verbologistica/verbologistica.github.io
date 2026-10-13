@@ -198,3 +198,10 @@ a.org-no span { font-size: 12px; opacity: .7; }
 .chk-op label{display:inline-flex;align-items:center;gap:6px;margin-right:14px;font-weight:600;cursor:pointer}
 .chk-op input[type=radio]{width:18px;height:18px;min-height:0;margin:0;padding:0;flex:none;accent-color:#0b6b4f}
 .chk-op label:has(input[value="0"]:checked){color:#b42318}
+.filtro-local { align-items: center; background: #f6f8fa; border: 1px solid #e3e8ee; border-radius: 10px; padding: 8px 10px; }
+.filtro-local input[type=search] { min-width: 200px; flex: 1 1 200px; }
+.filtro-local input[type=date] { min-width: 140px; }
+.filtro-local .filtro-resumo { margin-left: auto; white-space: nowrap; }
+@media (max-width: 700px) { .filtro-local > * { flex: 1 1 100%; } .filtro-local .filtro-resumo { margin-left: 0; } }
+.filtro-local .fl-data { display: flex; align-items: center; gap: 6px; font-size: 13px; color: #5a6a77; min-width: 0; }
+.filtro-local .fl-data input { width: auto; }

@@ -542,3 +542,51 @@ rota('/inicio', async tela => {
     await api.alterar('notificacoes', `usuario_id=eq.${estado.usuario.id}&lida=eq.false`, { lida: true }); navegar();
   });
 });
+
+// ===================== Filtros na própria tela =====================
+// Filtra cartões ou linhas já carregados, sem ir ao servidor. Cada item filtrável traz atributos
+// data-f-<campo> (texto exibido), data-f-data (AAAA-MM-DD), data-f-valor (número) e data-f-busca (texto livre).
+// campos: [{ k: 'colab', rotulo: 'Colaborador' }, …] — as opções saem dos próprios itens.
+const _txt = h => String(h ?? '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+const fAttr = (k, v) => v == null || v === '' ? '' : ` data-f-${k}="${esc(String(v))}"`;
+function filtroLocal(tela, { itens, antes, campos = [], busca = true, periodo = false, rotuloPeriodo = 'Data', aoMudar } = {}) {
+  const els = () => $$(itens, tela);
+  const todos = els();
+  if (!todos.length) return null;
+  const chave = 'filtro:' + location.hash.split('?')[0] + ':' + itens;
+  let salvo = {}; try { salvo = JSON.parse(sessionStorage.getItem(chave) || '{}'); } catch { /* sem storage */ }
+  const usados = campos.map(c => ({ ...c, valores: [...new Set(todos.map(e => e.dataset['f' + c.k[0].toUpperCase() + c.k.slice(1)]).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR')) }))
+    .filter(c => c.valores.length > 1 || salvo[c.k]);
+  const barra = document.createElement('div');
+  barra.className = 'filtros filtro-local';
+  barra.innerHTML = `
+    ${busca ? `<input type="search" data-fl="q" placeholder="Buscar…" value="${esc(salvo.q || '')}" aria-label="Buscar">` : ''}
+    ${usados.map(c => `<select data-fl="${c.k}" aria-label="${esc(c.rotulo)}"><option value="">${esc(c.rotulo)}: todos</option>${c.valores.map(v => `<option value="${esc(v)}" ${salvo[c.k] === v ? 'selected' : ''}>${esc(c.rotulo)}: ${esc(v)}</option>`).join('')}</select>`).join('')}
+    ${periodo ? `<label class="fl-data">${esc(rotuloPeriodo)} de<input type="date" data-fl="de" value="${esc(salvo.de || '')}"></label><label class="fl-data">até<input type="date" data-fl="ate" value="${esc(salvo.ate || '')}"></label>` : ''}
+    <button type="button" class="btn peq" data-fl-limpar>Limpar</button>
+    <span class="muted filtro-resumo"></span>`;
+  (typeof antes === 'string' ? $(antes, tela) : antes || todos[0].closest('.cartao') || todos[0]).before(barra);
+  const aplicar = () => {
+    const f = {}; $$('[data-fl]', barra).forEach(i => { if (i.value) f[i.dataset.fl] = i.value; });
+    try { sessionStorage.setItem(chave, JSON.stringify(f)); } catch { /* ok */ }
+    const q = (f.q || '').toLowerCase();
+    let n = 0, total = 0; const lista = els();
+    for (const e of lista) {
+      const d = e.dataset;
+      const ok = usados.every(c => !f[c.k] || d['f' + c.k[0].toUpperCase() + c.k.slice(1)] === f[c.k])
+        && (!f.de || (d.fData || '') >= f.de) && (!f.ate || (d.fData || '9999') <= f.ate)
+        && (!q || (d.fBusca || e.innerText).toLowerCase().includes(q));
+      e.hidden = !ok;
+      if (!ok) $$('input[type=checkbox]', e).forEach(c => { c.checked = false; });
+      if (ok) { n++; total += Number(d.fValor || 0); }
+    }
+    const ativo = Object.keys(f).length > 0;
+    $('.filtro-resumo', barra).innerHTML = ativo ? `<b>${n}</b> de ${lista.length} · ${brl(total)}` : `${lista.length} item(ns) · ${brl(total)}`;
+    $$('table', tela).forEach(t => { if ($$('tbody tr', t).some(tr => lista.includes(tr))) { const tf = $('tfoot', t); if (tf) tf.hidden = ativo; } });
+    aoMudar?.(n);
+  };
+  barra.addEventListener('input', aplicar); barra.addEventListener('change', aplicar);
+  $('[data-fl-limpar]', barra).onclick = () => { $$('[data-fl]', barra).forEach(i => { i.value = ''; }); aplicar(); };
+  aplicar();
+  return { aplicar, visiveis: () => els().filter(e => !e.hidden) };
+}

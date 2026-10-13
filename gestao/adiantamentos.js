@@ -16,7 +16,7 @@ const difTxt = a => Number(a.valor_assumido_colaborador) > 0 ? `<div class="mute
 function tabelaAdts(linhas, comNome = true) {
   if (!linhas.length) return '<div class="vazio">Nenhum adiantamento.</div>';
   return `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Nº</th>${comNome ? '<th>Colaborador</th>' : ''}<th>Motivo</th><th class="num">Valor</th><th>Prestar contas até</th><th>Situação</th></tr></thead><tbody>
-    ${linhas.map(a => `<tr class="clicavel" onclick="location.hash='#/adiantamentos/ver/${a.id}'"><td data-r="Nº" class="nowrap">${esc(a.numero)}</td>
+    ${linhas.map(a => `<tr class="clicavel" data-adt="${a.id}" onclick="location.hash='#/adiantamentos/ver/${a.id}'"${fAttr('colab', nomeAdt(a))}${fAttr('sit', _txt(tagAdt(a)))}${fAttr('data', a.data_entrega || a.data_saida || (a.criado_em || '').slice(0, 10))}${fAttr('valor', a.valor)}${fAttr('busca', [a.numero, nomeAdt(a), a.motivo].join(' '))}><td data-r="Nº" class="nowrap">${esc(a.numero)}</td>
       ${comNome ? `<td data-r="Colaborador">${esc(nomeAdt(a))}</td>` : ''}<td data-r="Motivo">${esc(a.motivo)}</td><td data-r="Valor" class="num">${brl(a.valor)}</td>
       <td data-r="Prestar contas até">${a.prazo_prestacao ? dataBR(a.prazo_prestacao) : '—'}</td><td data-r="Situação">${tagAdt(a)}</td></tr>`).join('')}
   </tbody></table></div>`;
@@ -43,6 +43,7 @@ rota('/financeiro/adiantamentos', async tela => {
     <form class="filtros" id="filtros"><select name="status">${[['abertos', 'Em andamento'], ['acertados', 'Acertados'], ['todos', 'Todos']].map(([v, t]) => `<option value="${v}" ${v === st ? 'selected' : ''}>${t}</option>`).join('')}</select><button class="btn">Filtrar</button></form>
     <div class="cartao">${tabelaAdts(ls)}</div>`;
   $('#filtros').onsubmit = e => { e.preventDefault(); location.hash = '#/financeiro/adiantamentos?status=' + formDados(e.target).status; };
+  filtroLocal(tela, { itens: 'tbody tr[data-adt]', antes: '.cartao', campos: [{ k: 'colab', rotulo: 'Colaborador' }, { k: 'sit', rotulo: 'Situação' }], periodo: true, rotuloPeriodo: 'Entrega' });
   $('#retro')?.addEventListener('click', async () => {
     try { const id = await modalAdtRetroativo(); if (id) { aviso('Adiantamento registrado como entregue.'); location.hash = '#/adiantamentos/ver/' + id; } } catch (err) { falha(err); }
   });
@@ -274,13 +275,14 @@ rota('/financeiro/fundo', async tela => {
     <div class="cartao"><div class="topo" style="margin:0 0 8px"><h2 style="margin:0">Extrato do fundo</h2>
       <form class="filtros" id="filtros" style="margin:0"><input type="date" name="de" value="${de}" aria-label="De"><input type="date" name="ate" value="${ate}" aria-label="Até"><button class="btn peq">Filtrar</button></form></div>
       ${movs.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Data</th><th>Tipo</th><th>Descrição</th><th class="num">Entrada</th><th class="num">Saída</th></tr></thead><tbody>
-      ${movs.map(m => `<tr ${m.entidade === 'reembolso' ? `class="clicavel" onclick="location.hash='#/reembolsos/ver/${m.entidade_id}'"` : m.entidade === 'adiantamento' ? `class="clicavel" onclick="location.hash='#/adiantamentos/ver/${m.entidade_id}'"` : ''}>
+      ${movs.map(m => `<tr data-mov="1"${fAttr('tipo', ORIGEM[m.origem] || m.origem)}${fAttr('data', m.data)}${fAttr('valor', m.valor)}${fAttr('busca', m.descricao)} ${m.entidade === 'reembolso' ? `class="clicavel" onclick="location.hash='#/reembolsos/ver/${m.entidade_id}'"` : m.entidade === 'adiantamento' ? `class="clicavel" onclick="location.hash='#/adiantamentos/ver/${m.entidade_id}'"` : ''}>
         <td data-r="Data" class="nowrap">${dataBR(m.data)}</td><td data-r="Tipo">${esc(ORIGEM[m.origem] || m.origem)}</td><td data-r="Descrição">${esc(m.descricao || '')}</td>
         <td data-r="Entrada" class="num">${m.valor > 0 ? brl(m.valor) : ''}</td><td data-r="Saída" class="num">${m.valor < 0 ? brl(-m.valor) : ''}</td></tr>`).join('')}
       </tbody><tfoot><tr><td colspan="3">Movimento do período</td><td class="num">${brl(movs.filter(m => m.valor > 0).reduce((s, m) => s + Number(m.valor), 0))}</td><td class="num">${brl(-movs.filter(m => m.valor < 0).reduce((s, m) => s + Number(m.valor), 0))}</td></tr></tfoot></table></div>`
       : '<div class="vazio">Sem movimentos no período.</div>'}</div>`;
   $('#filtros').onsubmit = e => { e.preventDefault(); const d = formDados(e.target);
     location.hash = '#/financeiro/fundo?' + new URLSearchParams(Object.entries(d).filter(([, v]) => v)).toString(); };
+  filtroLocal(tela, { itens: 'tbody tr[data-mov]', antes: $('.tabela-wrap', tela), campos: [{ k: 'tipo', rotulo: 'Tipo' }] });
   $('#repor')?.addEventListener('click', async () => {
     const r = await modal(`<form><h2>Repor o Fundo Fixo</h2><div class="form">
       <label class="campo">Data<input type="date" name="data" value="${hojeISO()}" required></label>

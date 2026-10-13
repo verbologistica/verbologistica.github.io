@@ -180,7 +180,8 @@ function tabelaParaLinhas(table) {
   const ths = $$('thead th', table).map(th => th.innerText.trim());
   const usar = ths.map((t, i) => t !== '' || $$('tbody tr', table).some(tr => (tr.children[i]?.innerText || '').trim()));
   const linhas = [ths.filter((_, i) => usar[i])];
-  for (const tr of $$('tbody tr, tfoot tr', table)) linhas.push([...tr.children].filter((_, i) => usar[i] ?? true).map(td => td.innerText.replace(/\s*\n\s*/g, ' · ').trim()));
+  const filtrado = $$('tbody tr', table).some(tr => tr.hidden);   // com filtro ativo: só o que está na tela, sem o total geral
+  for (const tr of $$(filtrado ? 'tbody tr' : 'tbody tr, tfoot tr', table).filter(tr => !tr.hidden)) linhas.push([...tr.children].filter((_, i) => usar[i] ?? true).map(td => td.innerText.replace(/\s*\n\s*/g, ' · ').trim()));
   return linhas;
 }
 async function exportarExcel(table, titulo) {

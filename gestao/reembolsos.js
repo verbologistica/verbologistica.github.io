@@ -17,7 +17,7 @@ function tabelaReembolsos(linhas, { comColab = false, selecionar = false } = {})
   return `<div class="tabela-wrap"><table class="responsiva"><thead><tr>
     ${selecionar ? '<th><input type="checkbox" id="sel-todos" aria-label="Selecionar todos"></th>' : ''}
     <th>Nº</th><th>Data</th>${comColab ? '<th>Colaborador</th>' : ''}<th>Categoria</th><th>Descrição</th><th class="num">Valor</th><th>Situação</th></tr></thead><tbody>
-    ${linhas.map(r => `<tr class="clicavel" data-id="${r.id}">
+    ${linhas.map(r => `<tr class="clicavel" data-id="${r.id}"${fAttr('colab', nomeColab(r))}${fAttr('cat', r.conta?.nome || r.categoria)}${fAttr('custeio', CUSTEIO[r.forma_custeio || 'reembolso'])}${fAttr('sit', _txt(tag(r.status)))}${fAttr('cc', r.cc?.nome)}${fAttr('data', r.data_despesa)}${fAttr('valor', r.valor)}${fAttr('busca', [r.numero, nomeColab(r), r.fornecedor_nome, r.descricao, r.categoria, r.placa, r.observacoes].filter(Boolean).join(' '))}>
       ${selecionar ? `<td data-r="Selecionar">${custeioMutavel(r) || (r.status === 'aprovado' && (r.forma_custeio || 'reembolso') === 'reembolso') ? `<input type="checkbox" class="sel" value="${r.id}" data-colab="${esc(r.colaborador_id || r.colaborador_nome)}" data-lote="${r.status === 'aprovado' && (r.forma_custeio || 'reembolso') === 'reembolso' ? 1 : ''}">` : ''}</td>` : ''}
       <td data-r="Nº" class="nowrap">${esc(r.numero)}</td><td data-r="Data">${dataBR(r.data_despesa)}</td>
       ${comColab ? `<td data-r="Colaborador">${esc(nomeColab(r))}</td>` : ''}
@@ -42,6 +42,7 @@ rota('/reembolsos', async tela => {
       <a class="btn prim" href="#/reembolsos/novo">+ Lançar reembolso</a></div>
     <div class="cartao">${tabelaReembolsos(linhas)}</div>`;
   ligarLinhas(tela);
+  filtroLocal(tela, { itens: 'tbody tr[data-id]', antes: '.cartao', campos: [{ k: 'cat', rotulo: 'Categoria' }, { k: 'custeio', rotulo: 'Forma de custeio' }, { k: 'sit', rotulo: 'Situação' }], periodo: true, rotuloPeriodo: 'Data da despesa' });
 });
 
 // ---------- Novo / editar ----------
@@ -207,6 +208,7 @@ rota('/financeiro/reembolsos', async tela => {
   $('#filtros').onsubmit = e => { e.preventDefault(); const d = formDados(e.target);
     location.hash = '#/financeiro/reembolsos?' + new URLSearchParams(Object.entries(d).filter(([, v]) => v)).toString(); };
   ligarLinhas(tela);
+  const FILTROS_REEMB = [{ k: 'colab', rotulo: 'Colaborador' }, { k: 'cat', rotulo: 'Categoria' }, { k: 'custeio', rotulo: 'Forma de custeio' }, { k: 'sit', rotulo: 'Situação' }, { k: 'cc', rotulo: 'Centro de custo' }];
   const atualizar = () => {
     const todos = $$('.sel:checked', tela);
     const mc = $('#mudar-custeio');
@@ -219,7 +221,9 @@ rota('/financeiro/reembolsos', async tela => {
     b.textContent = pessoas.size > 1 ? 'Selecione um colaborador por vez' : sel.length ? `Gerar pagamento (${sel.length} · ${brl(total)})` : 'Gerar pagamento dos selecionados';
   };
   $$('.sel', tela).forEach(c => (c.onchange = atualizar));
-  $('#sel-todos')?.addEventListener('change', e => { $$('.sel', tela).forEach(c => (c.checked = e.target.checked)); atualizar(); });
+  $('#sel-todos')?.addEventListener('change', e => { $$('.sel', tela).filter(c => !c.closest('tr').hidden).forEach(c => (c.checked = e.target.checked)); atualizar(); });
+  filtroLocal(tela, { itens: 'tbody tr[data-id]', antes: '.cartao', campos: FILTROS_REEMB, periodo: true, rotuloPeriodo: 'Data da despesa', aoMudar: () => atualizar() });
+
   $('#mudar-custeio')?.addEventListener('click', async () => {
     const ids = new Set($$('.sel:checked', tela).map(c => c.value));
     try { const ok = await modalCusteio(linhas.filter(l => ids.has(l.id))); if (ok) navegar(); } catch (err) { falha(err); }
@@ -251,8 +255,9 @@ rota('/aprovacoes', async tela => {
   tela.innerHTML = `
     <div class="topo"><div><h1>Aprovações</h1><p class="sub">${meus.length + meusA.length + comp.n} item(ns) esperando a sua decisão</p></div>
       ${meus.length ? '<button class="btn ok" id="aprovar-sel" disabled>Aprovar selecionados</button>' : ''}</div>
+    ${meus.length + meusA.length + comp.n > 1 ? '<label class="check" id="sel-vis-wrap" style="margin-bottom:10px"><input type="checkbox" id="sel-vis"> Selecionar todos os reembolsos exibidos</label>' : ''}
     ${meus.length ? meus.map(a => { const r = docs[a.entidade_id]; return `
-      <div class="cartao" data-ap="${a.id}">
+      <div class="cartao" data-ap="${a.id}"${fAttr('tipo', { reembolso: 'Reembolso', fundo_fixo: 'Despesa do Fundo Fixo', adiantamento: 'Prestação de contas' }[r.forma_custeio || 'reembolso'])}${fAttr('colab', nomeColab(r))}${fAttr('cat', r.conta?.nome || r.categoria)}${fAttr('cc', r.cc?.nome)}${fAttr('data', r.data_despesa)}${fAttr('valor', r.valor)}${fAttr('busca', [r.numero, nomeColab(r), r.fornecedor_nome, r.descricao, r.categoria, r.observacoes].filter(Boolean).join(' '))}>
         <div class="topo" style="margin-bottom:8px"><label class="check"><input type="checkbox" class="sel-ap" value="${a.id}">
           <span><b>Reembolso ${esc(r.numero)}</b> · ${esc(nomeColab(r))}</span></label><b style="font-size:18px">${brl(r.valor)}</b></div>
         <div class="muted">${dataBR(r.data_despesa)} · ${esc(categoriaTxt(r))} · ${esc(r.cc?.nome || '')}</div>
@@ -264,7 +269,7 @@ rota('/aprovacoes', async tela => {
       </div>`; }).join('') : ''}
     ${comp.html}
     ${meusA.map(a => { const x = adts[a.entidade_id]; return `
-      <div class="cartao" data-ap="${a.id}">
+      <div class="cartao" data-ap="${a.id}"${fAttr('tipo', 'Adiantamento')}${fAttr('colab', x.colab?.nome || x.colaborador_nome)}${fAttr('data', x.data_saida || (x.criado_em || '').slice(0, 10))}${fAttr('valor', x.valor)}${fAttr('busca', [x.numero, x.colab?.nome, x.colaborador_nome, x.motivo].filter(Boolean).join(' '))}>
         <div class="topo" style="margin-bottom:8px"><span><b>Adiantamento ${esc(x.numero)}</b> · ${esc(x.colab?.nome || x.colaborador_nome || '—')}</span><b style="font-size:18px">${brl(x.valor)}</b></div>
         <div class="muted">${x.data_saida ? 'Saída ' + dataBR(x.data_saida) : ''}${x.data_retorno ? ' · retorno ' + dataBR(x.data_retorno) : ''}</div>
         <p style="margin:8px 0">${esc(x.motivo)}</p>
@@ -275,6 +280,7 @@ rota('/aprovacoes', async tela => {
     ${!meus.length && !meusA.length && !comp.n ? '<div class="cartao vazio">Nada para aprovar agora. 🎉</div>' : ''}
     ${outros > 0 && veTudo() ? `<p class="muted">${outros} item(ns) aguardam outros aprovadores (ou são lançamentos seus, que sobem para outra pessoa).</p>` : ''}`;
   $$('.anexos-de', tela).forEach(async el => { el.innerHTML = await htmlAnexos('reembolso', el.dataset.id); });
+  $$('.cartao[data-ap]', tela).forEach(el => { if (!el.dataset.fTipo) el.dataset.fTipo = 'Compra'; });
   const decidir = async (apId, decisao, comentario = null) => api.rpc('decidir_aprovacao', { p_aprovacao: apId, p_decisao: decisao, p_comentario: comentario });
   $$('[data-d]', tela).forEach(b => b.addEventListener('click', async () => {
     const apId = b.closest('[data-ap]').dataset.ap, d = b.dataset.d;
@@ -283,10 +289,17 @@ rota('/aprovacoes', async tela => {
     await ocupado(b, async () => { try { await decidir(apId, d, coment); aviso('Decisão registrada.'); navegar(); } catch (err) { falha(err); } });
   }));
   const bSel = $('#aprovar-sel');
-  $$('.sel-ap', tela).forEach(c => (c.onchange = () => { const n = $$('.sel-ap:checked', tela).length; bSel.disabled = !n; bSel.textContent = n ? `Aprovar selecionados (${n})` : 'Aprovar selecionados'; }));
+  const contar = () => { if (!bSel) return; const m = $$('.sel-ap:checked', tela); const n = m.length;
+    const v = m.reduce((x, c) => x + Number(c.closest('[data-ap]').dataset.fValor || 0), 0);
+    bSel.disabled = !n; bSel.textContent = n ? `Aprovar selecionados (${n} · ${brl(v)})` : 'Aprovar selecionados'; };
+  $$('.sel-ap', tela).forEach(c => (c.onchange = contar));
+  $('#sel-vis')?.addEventListener('change', e => { $$('.sel-ap', tela).filter(c => !c.closest('[data-ap]').hidden).forEach(c => (c.checked = e.target.checked)); contar(); });
+  filtroLocal(tela, { itens: '.cartao[data-ap]', antes: $('#sel-vis-wrap', tela) || $('.cartao[data-ap]', tela),
+    campos: [{ k: 'tipo', rotulo: 'Tipo' }, { k: 'colab', rotulo: 'Colaborador' }, { k: 'cat', rotulo: 'Categoria' }, { k: 'cc', rotulo: 'Centro de custo' }],
+    periodo: true, rotuloPeriodo: 'Data', aoMudar: () => { const sv = $('#sel-vis'); if (sv) sv.checked = false; contar(); } });
   bSel?.addEventListener('click', async () => {
     await ocupado(bSel, async () => {
-      try { for (const c of $$('.sel-ap:checked', tela)) await decidir(c.value, 'aprovado'); aviso('Itens aprovados.'); navegar(); } catch (err) { falha(err); }
+      try { for (const c of $$('.sel-ap:checked', tela).filter(c => !c.closest('[data-ap]').hidden)) await decidir(c.value, 'aprovado'); aviso('Itens aprovados.'); navegar(); } catch (err) { falha(err); }
     });
   });
 });

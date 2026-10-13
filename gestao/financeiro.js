@@ -31,6 +31,9 @@ async function listaTitulos(tela, tipo) {
   const filtroSt = { abertas: 'status=in.(aberta,aprovada,prevista)', pagas: 'status=eq.paga', todas: 'status=neq.cancelada',
                      semcomp: semCompIds.size ? 'id=' + lista([...semCompIds]) : 'id=is.null' }[st] || 'status=neq.cancelada';
   let ps = await api.listar('v_parcelas', `tipo=eq.${tipo}&${filtroSt}&order=vencimento,titulo_numero&limit=2000`);
+  const [planoC, ccsT] = await Promise.all([contas().catch(() => []), centros().catch(() => [])]);
+  const nomeConta = id => planoC.find(c => c.id === id)?.nome, nomeCC = id => ccsT.find(c => c.id === id)?.nome;
+  const ORIG_T = { reembolso: 'Reembolso', adiantamento: 'Adiantamento', pedido: 'Pedido de compra', fechamento: 'Fechamento de fornecedor', fatura_cartao: 'Fatura de cartão', recorrente: 'Conta fixa', avulso: 'Lançamento avulso', legado: 'Anterior ao sistema' };
   const pessoas = porId(tipo === 'pagar' ? await fornecedores() : await clientes());
   const nome = p => (tipo === 'pagar' ? pessoas[p.fornecedor_id]?.razao_social : pessoas[p.cliente_id]?.nome) || p.favorecido_nome || '—';
   if (faixa && FAIXAS[faixa]) ps = ps.filter(FAIXAS[faixa][1]);
@@ -47,13 +50,15 @@ async function listaTitulos(tela, tipo) {
       <input name="q" placeholder="Buscar ${T.pessoa.toLowerCase()} ou descrição" value="${esc(estado.params.get('q') || '')}">
       <button class="btn">Filtrar</button></form>
     <div class="cartao">${ps.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Vencimento</th><th>${T.pessoa}</th><th>Descrição</th><th>Título</th><th class="num">Valor</th><th class="num">${colValor}</th><th>Situação</th></tr></thead><tbody>
-      ${ps.map(p => `<tr class="clicavel" data-t="${p.titulo_id}"><td data-r="Vencimento" class="nowrap">${dataBR(p.vencimento)}</td><td data-r="${T.pessoa}">${esc(nome(p))}</td>
+      ${ps.map(p => `<tr class="clicavel" data-t="${p.titulo_id}"${fAttr('pessoa', nome(p))}${fAttr('tipo', ORIG_T[p.origem] || p.origem)}${fAttr('conta', nomeConta(p.conta_id))}${fAttr('cc', nomeCC(p.centro_custo_id))}${fAttr('sit', _txt(tagTitulo(p.status, p.vencida, tipo)))}${fAttr('data', p.vencimento)}${fAttr('valor', pagas ? p.valor_pago : p.saldo)}${fAttr('busca', [nome(p), p.descricao, p.titulo_numero, p.observacoes].filter(Boolean).join(' '))}><td data-r="Vencimento" class="nowrap">${dataBR(p.vencimento)}</td><td data-r="${T.pessoa}">${esc(nome(p))}</td>
         <td data-r="Descrição">${temVerificar(p.observacoes) ? '<span title="A verificar">⚠️</span> ' : ''}${esc(p.descricao || '')}</td><td data-r="Título" class="nowrap">${esc(p.titulo_numero)}${p.parcela > 1 ? ` <span class="muted">${p.parcela}ª</span>` : ''}</td>
         <td data-r="Valor" class="num">${brl(p.valor)}</td><td data-r="${colValor}" class="num"><b>${brl(pagas ? p.valor_pago : p.saldo)}</b></td><td data-r="Situação">${tagTitulo(p.status, p.vencida, tipo)}${tipo === 'pagar' && semCompIds.has(p.id) ? ' <span class="tag amarelo">Sem comprovante</span>' : ''}</td></tr>`).join('')}
       </tbody><tfoot><tr><td colspan="5">Total</td><td class="num">${brl(total)}</td><td></td></tr></tfoot></table></div>` : '<div class="vazio">Nenhuma conta encontrada.</div>'}</div>`;
   $('#filtros').onsubmit = e => { e.preventDefault(); const d = formDados(e.target);
     location.hash = T.rota + '?' + new URLSearchParams(Object.entries(d).filter(([, v]) => v)).toString(); };
   $$('tr[data-t]', tela).forEach(tr => (tr.onclick = () => (location.hash = T.rota + '/ver/' + tr.dataset.t)));
+  filtroLocal(tela, { itens: 'tbody tr[data-t]', antes: '.cartao', busca: false, periodo: true, rotuloPeriodo: 'Vencimento',
+    campos: [{ k: 'pessoa', rotulo: T.pessoa }, { k: 'tipo', rotulo: 'Tipo' }, { k: 'conta', rotulo: 'Conta do plano' }, { k: 'cc', rotulo: 'Centro de custo' }, { k: 'sit', rotulo: 'Situação' }] });
 }
 const tagTitulo = (s, vencida, tipo) => tipo === 'receber' && ['paga', 'pago'].includes(s) ? '<span class="tag verde">Recebida</span>' : tag(s, vencida);
 
