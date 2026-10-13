@@ -263,25 +263,36 @@ rota('/financeiro/fundo', async tela => {
   const saldo = Number(saldoV?.saldo || 0);
   const comColab = adts.reduce((s, a) => s + Number(a.valor), 0);
   const aAprovar = pendFundo.reduce((s, r) => s + Number(r.valor), 0);
-  let acum = Number(fundo.saldo_inicial) + (de ? 0 : 0);
+  // indicadores do período (ou de todo o histórico, sem filtro)
+  const soma = f => movs.filter(f).reduce((x, m) => x + Number(m.valor), 0);
+  const depositado = soma(m => ['transferencia', 'reposicao'].includes(m.origem) || (m.origem === 'ajuste' && Number(m.valor) > 0));
+  const gasto = -soma(m => ['despesa_fundo', 'baixa'].includes(m.origem));
+  const adiantado = -soma(m => ['adiantamento', 'devolucao'].includes(m.origem));
+  const periodoTxt = de || ate ? ` (${de ? dataBR(de) : 'início'} a ${ate ? dataBR(ate) : 'hoje'})` : '';
+  // saldo linha a linha (quando o período vai até hoje): parte do saldo anterior ao período
+  const comSaldo = !ate;
+  let acum = saldo - movs.reduce((x, m) => x + Number(m.valor), 0);
   const ORIGEM = { transferencia: 'Transferência', reposicao: 'Reposição', despesa_fundo: 'Despesa', adiantamento: 'Adiantamento entregue', devolucao: 'Devolução', ajuste: 'Ajuste', baixa: 'Pagamento' };
   tela.innerHTML = `
     <div class="topo"><div><h1>Fundo Fixo</h1><p class="sub">Responsável: ${esc(fundo.responsavel_nome || '—')}${fundo.chave_pix ? ' · Pix ' + esc(fundo.chave_pix) : ''}</p></div>
       <div class="acoes">${editaFin() ? `<a class="btn prim" href="#/reembolsos/novo?custeio=fundo_fixo">+ Despesa paga pelo fundo</a>
         <a class="btn" href="#/adiantamentos/novo">+ Adiantamento</a><button class="btn ok" id="repor">Repor o fundo</button>` : ''}</div></div>
     <div class="grade" style="margin-bottom:16px">
-      <div class="cartao kpi"><div class="n">${brl(saldo)}</div><div class="r">saldo do fundo</div></div>
+      <div class="cartao kpi"><div class="n">${brl(depositado)}</div><div class="r">total depositado no fundo${periodoTxt}</div></div>
+      <div class="cartao kpi"><div class="n">${brl(gasto)}</div><div class="r">total gasto em despesas${periodoTxt}</div></div>
+      <div class="cartao kpi"><div class="n">${brl(adiantado)}</div><div class="r">entregue em adiantamentos (líquido)${periodoTxt}</div></div>
+      <div class="cartao kpi" style="border-top:3px solid var(--ouro)"><div class="n">${brl(saldo)}</div><div class="r">disponível no fundo hoje</div></div>
       <div class="cartao kpi ${adts.some(adtVencido) ? 'alerta' : ''}"><div class="n">${brl(comColab)}</div><div class="r">${adts.length} adiantamento(s) com colaboradores</div></div>
       <a class="cartao kpi ${aAprovar ? 'alerta' : ''}" href="#/aprovacoes"><div class="n">${brl(aAprovar)}</div><div class="r">${pendFundo.length} despesa(s) do fundo aguardando aprovação</div></a>
     </div>
     ${adts.length ? `<div class="cartao"><h2>Adiantamentos em aberto</h2>${tabelaAdts(adts)}</div>` : ''}
     <div class="cartao"><div class="topo" style="margin:0 0 8px"><h2 style="margin:0">Extrato do fundo</h2>
       <form class="filtros" id="filtros" style="margin:0"><input type="date" name="de" value="${de}" aria-label="De"><input type="date" name="ate" value="${ate}" aria-label="Até"><button class="btn peq">Filtrar</button></form></div>
-      ${movs.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Data</th><th>Tipo</th><th>Descrição</th><th class="num">Entrada</th><th class="num">Saída</th></tr></thead><tbody>
+      ${movs.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Data</th><th>Tipo</th><th>Descrição</th><th class="num">Entrada</th><th class="num">Saída</th>${comSaldo ? '<th class="num">Saldo</th>' : ''}</tr></thead><tbody>
       ${movs.map(m => `<tr data-mov="1"${fAttr('tipo', ORIGEM[m.origem] || m.origem)}${fAttr('data', m.data)}${fAttr('valor', m.valor)}${fAttr('busca', m.descricao)} ${m.entidade === 'reembolso' ? `class="clicavel" onclick="location.hash='#/reembolsos/ver/${m.entidade_id}'"` : m.entidade === 'adiantamento' ? `class="clicavel" onclick="location.hash='#/adiantamentos/ver/${m.entidade_id}'"` : ''}>
         <td data-r="Data" class="nowrap">${dataBR(m.data)}</td><td data-r="Tipo">${esc(ORIGEM[m.origem] || m.origem)}</td><td data-r="Descrição">${esc(m.descricao || '')}</td>
-        <td data-r="Entrada" class="num">${m.valor > 0 ? brl(m.valor) : ''}</td><td data-r="Saída" class="num">${m.valor < 0 ? brl(-m.valor) : ''}</td></tr>`).join('')}
-      </tbody><tfoot><tr><td colspan="3">Movimento do período</td><td class="num">${brl(movs.filter(m => m.valor > 0).reduce((s, m) => s + Number(m.valor), 0))}</td><td class="num">${brl(-movs.filter(m => m.valor < 0).reduce((s, m) => s + Number(m.valor), 0))}</td></tr></tfoot></table></div>`
+        <td data-r="Entrada" class="num">${m.valor > 0 ? brl(m.valor) : ''}</td><td data-r="Saída" class="num">${m.valor < 0 ? brl(-m.valor) : ''}</td>${comSaldo ? `<td data-r="Saldo" class="num"><b>${brl(acum += Number(m.valor))}</b></td>` : ''}</tr>`).join('')}
+      </tbody><tfoot><tr><td colspan="3">Movimento do período</td><td class="num">${brl(movs.filter(m => m.valor > 0).reduce((s, m) => s + Number(m.valor), 0))}</td><td class="num">${brl(-movs.filter(m => m.valor < 0).reduce((s, m) => s + Number(m.valor), 0))}</td>${comSaldo ? `<td class="num">${brl(saldo)}</td>` : ''}</tr></tfoot></table></div>`
       : '<div class="vazio">Sem movimentos no período.</div>'}</div>`;
   $('#filtros').onsubmit = e => { e.preventDefault(); const d = formDados(e.target);
     location.hash = '#/financeiro/fundo?' + new URLSearchParams(Object.entries(d).filter(([, v]) => v)).toString(); };

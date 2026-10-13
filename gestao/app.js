@@ -336,39 +336,92 @@ function menu() {
 }
 const telaPermitida = h => { const r = '#' + h; return !MENU.some(i => i[1] === r) || menu().some(i => i[1] === r); };
 
+// Menu lateral: grupos recolhíveis (abre um por vez), lembra o que estava aberto e
+// não é redesenhado a cada clique — assim a rolagem do menu fica onde estava.
+const menuAbertos = () => { try { return JSON.parse(localStorage.getItem('menuAbertos') || '[]'); } catch { return []; } };
+const salvarMenuAbertos = l => { try { localStorage.setItem('menuAbertos', JSON.stringify(l)); } catch { /* ok */ } };
+function htmlMenu(pend, melhor, celular = false) {
+  const itens = menu(); const grupos = []; let atual = { nome: null, itens: [] };
+  for (const i of itens) { if (i[0] === 'grupo') { grupos.push(atual); atual = { nome: i[1], itens: [] }; } else atual.itens.push(i); }
+  grupos.push(atual);
+  const abertos = menuAbertos();
+  const link = i => `<a href="${i[1]}" class="${i[1] === melhor ? 'ativo' : ''} ${i[5] ? 'sub-item' : ''}"><span>${celular && i[3] ? i[3] + ' ' : ''}${esc(i[0])}</span>${i[4] && pend[i[4]] ? `<span class="tag amarelo">${pend[i[4]]}</span>` : ''}</a>`;
+  return grupos.filter(g => g.itens.length).map(g => {
+    if (!g.nome) return g.itens.map(link).join('');
+    const temAtivo = g.itens.some(i => i[1] === melhor);
+    const aberto = temAtivo || abertos.includes(g.nome);
+    const soma = g.itens.reduce((x, i) => x + (i[4] && pend[i[4]] ? pend[i[4]] : 0), 0);
+    return `<div class="mg ${aberto ? 'aberto' : ''}" data-g="${esc(g.nome)}">
+      <button type="button" class="mg-tit" aria-expanded="${aberto}"><span>${esc(g.nome)}</span><span class="mg-dir">${soma && !aberto ? `<span class="tag amarelo">${soma}</span>` : ''}<span class="mg-seta">▾</span></span></button>
+      <div class="mg-itens">${g.itens.map(link).join('')}</div></div>`;
+  }).join('');
+}
+function ligarMenu(raiz) {
+  raiz.querySelectorAll('.mg-tit').forEach(b => (b.onclick = () => {
+    const g = b.closest('.mg'); const abrir = !g.classList.contains('aberto');
+    // um grupo por vez (o da tela atual continua aberto)
+    raiz.querySelectorAll('.mg.aberto').forEach(o => { if (o !== g && !o.querySelector('a.ativo')) { o.classList.remove('aberto'); o.querySelector('.mg-tit').setAttribute('aria-expanded', 'false'); } });
+    g.classList.toggle('aberto', abrir); b.setAttribute('aria-expanded', String(abrir));
+    salvarMenuAbertos(abrir ? [g.dataset.g] : []);
+  }));
+}
 async function desenharCasca() {
   const pend = {};
   try { (await api.rpc('minhas_pendencias')).forEach(p => (pend[p.tipo] = Number(p.quantidade))); } catch {}
   estado.pendencias = pend;
   const atual = location.hash || '#/inicio';
   const melhor = menu().filter(i => i[0] !== 'grupo' && (atual === i[1] || atual.startsWith(i[1] + '/') || atual.startsWith(i[1] + '?'))).sort((a, b) => b[1].length - a[1].length)[0]?.[1];
-  const links = menu().map(i => i[0] === 'grupo'
-    ? `<div class="menu-grupo">${esc(i[1])}</div>`
-    : `<a href="${i[1]}" class="${i[1] === melhor ? 'ativo' : ''} ${i[5] ? 'sub-item' : ''}"><span>${esc(i[0])}</span>${i[4] && pend[i[4]] ? `<span class="tag amarelo">${pend[i[4]]}</span>` : ''}</a>`).join('');
   const ehMot = tem('motorista') && !veTudo() && !tem('comprador', 'aprovador');
-  $('#app').innerHTML = `
-    <div class="casca">
-      <nav class="lateral" aria-label="Menu">
-        <div class="marca"><img src="logo.png" alt="Verbo Logística"><div class="sistema">Gestão</div></div>
-        <div class="menu">${links}</div>
-        <div class="usuario">${esc(estado.usuario.nome)}<br>
-          <a href="#/perfil" style="color:#fff">Meu perfil</a> ·
-          <a href="#" id="sair" style="color:#fff">Sair</a></div>
-      </nav>
-      <main class="conteudo" id="tela"><div class="carregando">Carregando…</div></main>
-    </div>
-    <nav class="barra-baixo" aria-label="Menu rápido">
+  const casca = $('#app .casca');
+  if (casca && casca.dataset.usuario === estado.usuario.id) {
+    // já desenhada: atualiza só o menu e a barra de baixo, mantendo a rolagem do menu
+    const lat = $('.lateral', casca), y = lat.scrollTop;
+    $('.menu', lat).innerHTML = htmlMenu(pend, melhor); ligarMenu(lat); lat.scrollTop = y;
+    const bb = $('#app .barra-baixo'); if (bb) bb.outerHTML = `<nav class="barra-baixo" aria-label="Menu rápido">
       <a href="#/inicio" class="${atual.startsWith('#/inicio') ? 'ativo' : ''}"><span class="ic">🏠</span>Início</a>
       <a href="#/reembolsos/novo" class="${atual.startsWith('#/reembolsos/novo') ? 'ativo' : ''}"><span class="ic">➕</span>Lançar</a>
       ${ehMot ? '' : `<a href="#/aprovacoes" class="${atual.startsWith('#/aprovacoes') ? 'ativo' : ''}"><span class="ic">✅</span>Aprovar${pend.aprovar ? ` (${pend.aprovar})` : ''}</a>`}
       <a href="#/reembolsos" class="${atual === '#/reembolsos' ? 'ativo' : ''}"><span class="ic">🧾</span>Meus</a>
       <a href="#/menu"><span class="ic">☰</span>Menu</a>
     </nav>`;
+    if (!$('#tela').children.length) $('#tela').innerHTML = '<div class="carregando">Carregando…</div>';
+    return;
+  }
+  $('#app').innerHTML = `
+    <div class="casca" data-usuario="${estado.usuario.id}">
+      <nav class="lateral" aria-label="Menu">
+        <div class="marca"><img src="logo.png" alt="Verbo Logística"><div class="sistema">Gestão</div></div>
+        <div class="menu">${htmlMenu(pend, melhor)}</div>
+        <div class="usuario">${esc(estado.usuario.nome)}<br>
+          <a href="#/perfil" style="color:#fff">Meu perfil</a> ·
+          <a href="#" id="sair" style="color:#fff">Sair</a></div>
+      </nav>
+      <main class="conteudo" id="tela"><div class="carregando">Carregando…</div></main>
+    </div>
+<nav class="barra-baixo" aria-label="Menu rápido">
+      <a href="#/inicio" class="${atual.startsWith('#/inicio') ? 'ativo' : ''}"><span class="ic">🏠</span>Início</a>
+      <a href="#/reembolsos/novo" class="${atual.startsWith('#/reembolsos/novo') ? 'ativo' : ''}"><span class="ic">➕</span>Lançar</a>
+      ${ehMot ? '' : `<a href="#/aprovacoes" class="${atual.startsWith('#/aprovacoes') ? 'ativo' : ''}"><span class="ic">✅</span>Aprovar${pend.aprovar ? ` (${pend.aprovar})` : ''}</a>`}
+      <a href="#/reembolsos" class="${atual === '#/reembolsos' ? 'ativo' : ''}"><span class="ic">🧾</span>Meus</a>
+      <a href="#/menu"><span class="ic">☰</span>Menu</a>
+    </nav>`;
+  ligarMenu($('.lateral'));
+  // deixa o item da tela atual visível no menu na primeira vez
+  $('.lateral a.ativo')?.scrollIntoView({ block: 'nearest' });
   $('#sair').onclick = async e => { e.preventDefault(); await api.sair(); location.hash = ''; iniciar(); };
 }
 
+// Rolagem: ao voltar para uma tela, ela reabre onde estava; ao salvar/atualizar a mesma tela, não pula para o topo
+const ROLAGEM = (() => { try { return JSON.parse(sessionStorage.getItem('rolagem') || '{}'); } catch { return {}; } })();
+let _ultimaTela = null;
+function guardarRolagem() { if (_ultimaTela) { ROLAGEM[_ultimaTela] = window.scrollY; try { sessionStorage.setItem('rolagem', JSON.stringify(ROLAGEM)); } catch { /* ok */ } } }
+window.addEventListener('scroll', () => { clearTimeout(window._tRol); window._tRol = setTimeout(guardarRolagem, 150); }, { passive: true });
 async function navegar() {
   if (!estado.usuario) return;
+  guardarRolagem();
+  const telaAtual = location.hash || '#/inicio';
+  const mesmaRota = _ultimaTela && _ultimaTela.split('?')[0] === telaAtual.split('?')[0];
+  const yAntes = window.scrollY;
   const [h, qs] = (location.hash || '#/inicio').slice(1).split('?');
   estado.params = new URLSearchParams(qs || '');
   if (!telaPermitida(h)) { aviso('Você não tem acesso a esta tela.', true); location.hash = '#/inicio'; return; }
@@ -378,9 +431,15 @@ async function navegar() {
     const re = new RegExp('^' + padrao.replace(/:(\w+)/g, '([^/]+)') + '$');
     const m = h.match(re);
     if (m) {
+      // enquanto carrega, a tela antiga fica com a altura dela (evita o "pulo" para o topo)
+      tela.style.minHeight = tela.offsetHeight + 'px';
       try { await ROTAS[padrao](tela, ...m.slice(1).map(decodeURIComponent)); if (typeof ferramentasExportacao === 'function') ferramentasExportacao(tela); }
       catch (e) { tela.innerHTML = `<div class="cartao erro-txt">Não foi possível abrir esta tela: ${esc(e.message)}</div>`; console.error(e); }
-      window.scrollTo(0, 0);
+      tela.style.minHeight = '';
+      const alvo = mesmaRota ? yAntes : (ROLAGEM[telaAtual] ?? 0);
+      window.scrollTo(0, alvo);
+      requestAnimationFrame(() => window.scrollTo(0, alvo));
+      _ultimaTela = telaAtual;
       return;
     }
   }
@@ -391,9 +450,9 @@ window.addEventListener('hashchange', navegar);
 // Menu completo no celular
 rota('/menu', tela => {
   tela.innerHTML = `<div class="menu-cel"><div class="marca"><img src="logo.png" alt="Verbo Logística"><div class="sistema">Gestão</div></div>
-    <div class="menu">${menu().map(i => i[0] === 'grupo' ? `<div class="menu-grupo" style="color:#fff">${esc(i[1])}</div>`
-      : `<a href="${i[1]}">${i[3] || ''} ${esc(i[0])}</a>`).join('')}
+    <div class="menu">${htmlMenu(estado.pendencias || {}, null, true)}
     <div class="menu-grupo" style="color:#fff">Conta</div><a href="#/perfil">👤 Meu perfil</a><a href="#" id="sair2">🚪 Sair</a></div></div>`;
+  ligarMenu($('.menu-cel', tela));
   $('#sair2').onclick = async e => { e.preventDefault(); await api.sair(); location.hash = ''; iniciar(); };
 });
 

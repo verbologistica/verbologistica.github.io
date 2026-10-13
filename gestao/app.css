@@ -205,3 +205,16 @@ a.org-no span { font-size: 12px; opacity: .7; }
 @media (max-width: 700px) { .filtro-local > * { flex: 1 1 100%; } .filtro-local .filtro-resumo { margin-left: 0; } }
 .filtro-local .fl-data { display: flex; align-items: center; gap: 6px; font-size: 13px; color: #5a6a77; min-width: 0; }
 .filtro-local .fl-data input { width: auto; }
+/* Menu com grupos recolhíveis */
+.menu .mg { margin-top: 2px; }
+.menu .mg-tit { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 6px; background: none; border: 0; color: #fff; cursor: pointer;
+  font: 600 11px/1.2 var(--f-body); text-transform: uppercase; letter-spacing: .07em; opacity: .7; padding: 11px 10px; border-radius: 8px; text-align: left; }
+.menu .mg-tit:hover { opacity: 1; background: rgba(255,255,255,.06); }
+.menu .mg.aberto > .mg-tit { opacity: 1; color: var(--ouro); }
+.menu .mg-dir { display: inline-flex; align-items: center; gap: 6px; }
+.menu .mg-seta { display: inline-block; transition: transform .18s; font-size: 12px; transform: rotate(-90deg); }
+.menu .mg.aberto .mg-seta { transform: none; }
+.menu .mg-itens { display: none; padding: 2px 0 6px; border-left: 1px solid rgba(255,255,255,.12); margin-left: 12px; }
+.menu .mg.aberto .mg-itens { display: block; }
+.menu .mg-itens a.sub-item { padding-left: 12px; }
+.menu-cel .menu .mg-tit { font-size: 13px; padding: 13px 10px; }

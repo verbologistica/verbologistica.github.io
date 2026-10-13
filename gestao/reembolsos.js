@@ -18,7 +18,7 @@ function tabelaReembolsos(linhas, { comColab = false, selecionar = false } = {})
     ${selecionar ? '<th><input type="checkbox" id="sel-todos" aria-label="Selecionar todos"></th>' : ''}
     <th>Nº</th><th>Data</th>${comColab ? '<th>Colaborador</th>' : ''}<th>Categoria</th><th>Descrição</th><th class="num">Valor</th><th>Situação</th></tr></thead><tbody>
     ${linhas.map(r => `<tr class="clicavel" data-id="${r.id}"${fAttr('colab', nomeColab(r))}${fAttr('cat', r.conta?.nome || r.categoria)}${fAttr('custeio', CUSTEIO[r.forma_custeio || 'reembolso'])}${fAttr('sit', _txt(tag(r.status)))}${fAttr('cc', r.cc?.nome)}${fAttr('data', r.data_despesa)}${fAttr('valor', r.valor)}${fAttr('busca', [r.numero, nomeColab(r), r.fornecedor_nome, r.descricao, r.categoria, r.placa, r.observacoes].filter(Boolean).join(' '))}>
-      ${selecionar ? `<td data-r="Selecionar">${custeioMutavel(r) || (r.status === 'aprovado' && (r.forma_custeio || 'reembolso') === 'reembolso') ? `<input type="checkbox" class="sel" value="${r.id}" data-colab="${esc(r.colaborador_id || r.colaborador_nome)}" data-lote="${r.status === 'aprovado' && (r.forma_custeio || 'reembolso') === 'reembolso' ? 1 : ''}">` : ''}</td>` : ''}
+      ${selecionar ? `<td data-r="Selecionar">${r.status === 'cancelado' || custeioMutavel(r) || (r.status === 'aprovado' && (r.forma_custeio || 'reembolso') === 'reembolso') ? `<input type="checkbox" class="sel" value="${r.id}" data-colab="${esc(r.colaborador_id || r.colaborador_nome)}" data-lote="${r.status === 'aprovado' && (r.forma_custeio || 'reembolso') === 'reembolso' ? 1 : ''}">` : ''}</td>` : ''}
       <td data-r="Nº" class="nowrap">${esc(r.numero)}</td><td data-r="Data">${dataBR(r.data_despesa)}</td>
       ${comColab ? `<td data-r="Colaborador">${esc(nomeColab(r))}</td>` : ''}
       <td data-r="Categoria">${esc(categoriaTxt(r))}</td><td data-r="Descrição">${r.observacoes?.includes('VERIFICAR') ? '<span title="Verificar: veja as observações">⚠️</span> ' : ''}${esc(descrTxt(r))}</td>
@@ -148,6 +148,7 @@ rota('/reembolsos/ver/:id', async (tela, id) => {
       <div class="acoes">
         ${dono && ['devolvido', 'aguardando_aprovacao'].includes(r.status) ? `<a class="btn" href="#/reembolsos/editar/${r.id}">Corrigir</a>` : ''}
         ${editaFin() && custeioMutavel(r) ? '<button class="btn" id="custeio">Alterar forma de custeio</button>' : ''}
+        ${editaFin() && r.status === 'cancelado' ? '<button class="btn" id="reativar">Reativar lançamento</button>' : ''}
         ${editaFin() && r.titulo_id && ['pago', 'em_pagamento'].includes(r.status) ? `<a class="btn" href="#/financeiro/pagar/ver/${r.titulo_id}" title="Para estornar ou cancelar o pagamento">Ver pagamento</a>` : ''}
         ${(dono && ['devolvido', 'aguardando_aprovacao', 'rascunho'].includes(r.status)) || (editaFin() && !['pago', 'em_pagamento', 'cancelado'].includes(r.status)) ? '<button class="btn perigo" id="cancelar">Cancelar lançamento</button>' : ''}
         <button class="btn" onclick="history.back()">Voltar</button></div></div>
@@ -176,6 +177,9 @@ rota('/reembolsos/ver/:id', async (tela, id) => {
   $('#mais')?.addEventListener('change', async e => {
     try { await anexar('reembolso', id, [...e.target.files]); aviso('Comprovante incluído.'); navegar(); } catch (err) { falha(err); }
   });
+  $('#reativar')?.addEventListener('click', async () => {
+    try { if (await modalReativar([r])) navegar(); } catch (err) { falha(err); }
+  });
   $('#custeio')?.addEventListener('click', async () => {
     try { const ok = await modalCusteio([r]); if (ok) navegar(); } catch (err) { falha(err); }
   });
@@ -191,15 +195,15 @@ rota('/reembolsos/ver/:id', async (tela, id) => {
 rota('/financeiro/reembolsos', async tela => {
   const st = estado.params.get('status') || 'abertos';
   const filtroSt = { abertos: 'status=in.(aguardando_aprovacao,aprovado,em_pagamento,devolvido)', aprovado: 'status=eq.aprovado&forma_custeio=eq.reembolso',
-                     pago: 'status=eq.pago', todos: 'status=neq.cancelado' }[st] || 'status=neq.cancelado';
+                     pago: 'status=eq.pago', todos: 'status=neq.cancelado', cancelados: 'status=eq.cancelado' }[st] || 'status=neq.cancelado';
   const ini = estado.params.get('de') || '', fim = estado.params.get('ate') || '';
   const linhas = await api.listar('reembolsos', `${SELECT_REEMB}&${filtroSt}${ini ? '&data_despesa=gte.' + ini : ''}${fim ? '&data_despesa=lte.' + fim : ''}&order=data_despesa.desc,numero.desc&limit=1000`);
   tela.innerHTML = `
     <div class="topo"><div><h1>Reembolsos</h1><p class="sub">Financeiro · todos os colaboradores</p></div>
-      <div class="acoes">${editaFin() ? '<button class="btn" id="mudar-custeio" disabled>Alterar forma de custeio</button><button class="btn ok" id="lote" disabled>Gerar pagamento dos selecionados</button>' : ''}
+      <div class="acoes">${editaFin() ? (st === 'cancelados' ? '<button class="btn" id="reativar-sel" disabled>Reativar selecionados</button>' : '<button class="btn" id="mudar-custeio" disabled>Alterar forma de custeio</button><button class="btn ok" id="lote" disabled>Gerar pagamento dos selecionados</button>') : ''}
       <a class="btn prim" href="#/reembolsos/novo">+ Lançar</a></div></div>
     <form class="filtros" id="filtros">
-      <select name="status">${[['abertos', 'Em andamento'], ['aprovado', 'Aprovados a pagar'], ['pago', 'Pagos'], ['todos', 'Todos']].map(([v, t]) => `<option value="${v}" ${v === st ? 'selected' : ''}>${t}</option>`).join('')}</select>
+      <select name="status">${[['abertos', 'Em andamento'], ['aprovado', 'Aprovados a pagar'], ['pago', 'Pagos'], ['todos', 'Todos'], ['cancelados', 'Cancelados']].map(([v, t]) => `<option value="${v}" ${v === st ? 'selected' : ''}>${t}</option>`).join('')}</select>
       <input type="date" name="de" value="${ini}" aria-label="De"><input type="date" name="ate" value="${fim}" aria-label="Até">
       <button class="btn">Filtrar</button>
     </form>
@@ -211,6 +215,8 @@ rota('/financeiro/reembolsos', async tela => {
   const FILTROS_REEMB = [{ k: 'colab', rotulo: 'Colaborador' }, { k: 'cat', rotulo: 'Categoria' }, { k: 'custeio', rotulo: 'Forma de custeio' }, { k: 'sit', rotulo: 'Situação' }, { k: 'cc', rotulo: 'Centro de custo' }];
   const atualizar = () => {
     const todos = $$('.sel:checked', tela);
+    const rs = $('#reativar-sel');
+    if (rs) { rs.disabled = !todos.length; rs.textContent = todos.length ? `Reativar selecionados (${todos.length})` : 'Reativar selecionados'; }
     const mc = $('#mudar-custeio');
     if (mc) { mc.disabled = !todos.length; mc.textContent = todos.length ? `Alterar forma de custeio (${todos.length})` : 'Alterar forma de custeio'; }
     const sel = todos.filter(c => c.dataset.lote);
@@ -224,6 +230,10 @@ rota('/financeiro/reembolsos', async tela => {
   $('#sel-todos')?.addEventListener('change', e => { $$('.sel', tela).filter(c => !c.closest('tr').hidden).forEach(c => (c.checked = e.target.checked)); atualizar(); });
   filtroLocal(tela, { itens: 'tbody tr[data-id]', antes: '.cartao', campos: FILTROS_REEMB, periodo: true, rotuloPeriodo: 'Data da despesa', aoMudar: () => atualizar() });
 
+  $('#reativar-sel')?.addEventListener('click', async () => {
+    const ids = new Set($$('.sel:checked', tela).map(c => c.value));
+    try { if (await modalReativar(linhas.filter(l => ids.has(l.id)))) navegar(); } catch (err) { falha(err); }
+  });
   $('#mudar-custeio')?.addEventListener('click', async () => {
     const ids = new Set($$('.sel:checked', tela).map(c => c.value));
     try { const ok = await modalCusteio(linhas.filter(l => ids.has(l.id))); if (ok) navegar(); } catch (err) { falha(err); }
@@ -238,6 +248,27 @@ rota('/financeiro/reembolsos', async tela => {
           aviso('Pagamento gerado em Contas a pagar.'); location.hash = '#/financeiro/pagar'; } catch (err) { falha(err); }
   });
 });
+
+// ---------- Reativar lançamentos cancelados ----------
+async function modalReativar(regs) {
+  const total = regs.reduce((x, r) => x + Number(r.valor), 0);
+  const r = await modal(`<form><h2>Reativar ${regs.length} lançamento(s) · ${brl(total)}</h2>
+    <ul class="lista-simples">${regs.map(x => `<li style="flex-wrap:wrap"><span>${esc(x.numero)} · ${dataBR(x.data_despesa)} · ${esc(nomeColab(x))} · ${esc(descrTxt(x))}</span><b>${brl(x.valor)}</b>
+      ${x.motivo_cancelamento ? `<div class="muted" style="flex-basis:100%">Cancelado: ${esc(x.motivo_cancelamento)}</div>` : ''}</li>`).join('')}</ul>
+    <div class="aviso-lei"><b>Atenção</b><ul>
+      <li><b>Voltar para aprovação</b>: o lançamento volta para a fila de Aprovações, como se não tivesse sido cancelado.</li>
+      <li><b>Reembolso já aprovado</b>: entra pronto para gerar o pagamento ao colaborador.</li>
+      <li><b>Despesa paga pelo Fundo Fixo</b>: entra aprovada e sai do saldo do Fundo Fixo na data da despesa.</li>
+      <li>Se a despesa virou uma conta a pagar (o motivo do cancelamento cita um TIT-), estorne essa conta antes — o sistema bloqueia para não contar duas vezes.</li></ul></div>
+    <div class="form">
+      <label class="campo largo">Como reativar<select name="custeio"><option value="pendente">Voltar para aprovação (como estava antes de cancelar)</option><option value="reembolso">Reembolso já aprovado, a pagar ao colaborador</option><option value="fundo_fixo">Despesa paga pelo Fundo Fixo (sai do saldo do fundo)</option></select></label>
+      <label class="campo largo">Motivo<textarea name="motivo" required placeholder="Ex.: compra paga com o dinheiro do Fundo Fixo"></textarea></label></div>
+    <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Reativar</button></div></form>`);
+  if (!r) return false;
+  const res = await api.rpc('reativar_reembolso', { p_ids: regs.map(x => x.id), p_custeio: r.custeio, p_motivo: r.motivo });
+  aviso(`${res.reativados} lançamento(s) reativado(s) · ${brl(res.valor)}${r.custeio === 'fundo_fixo' ? ' saíram do Fundo Fixo' : r.custeio === 'pendente' ? ' de volta em Aprovações' : ' a pagar'}.`);
+  return true;
+}
 
 // ===================== Aprovações =====================
 rota('/aprovacoes', async tela => {
