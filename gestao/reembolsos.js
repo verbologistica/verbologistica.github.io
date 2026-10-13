@@ -18,7 +18,7 @@ function tabelaReembolsos(linhas, { comColab = false, selecionar = false } = {})
     ${selecionar ? '<th><input type="checkbox" id="sel-todos" aria-label="Selecionar todos"></th>' : ''}
     <th>Nº</th><th>Data</th>${comColab ? '<th>Colaborador</th>' : ''}<th>Categoria</th><th>Descrição</th><th class="num">Valor</th><th>Situação</th></tr></thead><tbody>
     ${linhas.map(r => `<tr class="clicavel" data-id="${r.id}">
-      ${selecionar ? `<td data-r="Selecionar">${r.status === 'aprovado' && (r.forma_custeio || 'reembolso') === 'reembolso' ? `<input type="checkbox" class="sel" value="${r.id}" data-colab="${esc(r.colaborador_id || r.colaborador_nome)}">` : ''}</td>` : ''}
+      ${selecionar ? `<td data-r="Selecionar">${custeioMutavel(r) || (r.status === 'aprovado' && (r.forma_custeio || 'reembolso') === 'reembolso') ? `<input type="checkbox" class="sel" value="${r.id}" data-colab="${esc(r.colaborador_id || r.colaborador_nome)}" data-lote="${r.status === 'aprovado' && (r.forma_custeio || 'reembolso') === 'reembolso' ? 1 : ''}">` : ''}</td>` : ''}
       <td data-r="Nº" class="nowrap">${esc(r.numero)}</td><td data-r="Data">${dataBR(r.data_despesa)}</td>
       ${comColab ? `<td data-r="Colaborador">${esc(nomeColab(r))}</td>` : ''}
       <td data-r="Categoria">${esc(categoriaTxt(r))}</td><td data-r="Descrição">${r.observacoes?.includes('VERIFICAR') ? '<span title="Verificar: veja as observações">⚠️</span> ' : ''}${esc(descrTxt(r))}</td>
@@ -146,6 +146,7 @@ rota('/reembolsos/ver/:id', async (tela, id) => {
     <div class="topo"><div><h1>Reembolso ${esc(r.numero)}</h1><p class="sub">${tag(r.status)} · lançado em ${dataHoraBR(r.criado_em)}${r.origem === 'legado_claude' ? ' · <span class="tag">Sistema anterior</span>' : ''}</p></div>
       <div class="acoes">
         ${dono && ['devolvido', 'aguardando_aprovacao'].includes(r.status) ? `<a class="btn" href="#/reembolsos/editar/${r.id}">Corrigir</a>` : ''}
+        ${editaFin() && custeioMutavel(r) ? '<button class="btn" id="custeio">Alterar forma de custeio</button>' : ''}
         ${(dono && ['devolvido', 'aguardando_aprovacao', 'rascunho'].includes(r.status)) || (editaFin() && !['pago', 'em_pagamento', 'cancelado'].includes(r.status)) ? '<button class="btn perigo" id="cancelar">Cancelar lançamento</button>' : ''}
         <button class="btn" onclick="history.back()">Voltar</button></div></div>
     <div class="cartao"><div class="form">
@@ -173,6 +174,9 @@ rota('/reembolsos/ver/:id', async (tela, id) => {
   $('#mais')?.addEventListener('change', async e => {
     try { await anexar('reembolso', id, [...e.target.files]); aviso('Comprovante incluído.'); navegar(); } catch (err) { falha(err); }
   });
+  $('#custeio')?.addEventListener('click', async () => {
+    try { const ok = await modalCusteio([r]); if (ok) navegar(); } catch (err) { falha(err); }
+  });
   $('#cancelar')?.addEventListener('click', async () => {
     const motivo = await confirmar('Cancelar este reembolso?', { comMotivo: true, botao: 'Cancelar lançamento' });
     if (!motivo) return;
@@ -190,20 +194,23 @@ rota('/financeiro/reembolsos', async tela => {
   const linhas = await api.listar('reembolsos', `${SELECT_REEMB}&${filtroSt}${ini ? '&data_despesa=gte.' + ini : ''}${fim ? '&data_despesa=lte.' + fim : ''}&order=data_despesa.desc,numero.desc&limit=1000`);
   tela.innerHTML = `
     <div class="topo"><div><h1>Reembolsos</h1><p class="sub">Financeiro · todos os colaboradores</p></div>
-      <div class="acoes">${editaFin() ? '<button class="btn ok" id="lote" disabled>Gerar pagamento dos selecionados</button>' : ''}
+      <div class="acoes">${editaFin() ? '<button class="btn" id="mudar-custeio" disabled>Alterar forma de custeio</button><button class="btn ok" id="lote" disabled>Gerar pagamento dos selecionados</button>' : ''}
       <a class="btn prim" href="#/reembolsos/novo">+ Lançar</a></div></div>
     <form class="filtros" id="filtros">
       <select name="status">${[['abertos', 'Em andamento'], ['aprovado', 'Aprovados a pagar'], ['pago', 'Pagos'], ['todos', 'Todos']].map(([v, t]) => `<option value="${v}" ${v === st ? 'selected' : ''}>${t}</option>`).join('')}</select>
       <input type="date" name="de" value="${ini}" aria-label="De"><input type="date" name="ate" value="${fim}" aria-label="Até">
       <button class="btn">Filtrar</button>
     </form>
-    ${editaFin() && st !== 'aprovado' ? '<p class="muted">Para pagar, filtre "Aprovados a pagar", marque os lançamentos de um mesmo colaborador e gere o pagamento.</p>' : ''}
+    ${editaFin() ? '<p class="muted">Marque lançamentos para <b>gerar o pagamento</b> (aprovados, de um mesmo colaborador) ou para <b>alterar a forma de custeio</b> — por exemplo, transformar reembolsos em prestação de contas de um adiantamento.</p>' : ''}
     <div class="cartao">${tabelaReembolsos(linhas, { comColab: true, selecionar: editaFin() })}</div>`;
   $('#filtros').onsubmit = e => { e.preventDefault(); const d = formDados(e.target);
     location.hash = '#/financeiro/reembolsos?' + new URLSearchParams(Object.entries(d).filter(([, v]) => v)).toString(); };
   ligarLinhas(tela);
   const atualizar = () => {
-    const sel = $$('.sel:checked', tela);
+    const todos = $$('.sel:checked', tela);
+    const mc = $('#mudar-custeio');
+    if (mc) { mc.disabled = !todos.length; mc.textContent = todos.length ? `Alterar forma de custeio (${todos.length})` : 'Alterar forma de custeio'; }
+    const sel = todos.filter(c => c.dataset.lote);
     const pessoas = new Set(sel.map(s => s.dataset.colab));
     const b = $('#lote'); if (!b) return;
     b.disabled = !sel.length || pessoas.size > 1;
@@ -212,8 +219,12 @@ rota('/financeiro/reembolsos', async tela => {
   };
   $$('.sel', tela).forEach(c => (c.onchange = atualizar));
   $('#sel-todos')?.addEventListener('change', e => { $$('.sel', tela).forEach(c => (c.checked = e.target.checked)); atualizar(); });
+  $('#mudar-custeio')?.addEventListener('click', async () => {
+    const ids = new Set($$('.sel:checked', tela).map(c => c.value));
+    try { const ok = await modalCusteio(linhas.filter(l => ids.has(l.id))); if (ok) navegar(); } catch (err) { falha(err); }
+  });
   $('#lote')?.addEventListener('click', async () => {
-    const ids = $$('.sel:checked', tela).map(c => c.value);
+    const ids = $$('.sel:checked', tela).filter(c => c.dataset.lote).map(c => c.value);
     const r = await modal(`<form><h2>Gerar pagamento</h2><p>${ids.length} reembolso(s) viram uma conta a pagar para o colaborador.</p>
       <label class="campo">Data prevista do pagamento<input type="date" name="venc" value="${hojeISO()}" required></label>
       <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Gerar</button></div></form>`);

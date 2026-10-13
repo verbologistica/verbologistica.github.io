@@ -39,10 +39,13 @@ rota('/financeiro/adiantamentos', async tela => {
   const emAberto = ls.filter(a => ['pago', 'prestando_contas'].includes(a.status));
   tela.innerHTML = `
     <div class="topo"><div><h1>Adiantamentos</h1><p class="sub">${emAberto.length} com colaborador · ${brl(emAberto.reduce((s, a) => s + Number(a.valor), 0))} a prestar contas · ${ls.filter(adtVencido).length} vencido(s)</p></div>
-      <div class="acoes"><a class="btn prim" href="#/adiantamentos/novo">+ Novo adiantamento</a></div></div>
+      <div class="acoes">${editaFin() ? '<button class="btn" id="retro">Registrar adiantamento já entregue</button>' : ''}<a class="btn prim" href="#/adiantamentos/novo">+ Novo adiantamento</a></div></div>
     <form class="filtros" id="filtros"><select name="status">${[['abertos', 'Em andamento'], ['acertados', 'Acertados'], ['todos', 'Todos']].map(([v, t]) => `<option value="${v}" ${v === st ? 'selected' : ''}>${t}</option>`).join('')}</select><button class="btn">Filtrar</button></form>
     <div class="cartao">${tabelaAdts(ls)}</div>`;
   $('#filtros').onsubmit = e => { e.preventDefault(); location.hash = '#/financeiro/adiantamentos?status=' + formDados(e.target).status; };
+  $('#retro')?.addEventListener('click', async () => {
+    try { const id = await modalAdtRetroativo(); if (id) { aviso('Adiantamento registrado como entregue.'); location.hash = '#/adiantamentos/ver/' + id; } } catch (err) { falha(err); }
+  });
 });
 
 // ---------- Novo adiantamento ----------
@@ -102,6 +105,7 @@ rota('/adiantamentos/ver/:id', async (tela, id) => {
       <div class="acoes">
         ${editaFin() && a.status === 'aprovado' ? '<button class="btn ok" id="entregar">Registrar entrega</button>' : ''}
         ${aberto && (dono || editaFin()) ? `<a class="btn prim" href="#/reembolsos/novo?adt=${id}">+ Lançar despesa da prestação</a>` : ''}
+        ${aberto && editaFin() ? '<button class="btn" id="vincular">Trazer despesas já lançadas</button>' : ''}
         ${editaFin() && aberto && saldo > 0.004 ? '<button class="btn" id="devolver">Registrar devolução</button>' : ''}
         ${editaFin() && aberto ? '<button class="btn ok" id="acertar">Fazer o acerto</button>' : ''}
         ${(editaFin() || dono) && ['aguardando_aprovacao', 'aprovado', 'devolvido'].includes(a.status) ? '<button class="btn perigo" id="cancelar">Cancelar</button>' : ''}
@@ -128,6 +132,32 @@ rota('/adiantamentos/ver/:id', async (tela, id) => {
       <div style="flex-basis:100%"><span class="muted">Comprovante:</span> ${dv.forma === 'Dinheiro' && compDev[dv.id].includes('Sem anexos') ? '<span class="muted">em dinheiro</span>' : compDev[dv.id]}</div></li>`).join('')}</ul></div>` : ''}`;
   ligarLinhas(tela);
   ligarObservacao('adiantamentos', id, a.observacoes);
+
+  // Despesas lançadas como reembolso (ou Fundo Fixo) que eram desta prestação de contas
+  $('#vincular')?.addEventListener('click', async () => {
+    const campo = a.colaborador_id ? `colaborador_id=eq.${a.colaborador_id}` : `pessoa_sem_login_id=eq.${a.pessoa_sem_login_id}`;
+    const cands = (await api.listar('reembolsos', `${SELECT_REEMB}&${campo}&or=(adiantamento_id.is.null,adiantamento_id.neq.${id})&order=data_despesa`)).filter(custeioMutavel);
+    if (!cands.length) return aviso('Não há despesas desta pessoa que possam ser trazidas para este adiantamento.');
+    let sel = [];
+    const r = await modal(`<form><h2>Trazer despesas para ${esc(a.numero)}</h2>
+      <div class="aviso-lei">As despesas marcadas deixam de ser reembolso (ou Fundo Fixo) e passam a abater este adiantamento: <b>não</b> geram pagamento ao colaborador.
+        Fica registrado no histórico de cada uma quem mudou, quando e o motivo.</div>
+      <div class="tabela-wrap" style="max-height:45vh;overflow:auto"><table><thead><tr><th><input type="checkbox" id="vt"></th><th>Nº</th><th>Data</th><th>Descrição</th><th class="num">Valor</th><th>Hoje</th></tr></thead><tbody>
+      ${cands.map(r => `<tr><td><input type="checkbox" value="${r.id}" class="vs"></td><td class="nowrap">${esc(r.numero)}</td><td>${dataBR(r.data_despesa)}</td><td>${esc(categoriaTxt(r))} · ${esc(descrTxt(r))}</td><td class="num">${brl(r.valor)}</td><td>${tag(r.status)} ${esc(CUSTEIO[r.forma_custeio || 'reembolso'])}</td></tr>`).join('')}
+      </tbody></table></div>
+      <p id="vsoma" class="muted">Nenhuma selecionada</p>
+      <label class="campo">Motivo<textarea name="motivo" required placeholder="Ex.: despesas da viagem paga com este adiantamento"></textarea></label>
+      <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Trazer para a prestação</button></div></form>`, {
+      aoAbrir: raiz => {
+        const soma = () => { const m = $$('.vs:checked', raiz); sel = m.map(c => c.value); $('#vsoma', raiz).textContent = m.length ? `${m.length} selecionada(s) · ${brl(m.reduce((s, c) => s + Number(cands.find(x => x.id === c.value).valor), 0))}` : 'Nenhuma selecionada'; };
+        $$('.vs', raiz).forEach(c => (c.onchange = soma));
+        $('#vt', raiz).onchange = e => { $$('.vs', raiz).forEach(c => (c.checked = e.target.checked)); soma(); };
+      },
+      validar: () => !sel.length ? 'Marque ao menos uma despesa.' : null });
+    if (!r) return;
+    try { const res = await api.rpc('reclassificar_custeio', { p_ids: sel, p_custeio: 'adiantamento', p_adiantamento: id, p_motivo: r.motivo });
+          aviso(`${res.alterados} despesa(s) trazida(s) para a prestação de contas.`); navegar(); } catch (err) { falha(err); }
+  });
 
   const contaOpcoes = (sel, filtro = () => true) => bs.filter(filtro).map(b => `<option value="${b.id}" ${b.id === sel ? 'selected' : ''}>${esc(b.nome)}${b.tipo === 'fundo_fixo' ? ` (saldo ${brl(saldos.find(s => s.id === b.id)?.saldo)})` : ''}</option>`).join('');
   const exigeComprovante = d => d.forma !== 'Dinheiro' && !d.arquivos.length ? 'Anexe o comprovante. Só dinheiro dispensa comprovante.' : null;
@@ -266,3 +296,86 @@ rota('/financeiro/fundo', async tela => {
           await anexar('reposicao', mov, r.arquivos); aviso('Reposição registrada.'); navegar(); } catch (err) { falha(err); }
   });
 });
+
+// ===================== Adiantamento já entregue (registro retroativo) =====================
+// Para dinheiro que o colaborador já recebeu antes do sistema (ou fora dele): entra direto como "entregue",
+// sem aprovação, para que as despesas possam ser vinculadas como prestação de contas.
+async function modalAdtRetroativo({ quem = '' } = {}) {
+  const [users, pessoas, bs, ccs] = await Promise.all([usuarios(), pessoasSemLogin(), api.listar('contas_bancarias', 'select=*&ativo=eq.true&order=nome'), centros()]);
+  const r = await modal(`<form><h2>Registrar adiantamento já entregue</h2>
+    <p class="muted">Use quando o dinheiro já foi entregue ao colaborador antes de existir no sistema. Ele entra como <b>entregue</b>, sem passar por aprovação, e fica registrado quem lançou.</p>
+    <div class="form">
+      <label class="campo largo">Colaborador<select name="quem" required><option value="">Selecione…</option>
+        <optgroup label="Com acesso ao sistema">${users.filter(u => u.ativo).map(u => `<option value="u:${u.id}" ${quem === 'u:' + u.id ? 'selected' : ''}>${esc(u.nome)}</option>`).join('')}</optgroup>
+        ${pessoas.length ? `<optgroup label="Sem acesso (cadastro interno)">${pessoas.map(p => `<option value="p:${p.id}" ${quem === 'p:' + p.id ? 'selected' : ''}>${esc(p.nome)}</option>`).join('')}</optgroup>` : ''}</select></label>
+      <label class="campo">Valor entregue (R$)<input name="valor" inputmode="decimal" required placeholder="0,00"></label>
+      <label class="campo">Data da entrega<input type="date" name="data" value="${hojeISO()}" required></label>
+      <label class="campo largo">Motivo<input name="motivo" required placeholder="Ex.: viagem Guararapes × Três Lagoas"></label>
+      <label class="campo">Saiu de<select name="conta" required>${bs.map(b => `<option value="${b.id}">${esc(b.nome)}</option>`).join('')}</select></label>
+      <label class="campo">Forma<select name="forma" required>${FORMAS_DIN.map(x => `<option>${x}</option>`).join('')}</select></label>
+      <label class="campo">Prestar contas até<input type="date" name="prazo"></label>
+      <label class="campo">Centro de custo<select name="cc">${opcoes(ccs.filter(c => c.ativo), null, c => c.nome, ccs.find(c => c.codigo === 'GERAL')?.id, null)}</select></label>
+      <label class="campo largo"><span><input type="checkbox" name="lancar" checked> Lançar a saída do dinheiro no extrato da conta escolhida</span>
+        <span class="muted">Desmarque só se essa saída já estiver registrada no extrato (por exemplo, importada do banco ou lançada em Contas a pagar), para não contar duas vezes.</span></label>
+      <label class="campo largo">Observação<input name="obs"></label>
+      <label class="campo largo">Comprovante da entrega (obrigatório, exceto dinheiro)<input type="file" name="arquivos" accept="image/*,application/pdf" multiple></label>
+    </div>
+    <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn ok">Registrar</button></div></form>`, {
+    validar: d => !d.quem ? 'Escolha o colaborador.' : !(num(d.valor) > 0) ? 'Informe o valor.' : d.forma !== 'Dinheiro' && !d.arquivos.length ? 'Anexe o comprovante da entrega. Só dinheiro dispensa comprovante.' : null });
+  if (!r) return null;
+  const id = await api.rpc('registrar_adiantamento_entregue', {
+    p_colaborador: r.quem.startsWith('u:') ? r.quem.slice(2) : null, p_pessoa: r.quem.startsWith('p:') ? r.quem.slice(2) : null,
+    p_valor: num(r.valor), p_motivo: r.motivo, p_data_entrega: r.data, p_conta: r.conta, p_forma: r.forma,
+    p_lancar_saida: !!r.lancar, p_prazo: r.prazo || null, p_cc: r.cc || null, p_obs: r.obs || null });
+  if (r.arquivos?.length) await anexar('adiantamento', id, r.arquivos);
+  return id;
+}
+
+// ===================== Mudar a forma de custeio de despesas já lançadas =====================
+const custeioMutavel = r => !['cancelado', 'reprovado', 'em_pagamento'].includes(r.status) && !(r.status === 'pago' && (r.forma_custeio || 'reembolso') !== 'fundo_fixo');
+const chavePessoa = r => r.colaborador_id ? 'u:' + r.colaborador_id : r.pessoa_sem_login_id ? 'p:' + r.pessoa_sem_login_id : 'n:' + (r.colaborador_nome || '');
+
+async function modalCusteio(regs) {
+  const pessoas = [...new Set(regs.map(chavePessoa))];
+  const umaPessoa = pessoas.length === 1 ? pessoas[0] : null;
+  const total = regs.reduce((s, r) => s + Number(r.valor), 0);
+  const carregarAdts = async () => {
+    if (!umaPessoa || umaPessoa.startsWith('n:')) return [];
+    const [t, idp] = [umaPessoa[0], umaPessoa.slice(2)];
+    return api.listar('adiantamentos', `select=id,numero,valor,motivo,data_entrega,status&status=in.(pago,prestando_contas)&${t === 'u' ? 'colaborador_id' : 'pessoa_sem_login_id'}=eq.${idp}&order=data_entrega.desc`);
+  };
+  const adts = await carregarAdts();
+  const atual = [...new Set(regs.map(r => r.forma_custeio || 'reembolso'))];
+  const opAdt = () => adts.length ? adts.map(a => `<option value="${a.id}">${esc(a.numero)} · ${brl(a.valor)} · entregue ${a.data_entrega ? dataBR(a.data_entrega) : '—'} · ${esc(a.motivo)}</option>`).join('')
+    : '<option value="">Nenhum adiantamento em aberto para esta pessoa</option>';
+  const r = await modal(`<form><h2>Alterar forma de custeio</h2>
+    <p>${regs.length} lançamento(s) · ${brl(total)} · hoje: <b>${atual.map(c => CUSTEIO[c]).join(', ')}</b></p>
+    <div class="aviso-lei"><b>Como funciona</b><ul>
+      <li><b>Reembolso</b>: o colaborador pagou do próprio bolso e a empresa devolve o valor (gera conta a pagar).</li>
+      <li><b>Prestação de contas de adiantamento</b>: o colaborador recebeu o dinheiro antes; a despesa abate o adiantamento e <b>não</b> gera pagamento. A sobra é devolvida; a falta é acertada no fechamento do adiantamento.</li>
+      <li><b>Fundo Fixo</b>: pago com o dinheiro do fundo; ao ser aprovado, sai do saldo do fundo.</li></ul>
+      Fica registrado no histórico de cada lançamento quem mudou, quando e o motivo. Lançamentos já pagos como reembolso precisam ter o pagamento cancelado antes.</div>
+    <div class="form">
+      <label class="campo largo">Nova forma<select name="custeio" required>
+        <option value="adiantamento">Prestação de contas de adiantamento</option><option value="reembolso">Reembolso</option><option value="fundo_fixo">Fundo Fixo</option></select></label>
+      <label class="campo largo" id="c-adt">Adiantamento<select name="adt">${opAdt()}</select>
+        ${umaPessoa && !umaPessoa.startsWith('n:') ? '<button type="button" class="btn peq" id="novo-adt" style="margin-top:6px">+ Registrar adiantamento já entregue</button>' : '<span class="muted">Selecione lançamentos de uma única pessoa para vincular a um adiantamento.</span>'}</label>
+      <label class="campo largo">Motivo da alteração<textarea name="motivo" required placeholder="Ex.: despesas da viagem de 05/10, pagas com o adiantamento entregue em 03/10"></textarea></label>
+    </div>
+    <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Alterar</button></div></form>`, {
+    aoAbrir: (raiz, fechar) => {
+      const f = $('form', raiz);
+      const sinc = () => { $('#c-adt', raiz).hidden = f.custeio.value !== 'adiantamento'; };
+      f.custeio.onchange = sinc; sinc();
+      $('#novo-adt', raiz)?.addEventListener('click', () => fechar({ _novoAdt: true, motivo: f.motivo.value }));
+    },
+    validar: d => d.custeio === 'adiantamento' && !d.adt ? 'Escolha o adiantamento (ou registre o que já foi entregue).' : !d.motivo?.trim() ? 'Informe o motivo.' : null });
+  if (!r) return false;
+  if (r._novoAdt) {
+    try { await modalAdtRetroativo({ quem: umaPessoa }); } catch (err) { falha(err); }
+    return modalCusteio(regs);
+  }
+  const res = await api.rpc('reclassificar_custeio', { p_ids: regs.map(x => x.id), p_custeio: r.custeio, p_adiantamento: r.custeio === 'adiantamento' ? r.adt : null, p_motivo: r.motivo });
+  aviso(`${res.alterados} lançamento(s) alterado(s) para ${CUSTEIO[r.custeio]}.`);
+  return r.custeio === 'adiantamento' ? r.adt : true;
+}
