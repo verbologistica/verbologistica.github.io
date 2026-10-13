@@ -201,7 +201,7 @@ rota('/rh/colaboradores/ver/:id', async (tela, id) => {
   const faltam = exigidos.filter(t => !atuais.some(d => d.tipo_id === t.id));
   const venc = atuais.filter(d => d.vencimento && !d.dispensado && diasAte(d.vencimento) <= 30);
   const admAtual = adms.find(a => a.status === 'em_andamento');
-  const abas = [['dados', 'Dados'], ['docs', `Documentos${faltam.length ? ` (${faltam.length} faltando)` : ''}`], ['deps', `Dependentes (${deps.length})`], ['admissao', 'Admissão'], ['ferias', 'Férias'], ['treinamentos', 'Treinamentos'], ['avaliacoes', 'Avaliações'], ['disciplinar', 'Disciplinar'], ['desligamento', 'Desligamento'], ['gerados', 'Documentos gerados']];
+  const abas = [['dados', 'Dados'], ['docs', `Documentos${faltam.length ? ` (${faltam.length} faltando)` : ''}`], ['deps', `Dependentes (${deps.length})`], ['admissao', 'Admissão'], ['ferias', 'Férias'], ['treinamentos', 'Treinamentos'], ['avaliacoes', 'Avaliações'], ['disciplinar', 'Disciplinar'], ['patrimonio', 'Patrimônio e EPI'], ['ssma', 'Saúde e segurança'], ['desligamento', 'Desligamento'], ['gerados', 'Documentos gerados']];
   const linha = (k, val) => `<div><div class="muted">${k}</div><b>${val ? esc(val) : '—'}</b></div>`;
   const conteudo = {
     dados: `<div class="cartao"><div class="form">
@@ -232,7 +232,7 @@ rota('/rh/colaboradores/ver/:id', async (tela, id) => {
             <td data-r="CPF">${esc(fmtCPF(x.cpf || ''))}</td><td data-r="IR">${x.dependente_ir ? 'Sim' : 'Não'}</td><td data-r="Salário-família">${x.salario_familia ? 'Sim' : 'Não'}</td><td data-r="Plano">${x.plano_saude ? 'Sim' : 'Não'}</td>
             <td>${pode ? `<button class="btn peq perigo" data-rem-dep="${x.id}">Remover</button>` : ''}</td></tr>`).join('')}</tbody></table></div>` : '<div class="vazio">Nenhum dependente.</div>'}</div>`,
     admissao: '<div id="adm-box" class="cartao"><div class="carregando">Carregando…</div></div>',
-    ...Object.fromEntries(['ferias', 'treinamentos', 'avaliacoes', 'disciplinar', 'desligamento'].map(k => [k, '<div id="aba-extra" class="cartao"><div class="carregando">Carregando…</div></div>'])),
+    ...Object.fromEntries(['ferias', 'treinamentos', 'avaliacoes', 'disciplinar', 'patrimonio', 'ssma', 'desligamento'].map(k => [k, '<div id="aba-extra" class="cartao"><div class="carregando">Carregando…</div></div>'])),
     gerados: `<div class="cartao"><div class="topo" style="margin:0 0 8px"><h2 style="margin:0">Documentos gerados</h2><button class="btn prim peq" id="gerar-doc">+ Gerar documento</button></div>
         ${gerados.length ? `<ul class="lista-simples">${gerados.map(g => `<li><span>${esc(g.modelo?.titulo || '')} <span class="muted">${esc(g.modelo?.codigo || '')}</span></span><span class="muted">${dataHoraBR(g.gerado_em)}</span></li>`).join('')}</ul>` : '<div class="vazio">Nenhum documento gerado ainda.</div>'}</div>`,
   };

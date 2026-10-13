@@ -246,7 +246,10 @@ ABAS_RH_EXTRA.desligamento = async (box, c) => {
       <button class="btn peq" data-enc="RH-DES-003">Termo de devolução</button><button class="btn peq" data-enc="RH-FOR-001">Encaminhamento ASO demissional</button><button class="btn peq" id="entrevista">Entrevista de desligamento</button>` : ''}</div>
     <ul class="lista-simples">${etapas.map(x => `<li style="flex-wrap:wrap"><span>${x.status === 'feito' ? '✅' : x.status === 'nao_se_aplica' ? '➖' : '⏳'} <b>${esc(x.etapa)}</b> <span class="muted">${esc(x.setor)}${x.data ? ' · ' + dataBR(x.data) : ''}${x.observacao ? ' · ' + esc(x.observacao) : ''}</span></span>
       ${pode ? `<select data-etapa="${x.id}" aria-label="Situação">${['pendente', 'feito', 'nao_se_aplica'].map(s => `<option value="${s}" ${x.status === s ? 'selected' : ''}>${{ pendente: 'Pendente', feito: 'Feito', nao_se_aplica: 'Não se aplica' }[s]}</option>`).join('')}</select>` : ''}</li>`).join('')}</ul>
+    <div id="posse-desl"></div>
     ${avisoLei('desligamento')}`;
+  api.listar('patrimonios', `responsavel_id=eq.${c.id}&ativo=eq.true&order=tag`).then(ps => { if (!ps.length) return;
+    $('#posse-desl', box).innerHTML = `<div class="alerta-obs" style="margin:8px 0">📦 <b>Bens com o colaborador (devolver antes do último dia):</b> ${ps.map(p => `<a href="#/patrimonio/ver/${p.id}">${esc(p.tag)} · ${esc(p.descricao)}</a>`).join(' · ')}</div>`; }).catch(() => {});
   $$('[data-etapa]', box).forEach(s => s.onchange = async () => {
     let obs = null; if (s.value === 'nao_se_aplica') { obs = await confirmar('Por que esta etapa não se aplica?', { comMotivo: true }); if (!obs) { s.value = 'pendente'; return; } }
     try { await api.alterar('desligamento_etapas', `id=eq.${s.dataset.etapa}`, { status: s.value, data: s.value === 'pendente' ? null : hojeISO(), feito_por: estado.usuario.id, ...(obs ? { observacao: obs } : {}) }); navegar(); } catch (err) { falha(err); } });
@@ -303,7 +306,8 @@ rota('/rh/treinamentos', async tela => {
         <td data-r="Instrutor">${esc([t.instrutor, t.instituicao].filter(Boolean).join(' · '))}</td><td data-r="Participantes">${(t.participantes || []).length}</td><td data-r="Custo">${t.custo != null ? brl(t.custo) : '—'}</td></tr>`).join('')}</tbody></table></div>` : '<div class="vazio">Nenhuma turma registrada.</div>'}</div>`;
     $$('[data-turma]', box).forEach(tr => tr.onclick = () => verTurma(tt.find(t => t.id === tr.dataset.turma), ts));
   } else {
-    const [cgs, tc] = await Promise.all([cargosL(), api.listar('treinamento_cargos', 'ativo=eq.true')]);
+    const [cgs, tcTodos] = await Promise.all([cargosL(), api.listar('treinamento_cargos', 'select=*')]);
+    const tc = tcTodos.filter(x => x.ativo);
     box.innerHTML = `<div class="cartao"><div class="topo" style="margin:0 0 8px"><h2 style="margin:0">Catálogo</h2>${editaRH() ? '<button class="btn prim peq" id="novo-trein">+ Treinamento</button>' : ''}</div>
       <div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Treinamento</th><th>Tipo / norma</th><th>Carga</th><th>Validade</th><th>Obrigatório para</th></tr></thead><tbody>
       ${ts.filter(t => t.ativo).map(t => `<tr class="${editaRH() ? 'clicavel' : ''}" data-trein="${t.id}"><td data-r="Treinamento"><b>${esc(t.nome)}</b></td><td data-r="Tipo">${esc([t.tipo, t.norma].filter(Boolean).join(' · '))}</td>
@@ -326,11 +330,10 @@ rota('/rh/treinamentos', async tela => {
         const dados = { nome: r.nome, tipo: r.tipo, norma: r.norma || null, carga_horaria: num(r.carga_horaria), validade_meses: r.validade_meses ? Number(r.validade_meses) : null, conteudo: r.conteudo || null };
         let id = t?.id; if (t) await api.alterar('treinamentos', `id=eq.${id}`, dados); else [{ id }] = await api.inserir('treinamentos', dados);
         for (const c of cgs) {
-          const quer = !!r['cg_' + c.id], tem_ = tc.find(x => x.treinamento_id === id && x.cargo_id === c.id);
+          const quer = !!r['cg_' + c.id], tem_ = tcTodos.find(x => x.treinamento_id === id && x.cargo_id === c.id);
           if (quer && !tem_) await api.inserir('treinamento_cargos', { treinamento_id: id, cargo_id: c.id });
-          if (!quer && tem_) await api.alterar('treinamento_cargos', `id=eq.${tem_.id}`, { ativo: false });
+          else if (tem_ && tem_.ativo !== quer) await api.alterar('treinamento_cargos', `id=eq.${tem_.id}`, { ativo: quer });
         }
-        // reativar vínculos desativados
         aviso('Treinamento salvo.'); navegar();
       } catch (err) { falha(err); }
     };

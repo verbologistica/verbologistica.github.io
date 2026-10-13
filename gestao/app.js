@@ -222,6 +222,10 @@ const rota = (padrao, fn) => (ROTAS[padrao] = fn);
 // Catálogo de telas do menu: [rótulo, rota, perfis que podem ver (null = todos), ícone, pendência, subitem]
 const P_FIN = ['administrador', 'diretoria', 'financeiro'];
 const P_RH = ['administrador', 'rh', 'dp', 'diretoria'];
+const P_ALM = ['administrador', 'almoxarifado', 'diretoria', 'comprador', 'manutencao'];
+const P_MAN = ['administrador', 'manutencao', 'operacao', 'diretoria'];
+const P_OP = ['administrador', 'operacao', 'diretoria'];
+const P_SSMA = ['administrador', 'ssma', 'rh', 'dp', 'diretoria'];
 const MENU = [
   ['Início', '#/inicio', null, '🏠'],
   ['Aprovações', '#/aprovacoes', null, '✅', 'aprovar'],
@@ -263,9 +267,55 @@ const MENU = [
   ['Organograma', '#/rh/organograma', P_RH, '🏛️', null, true],
   ['Promoções e cursos', '#/rh/desenvolvimento', P_RH, '🚀', null, true],
   ['Tipos de documento', '#/cadastros/rh_tipos_documento', ['administrador', 'rh'], '🗂️', null, true],
+  ['grupo', 'Departamento Pessoal'],
+  ['Painel do DP', '#/dp', ['administrador', 'dp', 'diretoria'], '🧮', 'dp_a_importar', true],
+  ['Folha do mês', '#/dp/folha', ['administrador', 'dp', 'rh', 'diretoria'], '💼', 'dp_lancamentos_pendentes', true],
+  ['Benefícios', '#/dp/beneficios', ['administrador', 'dp', 'rh'], '🎁', null, true],
+  ['Rubricas da folha', '#/dp/rubricas', ['administrador', 'dp'], '📒', null, true],
+  ['grupo', 'Almoxarifado e Patrimônio'],
+  ['Painel do almoxarifado', '#/almox', P_ALM, '🏬', null, true],
+  ['Itens e estoque', '#/almox/itens', P_ALM, '📦', 'almox_abaixo_minimo', true],
+  ['Requisições de material', '#/almox/requisicoes', null, '🧾', 'almox_requisicoes_abertas', true],
+  ['Entrada de material', '#/almox/entrada', ['administrador', 'almoxarifado'], '📥', null, true],
+  ['Inventário', '#/almox/inventario', ['administrador', 'almoxarifado'], '🔢', null, true],
+  ['EPI e uniformes', '#/almox/epi', [...P_ALM, 'rh', 'dp'], '🦺', 'epi_troca', true],
+  ['Patrimônio', '#/patrimonio', [...P_ALM, 'rh', 'financeiro'], '🏷️', 'patrimonio_sem_termo', true],
+  ['Avarias e responsabilização', '#/patrimonio/avarias', ['administrador', 'almoxarifado', 'rh', 'dp', 'diretoria'], '⚠️', 'patrimonio_avarias', true],
+  ['grupo', 'Operação'],
+  ['Painel do CCO', '#/operacao', [...P_OP, 'manutencao'], '📡', 'viagens_atrasadas', true],
+  ['Viagens', '#/operacao/viagens', [...P_OP, 'financeiro', 'manutencao'], '🛣️', 'viagens_em_transito', true],
+  ['Minha jornada', '#/operacao/jornada', [...P_OP, 'motorista'], '⏱️', null, true],
+  ['Controle de jornada', '#/operacao/jornadas', [...P_OP, 'rh', 'dp'], '📋', 'jornada_alertas', true],
+  ['Ocorrências e multas', '#/operacao/ocorrencias', [...P_OP, 'rh', 'dp', 'financeiro'], '🚧', 'multas_indicar', true],
+  ['grupo', 'Manutenção'],
+  ['Painel da manutenção', '#/manut', P_MAN, '🛠️', 'manut_preventivas_vencidas', true],
+  ['Ordens de serviço', '#/manut/os', [...P_MAN, 'almoxarifado', 'financeiro'], '🧰', 'manut_os_abertas', true],
+  ['Planos preventivos', '#/manut/preventivas', P_MAN, '🗓️', 'manut_preventivas_proximas', true],
+  ['Pneus', '#/manut/pneus', P_MAN, '🛞', 'pneus_sulco_baixo', true],
+  ['Custos da frota', '#/manut/custos', [...P_MAN, 'financeiro'], '📉', null, true],
+  ['Checklist do veículo', '#/manut/checklist', [...P_MAN, 'motorista'], '✔️', null, true],
+  ['Km / horímetro', '#/manut/hodometro', [...P_MAN, 'motorista'], '🧭', null, true],
+  ['grupo', 'SSMA'],
+  ['Painel do SSMA', '#/ssma', P_SSMA, '⛑️', 'cat_pendente', true],
+  ['ASO e exames', '#/ssma/aso', P_SSMA, '🩺', 'aso_vencendo', true],
+  ['Acidentes e CAT', '#/ssma/acidentes', [...P_SSMA, 'operacao', 'manutencao'], '🚑', 'acidentes_abertos', true],
+  ['Plano de ação', '#/ssma/acoes', [...P_SSMA, 'operacao', 'manutencao', 'almoxarifado'], '🎯', 'ssma_acoes_atrasadas', true],
+  ['Inspeções', '#/ssma/inspecoes', [...P_SSMA, 'operacao', 'manutencao'], '🔍', null, true],
+  ['DDS', '#/ssma/dds', [...P_SSMA, 'operacao', 'manutencao'], '🗣️', null, true],
+  ['Extintores', '#/ssma/extintores', [...P_SSMA, 'operacao', 'manutencao'], '🧯', 'extintores_vencendo', true],
+  ['EPI (entregas)', '#/almox/epi', ['ssma'], '🦺', 'epi_troca', true],
+  ['grupo', 'Qualidade'],
+  ['Painel da qualidade', '#/qualidade', ['administrador', 'qualidade', 'diretoria'], '🏅', 'qual_auditorias_proximas', true],
+  ['Não conformidades', '#/qualidade/nc', ['administrador', 'qualidade', 'diretoria'], '❗', 'qual_nc_abertas', true],
+  ['Auditorias', '#/qualidade/auditorias', ['administrador', 'qualidade', 'diretoria'], '🔎', null, true],
+  ['Indicadores', '#/qualidade/indicadores', ['administrador', 'qualidade', 'diretoria'], '📊', null, true],
   ['grupo', 'Biblioteca'],
   ['Modelos de documentos', '#/modelos', null, '📄', null, true],
   ['Pesquisa de clima', '#/clima', null, '💬', 'pesquisa_aberta', true],
+  ['Meus itens', '#/meus-itens', null, '🎒', null, true],
+  ['Comunicar acidente', '#/ssma/acidentes/novo', null, '🚨', null, true],
+  ['Documentos da qualidade', '#/qualidade/documentos', null, '📘', 'qual_docs_ler', true],
+  ['Registrar não conformidade', '#/qualidade/nc/nova', null, '📝', null, true],
   ['grupo', 'Configurações'],
   ['Dados da empresa', '#/cadastros/empresa', ['administrador'], '🏢', null, true],
   ['Setores', '#/cadastros/setores', ['administrador', 'rh'], '🧩', null, true],
@@ -465,6 +515,22 @@ rota('/inicio', async tela => {
       ${tem('administrador', 'rh', 'dp') && p.admissoes_andamento ? `<a class="cartao kpi" href="#/rh/admissoes"><div class="n">${p.admissoes_andamento}</div><div class="r">admissão(ões) em andamento</div></a>` : ''}
       ${tem('administrador', 'rh', 'dp') && p.rh_docs_vencendo ? `<a class="cartao kpi alerta" href="#/rh/documentos"><div class="n">${p.rh_docs_vencendo}</div><div class="r">documento(s) de colaboradores vencidos ou vencendo em 30 dias</div></a>` : ''}
       ${tem('administrador', 'rh', 'dp') && p.experiencia_vencendo ? `<a class="cartao kpi alerta" href="#/rh"><div class="n">${p.experiencia_vencendo}</div><div class="r">contrato(s) de experiência vencendo em 15 dias</div></a>` : ''}
+      ${tem('administrador', 'almoxarifado') && p.almox_requisicoes_abertas ? `<a class="cartao kpi alerta" href="#/almox/requisicoes"><div class="n">${p.almox_requisicoes_abertas}</div><div class="r">requisição(ões) de material a atender</div></a>` : ''}
+      ${tem('administrador', 'almoxarifado', 'comprador') && p.almox_abaixo_minimo ? `<a class="cartao kpi alerta" href="#/almox/itens?abaixo=1"><div class="n">${p.almox_abaixo_minimo}</div><div class="r">item(ns) do almoxarifado abaixo do mínimo</div></a>` : ''}
+      ${tem('administrador', 'almoxarifado', 'rh') && p.patrimonio_sem_termo ? `<a class="cartao kpi alerta" href="#/patrimonio?sem_termo=1"><div class="n">${p.patrimonio_sem_termo}</div><div class="r">bem(ns) em uso sem termo de responsabilidade</div></a>` : ''}
+      ${tem('administrador', 'manutencao') && p.manut_os_urgentes ? `<a class="cartao kpi alerta" href="#/manut/os?prioridade=urgente"><div class="n">${p.manut_os_urgentes}</div><div class="r">OS urgente(s) em aberto</div></a>` : ''}
+      ${tem('administrador', 'manutencao', 'operacao') && p.manut_preventivas_vencidas ? `<a class="cartao kpi alerta" href="#/manut/preventivas"><div class="n">${p.manut_preventivas_vencidas}</div><div class="r">preventiva(s) vencida(s) sem OS</div></a>` : ''}
+      ${tem('administrador', 'manutencao', 'operacao') && p.manut_parados ? `<a class="cartao kpi alerta" href="#/manut"><div class="n">${p.manut_parados}</div><div class="r">equipamento(s) parado(s) em manutenção</div></a>` : ''}
+      ${tem('administrador', 'ssma', 'rh') && p.cat_pendente ? `<a class="cartao kpi alerta" href="#/ssma/acidentes"><div class="n">${p.cat_pendente}</div><div class="r">CAT pendente (prazo: 1º dia útil após o acidente)</div></a>` : ''}
+      ${tem('administrador', 'ssma') && p.aso_vencendo ? `<a class="cartao kpi alerta" href="#/ssma/aso?sit=pendentes"><div class="n">${p.aso_vencendo}</div><div class="r">ASO vencido, vencendo ou faltando</div></a>` : ''}
+      ${p.ssma_acoes_atrasadas ? `<a class="cartao kpi alerta" href="#/ssma/acoes"><div class="n">${p.ssma_acoes_atrasadas}</div><div class="r">ação(ões) de segurança atrasada(s)</div></a>` : ''}
+      ${tem('administrador', 'operacao') && p.multas_indicar ? `<a class="cartao kpi alerta" href="#/operacao/ocorrencias?tipo=multa"><div class="n">${p.multas_indicar}</div><div class="r">multa(s) para indicar o condutor (prazo de 30 dias)</div></a>` : ''}
+      ${tem('administrador', 'operacao') && p.jornada_alertas ? `<a class="cartao kpi alerta" href="#/operacao/jornadas?alertas=1"><div class="n">${p.jornada_alertas}</div><div class="r">jornada(s) de motorista com alerta (Lei 13.103)</div></a>` : ''}
+      ${tem('administrador', 'operacao') && p.viagens_atrasadas ? `<a class="cartao kpi alerta" href="#/operacao/viagens?status=em_transito"><div class="n">${p.viagens_atrasadas}</div><div class="r">viagem(ns) atrasada(s)</div></a>` : ''}
+      ${tem('administrador', 'rh', 'dp') && (p.ocorrencias_responsabilizacao || p.manut_responsabilizacao || p.patrimonio_avarias) ? `<a class="cartao kpi alerta" href="#/operacao/ocorrencias"><div class="n">${(p.ocorrencias_responsabilizacao || 0) + (p.manut_responsabilizacao || 0) + (p.patrimonio_avarias || 0)}</div><div class="r">caso(s) de responsabilização por dano/multa em análise</div></a>` : ''}
+      ${tem('administrador', 'dp') && p.dp_a_importar ? `<a class="cartao kpi alerta" href="#/dp/folha"><div class="n">${p.dp_a_importar}</div><div class="r">pendência(s) dos setores para a folha (descontos, suspensões)</div></a>` : ''}
+      ${p.qual_docs_ler ? `<a class="cartao kpi alerta" href="#/qualidade/documentos?ler=1"><div class="n">${p.qual_docs_ler}</div><div class="r">documento(s) da qualidade para você ler</div></a>` : ''}
+      ${p.qual_acoes_atrasadas ? `<a class="cartao kpi alerta" href="#/qualidade/nc"><div class="n">${p.qual_acoes_atrasadas}</div><div class="r">ação(ões) da qualidade atrasada(s)</div></a>` : ''}
       ${veTudo() && p.prestacao_vencida ? `<a class="cartao kpi alerta" href="#/financeiro/adiantamentos"><div class="n">${p.prestacao_vencida}</div><div class="r">prestação(ões) de contas vencida(s)</div></a>` : ''}
       ${veTudo() ? `<a class="cartao kpi ${p.a_verificar ? 'alerta' : ''}" href="#/financeiro/verificar"><div class="n">${p.a_verificar || 0}</div><div class="r">lançamentos a verificar</div></a>` : ''}
     </div>

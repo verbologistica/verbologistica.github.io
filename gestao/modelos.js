@@ -48,7 +48,7 @@ function preencherModelo(html, ctx, respostas = {}) {
     if (chave.startsWith('?')) return esc(respostas[chave.slice(1).trim()] || '__________________');
     if (chave === 'lista_documentos_admissionais') return ctx.lista_documentos_admissionais || '<p><i>(escolha um colaborador para listar os documentos do cargo)</i></p>';
     const v = chave.split('.').reduce((o, k) => (o == null ? o : o[k]), ctx);
-    if (/(^|\.)tabela_/.test(chave) && v) return v;   // tabelas montadas pelo sistema (já escapadas)
+    if ((/(^|\.)tabela_/.test(chave) || /_html$/.test(chave)) && v) return v;   // tabelas e textos montados pelo sistema (já escapados)
     return v == null || v === '' ? '__________' : esc(v);
   });
 }

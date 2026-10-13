@@ -131,8 +131,9 @@ const PERFIS = [['administrador', 'Administrador', 'Configura tudo'], ['diretori
                 ['financeiro', 'Financeiro', 'Contas, pagamentos e reembolsos'], ['comprador', 'Comprador', 'Cotações, pedidos e fornecedores'],
                 ['aprovador', 'Aprovador', 'Aprova o seu centro de custo'], ['solicitante', 'Solicitante', 'Lança reembolsos e pedidos'],
                 ['motorista', 'Motorista', 'Abastecimentos e reembolsos de viagem'], ['operacao', 'Operação', 'Equipamentos, documentos da frota e clientes'],
-                ['manutencao', 'Manutenção', 'Equipamentos e documentos da frota'], ['almoxarifado', 'Almoxarifado', 'Estoque (em breve)'],
-                ['rh', 'RH', 'Colaboradores, admissões, documentos e modelos'], ['dp', 'DP', 'Vê o RH; folha e encargos (em breve)']];
+                ['manutencao', 'Manutenção', 'OS, preventivas, pneus, km e custos da frota'], ['almoxarifado', 'Almoxarifado', 'Estoque, requisições, EPI e patrimônio'],
+                ['rh', 'RH', 'Colaboradores, admissões, documentos e modelos'], ['dp', 'DP', 'Folha, descontos, benefícios e rescisões'],
+                ['ssma', 'SSMA', 'Saúde e segurança: ASO, acidentes/CAT, inspeções, DDS e extintores'], ['qualidade', 'Qualidade', 'Documentos, não conformidades, auditorias e indicadores']];
 const SETORES = ['Administrativo', 'Comercial', 'Diretoria', 'Financeiro', 'Frota', 'Operação', 'Qualidade', 'Recursos Humanos'];
 const soDigitos = v => String(v || '').replace(/\D/g, '');
 function cpfValido(c) {

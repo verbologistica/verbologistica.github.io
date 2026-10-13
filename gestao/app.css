@@ -193,3 +193,8 @@ ul.org ul li::before { content: ''; position: absolute; left: -14px; top: 0; bot
 a.org-no { display: inline-flex; flex-direction: column; padding: 6px 12px; border: 1px solid var(--borda); border-left: 4px solid #02654D; border-radius: 8px; background: var(--cartao, #fff); text-decoration: none; color: inherit; }
 a.org-no span { font-size: 12px; opacity: .7; }
 @media print { .aviso-lei { break-inside: avoid; } }
+/* checklist pré-uso */
+.chk-op{white-space:nowrap}
+.chk-op label{display:inline-flex;align-items:center;gap:6px;margin-right:14px;font-weight:600;cursor:pointer}
+.chk-op input[type=radio]{width:18px;height:18px;min-height:0;margin:0;padding:0;flex:none;accent-color:#0b6b4f}
+.chk-op label:has(input[value="0"]:checked){color:#b42318}

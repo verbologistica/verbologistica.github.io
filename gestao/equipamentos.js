@@ -192,6 +192,7 @@ rota('/cadastros/equipamentos/ver/:id', async (tela, id) => {
       <p class="sub">${esc([e.marca, e.modelo, e.ano_fabricacao && `${e.ano_fabricacao}/${e.ano_modelo || e.ano_fabricacao}`].filter(Boolean).join(' · '))}
         <span class="tag ${SITUACOES_EQ[e.situacao]?.[1] || ''}">${esc(SITUACOES_EQ[e.situacao]?.[0] || '')}</span>${e.ativo ? '' : ' <span class="tag">Inativo</span>'}</p></div>
       <div class="acoes">${pode ? `<button class="btn prim" id="novo-doc">+ Documento</button><a class="btn" href="#/cadastros/equipamentos/editar/${id}">Editar</a>` : ''}
+        <a class="btn" href="#/manut/os?eq=${id}&status=todas">Manutenção (OS)</a><a class="btn" href="#/manut/pneus?eq=${id}">Pneus</a>
         <a class="btn" href="#/cadastros/equipamentos/ver/${id}${hist ? '' : '?historico=1'}">${hist ? 'Ocultar histórico' : 'Ver histórico de documentos'}</a>
         <a class="btn" href="#/cadastros/equipamentos">Voltar</a></div></div>
     ${!e.tipo ? '<div class="cartao alerta-obs">Cadastro incompleto: clique em Editar e informe o tipo, a marca e o código de frota.</div>' : ''}
