@@ -211,12 +211,25 @@ select.in{appearance:none;-webkit-appearance:none;background-image:linear-gradie
 <div class="savebar"><div><p class="err" id="err" hidden></p><button class="btn" form="frm" type="submit" id="btnSave">Salvar abastecimento</button></div></div>
 <div id="host"></div>
 
+<script src="gestao/api.js"></script>
 <script>
 (function(){
 "use strict";
 const CFG=window.VERBO_CFG||{};
 const API=CFG.API_URL||"";const TOKEN=CFG.APP_TOKEN||"";
-const CONFIGURADO=/^(https:\/\/|http:\/\/(localhost|127\.))/.test(API);
+/* Sistema Verbo Gestão (Supabase): destino principal. A planilha (Apps Script) recebe uma cópia enquanto durar a transição. */
+const SB=CFG.SISTEMA!==false&&typeof SB_URL!=="undefined"?SB_URL:"";const SBK=CFG.SISTEMA!==false&&typeof SB_KEY!=="undefined"?SB_KEY:"";
+const COM_SISTEMA=/^https:\/\//.test(SB)&&!!SBK;
+const COM_PLANILHA=/^(https:\/\/|http:\/\/(localhost|127\.))/.test(API)&&CFG.COPIA_PLANILHA!==false;
+const CONFIGURADO=COM_SISTEMA||COM_PLANILHA;
+async function sbRpc(fn,args,signal){const r=await fetch(SB+"/rest/v1/rpc/"+fn,{method:"POST",headers:{apikey:SBK,"Content-Type":"application/json"},body:JSON.stringify(args||{}),signal});
+  if(!r.ok)throw new Error("HTTP "+r.status);return r.json()}
+async function sbFoto(caminho,b64,mime,signal){
+  const bin=Uint8Array.from(atob(b64),c=>c.charCodeAt(0));
+  const r=await fetch(SB+"/storage/v1/object/anexos/"+caminho,{method:"POST",headers:{apikey:SBK,"Content-Type":mime||"image/jpeg","x-upsert":"false"},body:new Blob([bin],{type:mime||"image/jpeg"}),signal});
+  if(r.ok||r.status===409)return true;
+  const t=await r.text().catch(()=>"");if(/already exists|Duplicate/i.test(t))return true;
+  throw new Error("Foto: HTTP "+r.status)}
 const FUEIS=["Diesel S10","Diesel S500","Gasolina comum","Gasolina aditivada","Etanol","GNV","ARLA 32"];
 const NOVO="__novo__";
 const $=s=>document.querySelector(s);
@@ -253,8 +266,10 @@ function addLocal(tipo,v){
 async function baixarCadastros(){
   if(!CONFIGURADO)return;
   try{
-    const r=await fetch(API+"?a=cad&t="+encodeURIComponent(TOKEN),{cache:"no-store"});const j=await r.json();
-    if(!j.ok)return;
+    let j;
+    if(COM_SISTEMA)j=await sbRpc("app_abastecimento_cadastros",{});
+    else{const r=await fetch(API+"?a=cad&t="+encodeURIComponent(TOKEN),{cache:"no-store"});j=await r.json()}
+    if(!j||!j.ok)return;
     // mantém os itens criados no aparelho e ainda não enviados
     const pend=await filaAll();
     const keep={m:pend.map(p=>p.rec.motorista),p:pend.map(p=>p.rec.posto),v:pend.map(p=>({placa:p.rec.placa,modelo:p.rec.modelo}))};
@@ -419,11 +434,22 @@ function sync(){
     for(const it of fila){
       try{
         const ctl=new AbortController();const to=setTimeout(()=>ctl.abort(),60000);
-        const r=await fetch(API,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({a:"add",t:TOKEN,rec:it.rec,foto:it.foto}),signal:ctl.signal});
+        let j;
+        if(COM_SISTEMA){
+          // 1) foto do cupom no sistema  2) lançamento (o sistema liga motorista, placa, posto e manda para fatura ou reembolso)
+          const mes=(it.rec.data||"").slice(0,7)||new Date().toISOString().slice(0,7);
+          const caminho=it.foto&&it.foto.b64?`abastecimentos-app/${mes}/${String(it.rec.id).replace(/[^A-Za-z0-9_-]/g,"")}.jpg`:null;
+          if(caminho&&!it.fotoOk){await sbFoto(caminho,it.foto.b64,it.foto.mime,ctl.signal);it.fotoOk=true;await filaAdd(it)}
+          j=await sbRpc("app_abastecimento_registrar",{p_rec:it.rec,p_foto:caminho},ctl.signal);
+          // cópia na planilha (não atrapalha se falhar)
+          if(j&&j.ok&&COM_PLANILHA){try{await fetch(API,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({a:"add",t:TOKEN,rec:it.rec,foto:it.foto}),signal:ctl.signal})}catch(e){}}
+        }else{
+          const r=await fetch(API,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({a:"add",t:TOKEN,rec:it.rec,foto:it.foto}),signal:ctl.signal});
+          j=await r.json();
+        }
         clearTimeout(to);
-        const j=await r.json();
-        if(j.ok){await filaDel(it.rec.id);marcar(it.rec.id,"ok");enviados.push(it.rec.id)}
-        else{marcar(it.rec.id,"erro",j.erro);if(/Chave/.test(j.erro||""))break}
+        if(j&&j.ok){await filaDel(it.rec.id);marcar(it.rec.id,"ok",j.numero||"");enviados.push(it.rec.id)}
+        else{marcar(it.rec.id,"erro",(j&&j.erro)||"Não foi possível enviar");if(/Chave/.test((j&&j.erro)||""))break}
       }catch(e){setNet(false);break}
     }
     if(enviados.length){setNet(true);baixarCadastros()}
@@ -439,7 +465,7 @@ async function renderHist(){
   const n=pend.length;
   $("#btnSync").hidden=!n;$("#btnSync").textContent=`Enviar agora (${n})`;
   setNetLabel(n);
-  $("#hist").innerHTML=h.length?h.slice(0,15).map(x=>`<div class="hi"><div class="d"><b>${fmtD(x.data)} · ${esc(fmtPlaca(x.placa))}${x.pagamento==="Reembolso"?`<span class="tagr">Reembolso</span>`:""}</b><small>${esc(x.combustivel)} · ${String(x.litros).replace(".",",")} L · ${esc(x.posto)}</small>${x.msg&&x.st==="erro"?`<small style="color:var(--bad)">${esc(x.msg)}</small>`:""}</div><div class="v">${brl.format(x.valor)}<br><span class="st ${x.st}">${x.st==="ok"?"Enviado":x.st==="erro"?"Erro":"Aguardando internet"}</span></div></div>`).join("")
+  $("#hist").innerHTML=h.length?h.slice(0,15).map(x=>`<div class="hi"><div class="d"><b>${fmtD(x.data)} · ${esc(fmtPlaca(x.placa))}${x.pagamento==="Reembolso"?`<span class="tagr">Reembolso</span>`:""}</b><small>${esc(x.combustivel)} · ${String(x.litros).replace(".",",")} L · ${esc(x.posto)}</small>${x.msg&&x.st==="erro"?`<small style="color:var(--bad)">${esc(x.msg)}</small>`:""}</div><div class="v">${brl.format(x.valor)}<br><span class="st ${x.st}">${x.st==="ok"?"Enviado"+(x.msg?" · "+esc(x.msg):""):x.st==="erro"?"Erro":"Aguardando internet"}</span></div></div>`).join("")
     :`<p class="muted" style="margin:0">Nenhum lançamento feito neste aparelho ainda.</p>`;
 }
 $("#btnSync").onclick=async()=>{const n=(await sync()).length;toast(n?`${n} lançamento(s) enviado(s).`:"Ainda sem conexão. Tentaremos de novo automaticamente.")};
