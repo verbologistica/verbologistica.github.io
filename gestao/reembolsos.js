@@ -147,6 +147,7 @@ rota('/reembolsos/ver/:id', async (tela, id) => {
       <div class="acoes">
         ${dono && ['devolvido', 'aguardando_aprovacao'].includes(r.status) ? `<a class="btn" href="#/reembolsos/editar/${r.id}">Corrigir</a>` : ''}
         ${editaFin() && custeioMutavel(r) ? '<button class="btn" id="custeio">Alterar forma de custeio</button>' : ''}
+        ${editaFin() && r.titulo_id && ['pago', 'em_pagamento'].includes(r.status) ? `<a class="btn" href="#/financeiro/pagar/ver/${r.titulo_id}" title="Para estornar ou cancelar o pagamento">Ver pagamento</a>` : ''}
         ${(dono && ['devolvido', 'aguardando_aprovacao', 'rascunho'].includes(r.status)) || (editaFin() && !['pago', 'em_pagamento', 'cancelado'].includes(r.status)) ? '<button class="btn perigo" id="cancelar">Cancelar lançamento</button>' : ''}
         <button class="btn" onclick="history.back()">Voltar</button></div></div>
     <div class="cartao"><div class="form">

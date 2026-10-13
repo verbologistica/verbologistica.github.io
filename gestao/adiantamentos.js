@@ -354,7 +354,7 @@ async function modalCusteio(regs) {
       <li><b>Reembolso</b>: o colaborador pagou do próprio bolso e a empresa devolve o valor (gera conta a pagar).</li>
       <li><b>Prestação de contas de adiantamento</b>: o colaborador recebeu o dinheiro antes; a despesa abate o adiantamento e <b>não</b> gera pagamento. A sobra é devolvida; a falta é acertada no fechamento do adiantamento.</li>
       <li><b>Fundo Fixo</b>: pago com o dinheiro do fundo; ao ser aprovado, sai do saldo do fundo.</li></ul>
-      Fica registrado no histórico de cada lançamento quem mudou, quando e o motivo. Lançamentos já pagos como reembolso precisam ter o pagamento cancelado antes.</div>
+      Fica registrado no histórico de cada lançamento quem mudou, quando e o motivo. Lançamentos já pagos como reembolso precisam ter o pagamento estornado antes (no lançamento: Ver pagamento › Estornar pagamento).</div>
     <div class="form">
       <label class="campo largo">Nova forma<select name="custeio" required>
         <option value="adiantamento">Prestação de contas de adiantamento</option><option value="reembolso">Reembolso</option><option value="fundo_fixo">Fundo Fixo</option></select></label>

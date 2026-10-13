@@ -133,6 +133,7 @@ async function verTitulo(tela, id, tipo) {
   tela.innerHTML = `
     <div class="topo"><div><h1>${esc(t.numero)} · ${esc(pessoa)}</h1><p class="sub">${tagTitulo(t.status, false, tipo)} · ${esc(t.descricao || '')}</p></div>
       <div class="acoes">${editaFin() && !['pago', 'cancelado'].includes(t.status) && !baixas.length ? '<button class="btn perigo" id="cancelar">Cancelar conta</button>' : ''}
+        ${editaFin() && t.status !== 'cancelado' && baixas.length ? '<button class="btn perigo" id="estornar">Estornar pagamento</button>' : ''}
         <button class="btn" onclick="history.back()">Voltar</button></div></div>
     <div class="cartao"><div class="form">
       <div><div class="muted">${T.pessoa}</div><b>${esc(pessoa)}</b>${(t.cli?.documento || t.forn?.documento) ? `<div class="muted">${esc(fmtDoc(t.cli?.documento || t.forn?.documento))}</div>` : ''}${t.forn ? (dadosPagamento(t.forn) ? `<div class="muted" style="white-space:pre-line">${esc(dadosPagamento(t.forn))}</div>` : '') : pix ? `<div class="muted">Pix: ${esc(pix)}</div>` : ''}</div>
@@ -163,6 +164,22 @@ async function verTitulo(tela, id, tipo) {
     if (!await confirmar('Este pagamento foi feito em dinheiro (sem comprovante)?', { botao: 'Sim, em dinheiro' })) return;
     try { await api.alterar('baixas', `id=eq.${b.dataset.din}`, { forma_pagamento: 'Dinheiro' }); aviso('Registrado como pagamento em dinheiro.'); navegar(); } catch (err) { falha(err); } }));
   $('#mais')?.addEventListener('change', async e => { try { await anexar('titulo', id, [...e.target.files]); aviso('Anexo incluído.'); navegar(); } catch (err) { falha(err); } });
+  $('#estornar')?.addEventListener('click', async () => {
+    const total = baixas.reduce((x, b) => x + Number(b.valor) + Number(b.juros) + Number(b.multa) - Number(b.desconto), 0);
+    const r = await modal(`<form><h2>Estornar pagamento · ${esc(t.numero)}</h2>
+      <div class="aviso-lei"><b>O que acontece</b><ul>
+        <li>${baixas.length} ${tipo === 'pagar' ? 'pagamento(s)' : 'recebimento(s)'} de ${brl(total)} deixam de existir no extrato (se já conciliado, entra um lançamento de estorno).</li>
+        <li>A conta ${esc(t.numero)} fica cancelada, com o motivo e quem estornou.</li>
+        ${reembs.length ? `<li>${reembs.length} reembolso(s) deste pagamento: escolha abaixo se voltam para "aprovado" (para pagar de novo ou mudar a forma de custeio) ou se são cancelados.</li>` : ''}
+      </ul>Use só quando o pagamento <b>não</b> aconteceu de verdade ou foi lançado por engano. Se o dinheiro saiu, registre a devolução em vez de estornar.</div>
+      <div class="form">
+        ${reembs.length ? `<label class="campo largo">Reembolsos<select name="dest"><option value="voltar">Voltar para aprovado (a pagar)</option><option value="cancelar">Cancelar os reembolsos</option></select></label>` : ''}
+        <label class="campo largo">Motivo<textarea name="motivo" required></textarea></label></div>
+      <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn perigo">Estornar</button></div></form>`);
+    if (!r) return;
+    try { const x = await api.rpc('estornar_pagamento', { p_titulo: id, p_motivo: r.motivo, p_reembolsos: r.dest || 'voltar' });
+          aviso(`Pagamento estornado (${brl(x.valor)})${x.reembolsos ? ` · ${x.reembolsos} reembolso(s) ${r.dest === 'cancelar' ? 'cancelado(s)' : 'de volta a aprovado'}` : ''}.`); navegar(); } catch (err) { falha(err); }
+  });
   $('#cancelar')?.addEventListener('click', async () => {
     const motivo = await confirmar('Cancelar esta conta?', { comMotivo: true, botao: 'Cancelar conta' });
     if (!motivo) return;
