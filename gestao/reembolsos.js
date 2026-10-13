@@ -144,7 +144,7 @@ rota('/reembolsos/ver/:id', async (tela, id) => {
   const nomes = porId(await usuarios());
   const dono = r.colaborador_id === estado.usuario.id;
   tela.innerHTML = `
-    <div class="topo"><div><h1>Reembolso ${esc(r.numero)}</h1><p class="sub">${tag(r.status)} · lançado em ${dataHoraBR(r.criado_em)}${r.origem === 'legado_claude' ? ' · <span class="tag">Sistema anterior</span>' : ''}</p></div>
+    <div class="topo"><div><h1>Reembolso ${esc(r.numero)}</h1><p class="sub">${tag(r.status)} · lançado em ${dataHoraBR(r.criado_em)}${r.origem === 'legado_claude' ? ' · <span class="tag">Sistema anterior</span>' : ''}${r.acerto_adiantamento_id ? ` · <a href="#/adiantamentos/ver/${r.acerto_adiantamento_id}">saldo do acerto de adiantamento</a>` : ''}</p></div>
       <div class="acoes">
         ${dono && ['devolvido', 'aguardando_aprovacao'].includes(r.status) ? `<a class="btn" href="#/reembolsos/editar/${r.id}">Corrigir</a>` : ''}
         ${editaFin() && custeioMutavel(r) ? '<button class="btn" id="custeio">Alterar forma de custeio</button>' : ''}

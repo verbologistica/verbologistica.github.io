@@ -11,7 +11,7 @@ const tagAdt = a => adtVencido(a) ? '<span class="tag vermelho">Prestação venc
 const dadosConta = c => c ? [c.titular, c.banco && `Banco ${c.banco}`, c.agencia && `Ag. ${c.agencia}`, c.conta && `Conta ${c.conta}`, c.chave_pix && `Pix ${c.chave_pix}`].filter(Boolean).join(' · ') : '';
 const SELECT_ADT = 'select=*,colab:usuarios(nome)';
 const difTxt = a => Number(a.valor_assumido_colaborador) > 0 ? `<div class="muted">Diferença de ${brl(a.valor_assumido_colaborador)} assumida pelo colaborador</div>`
-  : Number(a.valor_complemento) > 0 ? `<div class="muted">Diferença de ${brl(a.valor_complemento)} ${a.diferenca_coberta_por === 'fundo_fixo' ? 'paga pelo Fundo Fixo' : 'em Contas a pagar'}</div>` : '';
+  : Number(a.valor_complemento) > 0 ? `<div class="muted">Diferença de ${brl(a.valor_complemento)} ${a.diferenca_coberta_por === 'fundo_fixo' ? 'paga pelo Fundo Fixo' : a.diferenca_coberta_por === 'reembolso' ? 'enviada para reembolso ao colaborador' : 'em Contas a pagar'}</div>` : '';
 
 function tabelaAdts(linhas, comNome = true) {
   if (!linhas.length) return '<div class="vazio">Nenhum adiantamento.</div>';
@@ -100,6 +100,7 @@ rota('/adiantamentos/ver/:id', async (tela, id) => {
   const aberto = ['pago', 'prestando_contas'].includes(a.status);
   const fundo = bs.find(b => b.tipo === 'fundo_fixo');
   const anexosEntrega = await htmlAnexos('adiantamento', id);
+  const saldoRmb = a.diferenca_coberta_por === 'reembolso' ? await api.um('reembolsos', `select=id,numero,status&acerto_adiantamento_id=eq.${id}&status=neq.cancelado`).catch(() => null) : null;
   const compDev = {}; for (const dv of devs) compDev[dv.id] = await htmlAnexos('devolucao', dv.id);
   tela.innerHTML = `
     <div class="topo"><div><h1>Adiantamento ${esc(a.numero)} · ${esc(nomeAdt(a))}</h1><p class="sub">${tagAdt(a)} · ${esc(a.motivo)}</p></div>
@@ -123,7 +124,7 @@ rota('/adiantamentos/ver/:id', async (tela, id) => {
       <div><div class="muted">Saída / retorno</div><b>${a.data_saida ? dataBR(a.data_saida) : '—'}${a.data_retorno ? ' → ' + dataBR(a.data_retorno) : ''}</b></div>
       <div><div class="muted">Entregue</div><b>${a.data_entrega ? dataBR(a.data_entrega) + ' · ' + esc(a.forma_entrega || '') : '—'}</b>${a.conta_bancaria_id ? `<div class="muted">de ${esc(bs.find(b => b.id === a.conta_bancaria_id)?.nome || '')}</div>` : ''}</div>
       <div><div class="muted">Prestar contas até</div><b>${a.prazo_prestacao ? dataBR(a.prazo_prestacao) : '—'}</b></div>
-      ${a.status === 'acertado' ? `<div><div class="muted">Acerto</div><b>${dataHoraBR(a.acertado_em)}</b>${difTxt(a)}</div>` : ''}
+      ${a.status === 'acertado' ? `<div><div class="muted">Acerto</div><b>${dataHoraBR(a.acertado_em)}</b>${difTxt(a)}${saldoRmb ? `<div><a href="#/reembolsos/ver/${saldoRmb.id}">${esc(saldoRmb.numero)}</a> · ${tag(saldoRmb.status)}</div>` : ''}</div>` : ''}
       <div class="largo"><div class="muted">Comprovante da entrega</div>${anexosEntrega}</div>
       ${a.diferenca_coberta_por === 'fundo_fixo' ? `<div class="largo"><div class="muted">Comprovante do pagamento da diferença</div>${await htmlAnexos('complemento', id)}</div>` : ''}
       ${blocoObservacao(a.observacoes, editaFin())}
@@ -216,7 +217,9 @@ rota('/adiantamentos/ver/:id', async (tela, id) => {
     const r = await modal(`<form><h2>Acerto · ${esc(a.numero)}</h2>
       <p>O colaborador gastou <b>${brl(dif)}</b> a mais do que recebeu. Quem cobre essa diferença?</p>
       <div class="form"><div class="largo">
-        <label class="opcao"><input type="radio" name="quem" value="empresa" checked>
+        <label class="opcao"><input type="radio" name="quem" value="reembolso" checked>
+          <span><b>Gerar reembolso ao colaborador</b> — a diferença vira um reembolso <b>já aprovado</b> e entra em Reembolsos › Aprovados a pagar (sem nova aprovação)</span></label>
+        <label class="opcao"><input type="radio" name="quem" value="empresa">
           <span>${doFundo ? '<b>Pagar pelo Fundo Fixo</b> — a diferença sai do fundo agora' : '<b>A empresa paga</b> — vira uma conta a pagar ao colaborador'}</span></label>
         <label class="opcao"><input type="radio" name="quem" value="colaborador">
           <span><b>O colaborador assume</b> — nada é pago nem gerado; fica registrado no adiantamento</span></label></div>
@@ -231,9 +234,9 @@ rota('/adiantamentos/ver/:id', async (tela, id) => {
       validar: d => d.quem === 'empresa' && doFundo && d.forma !== 'Dinheiro' && !d.arquivos?.length ? 'Anexe o comprovante do pagamento. Só dinheiro dispensa comprovante.' : null });
     if (!r) return;
     try {
-      await api.rpc('acertar_adiantamento', { p_id: id, p_diferenca: r.quem, p_vencimento: r.venc || hojeISO(), p_forma: r.forma || null, p_data: r.data || hojeISO() });
+      const res = await api.rpc('acertar_adiantamento', { p_id: id, p_diferenca: r.quem, p_vencimento: r.venc || hojeISO(), p_forma: r.forma || null, p_data: r.data || hojeISO() });
       if (r.quem === 'empresa' && doFundo) await anexar('complemento', id, r.arquivos);
-      aviso(r.quem === 'colaborador' ? 'Acerto feito: diferença assumida pelo colaborador.' : doFundo ? 'Acerto feito: diferença paga pelo Fundo Fixo.' : 'Acerto feito: diferença lançada em Contas a pagar.');
+      aviso(r.quem === 'reembolso' ? `Acerto feito: ${brl(dif)} enviados para reembolso (${res.reembolso_numero}), já aprovado e pronto para pagar.` : r.quem === 'colaborador' ? 'Acerto feito: diferença assumida pelo colaborador.' : doFundo ? 'Acerto feito: diferença paga pelo Fundo Fixo.' : 'Acerto feito: diferença lançada em Contas a pagar.');
       navegar();
     } catch (err) { falha(err); }
   });
