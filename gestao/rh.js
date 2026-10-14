@@ -152,6 +152,13 @@ async function formColaborador(tela, c = null) {
   ['telefone', 'telefone2', 'emergencia_telefone'].forEach(n => f[n].addEventListener('input', e => { const d = soDigitos(e.target.value).slice(0, 11); e.target.value = d.length > 9 ? fmtTel(d) : d; }));
   f.cep.addEventListener('input', async e => { const d = soDigitos(e.target.value).slice(0, 8); e.target.value = fmtCEP(d);
     if (d.length === 8 && !f.logradouro.value) try { const x = await consultarCEP(d); f.logradouro.value = x.logradouro || ''; f.bairro.value = x.bairro || ''; f.cidade.value = x.localidade || ''; f.uf.value = x.uf || ''; f.numero.focus(); } catch {} });
+  ligarNovoCargo(f.cargo_id);
+  let _usCPF = null;
+  f.cpf?.addEventListener('input', async () => { const d = soDigitos(f.cpf.value); if (d.length !== 11) return;
+    _usCPF = _usCPF || await api.listar('usuarios', 'select=id,nome,email,cpf,telefone&ativo=eq.true').catch(() => []);
+    const u = _usCPF.find(x => x.cpf === d);
+    if (u && f.usuario_id && !f.usuario_id.value) { f.usuario_id.value = u.id; aviso(`Este CPF tem acesso ao sistema (${u.nome}): ligado ao colaborador.`); }
+    if (u) { ['telefone', 'email'].forEach(n => { if (f[n] && !f[n].value && u[n]) { f[n].value = u[n]; f[n].dispatchEvent(new Event('input', { bubbles: true })); } }); } });
   f.cargo_id.addEventListener('change', () => { const cg = cgs.find(x => x.id === f.cargo_id.value); if (cg?.setor_id && !f.setor_id.value) f.setor_id.value = cg.setor_id; avisoCNH(); });
   const ordemCNH = { A: 0, B: 1, AB: 1, C: 2, AC: 2, D: 3, AD: 3, E: 4, AE: 4 };
   const avisoCNH = () => {
@@ -308,6 +315,7 @@ async function painelAdmissao(box, c, adm, adms, cargo, cgs, faltam) {
         <label class="campo">Cargo *<select name="cargo" required><option value="">Selecione…</option>${cgs.filter(x => x.ativo).map(x => `<option value="${x.id}" ${x.id === c.cargo_id ? 'selected' : ''}>${esc(x.nome)}</option>`).join('')}</select></label>
         <label class="campo">Início previsto *<input type="date" name="data" required value="${c.data_admissao || ''}"></label>
         <div class="largo"><button class="btn prim">Iniciar admissão</button></div></form>` : `<p class="muted">${c.status === 'ativo' ? 'Colaborador já admitido.' : ''}</p>`}`;
+    ligarNovoCargo($('#f-adm [name=cargo]'));
     $('#f-adm')?.addEventListener('submit', async e => { e.preventDefault(); const d = formDados(e.target);
       try { await api.rpc('iniciar_admissao', { p_colaborador: c.id, p_cargo: d.cargo, p_data: d.data }); aviso('Admissão iniciada.'); navegar(); } catch (err) { falha(err); } });
     return;

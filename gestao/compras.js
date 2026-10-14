@@ -58,6 +58,7 @@ async function formRequisicao(tela, r = null) {
   }
   const [ccs, itens] = await Promise.all([centros(), r ? api.listar('requisicao_itens', `requisicao_id=eq.${r.id}&order=id`) : []]);
   const ccPadrao = r?.centro_custo_id || estado.usuario.centro_custo_id || ccs.find(c => c.codigo === 'GERAL')?.id;
+  const temAprov = r ? (await api.listar('anexos', `entidade=eq.requisicao&entidade_id=eq.${r.id}&descricao=eq.${encodeURIComponent('Aprovação do gestor')}&cancelado_em=is.null&select=id`).catch(() => [])).length > 0 : false;
   const linhaItem = (i = {}) => `<tr class="item">
       <td data-r="Descrição"><input name="i_desc" value="${esc(i.descricao || '')}" placeholder="Ex.: pneu 295/80 R22,5 liso" aria-label="Descrição"></td>
       <td data-r="Qtd."><input name="i_qtd" inputmode="decimal" value="${i.quantidade != null ? String(Number(i.quantidade)).replace('.', ',') : '1'}" aria-label="Quantidade" style="width:70px"></td>
@@ -67,7 +68,7 @@ async function formRequisicao(tela, r = null) {
       <td><button type="button" class="btn peq perigo rem" aria-label="Remover item">✕</button></td></tr>`;
   tela.innerHTML = `
     <div class="topo"><div><h1>${r ? 'Editar requisição ' + esc(r.numero) : 'Nova requisição de compra'}</h1>
-      <p class="sub">Descreva o que precisa. O valor estimado define quantas cotações Compras precisa buscar (até R$ 1.000: 1 · até R$ 5.000: 2 · acima: 3).</p></div></div>
+      <p class="sub">Descreva o que precisa e anexe a aprovação do gestor. O valor estimado define quantas cotações Compras precisa buscar (até R$ 1.000: 1 · até R$ 5.000: 2 · acima: 3).</p></div></div>
     <form class="cartao form" id="f-req">
       <label class="campo largo">Para que é a compra?<input name="justificativa" required value="${esc(r?.justificativa || '')}" placeholder="Ex.: troca dos pneus dianteiros do caminhão ABC-1D23"></label>
       <label class="campo">Centro de custo<select name="cc">${opcoes(ccs.filter(c => c.ativo), null, c => c.nome, ccPadrao, null)}</select></label>
@@ -78,7 +79,10 @@ async function formRequisicao(tela, r = null) {
         <tbody id="itens">${(itens.length ? itens : [{}]).map(linhaItem).join('')}</tbody></table></div>
         <button type="button" class="btn peq" id="mais-item" style="margin-top:8px">+ Item</button>
         <div class="conferencia" style="margin-top:10px">Total estimado: <b id="total-est">R$ 0,00</b> · <span id="min-cot" class="muted"></span></div></div>
-      <label class="campo largo">Anexos (foto, link do produto em PDF, orçamento que você já tem)<input type="file" name="arquivos" accept="image/*,application/pdf" multiple></label>
+      <label class="campo largo" style="border-left:4px solid var(--ouro);padding-left:10px">Aprovação do gestor — obrigatório para enviar a Compras
+        <input type="file" name="arq_aprov" multiple>
+        <span class="muted">Qualquer tipo de arquivo: print do WhatsApp, e-mail, PDF, foto do documento assinado, planilha…${temAprov ? ' <b>Já anexada</b> — inclua outra só se precisar.' : ''}</span></label>
+      <label class="campo largo">Outros anexos (foto, link do produto, orçamento que você já tem)<input type="file" name="arquivos" multiple></label>
       ${r ? `<div class="largo">Anexos atuais: ${await htmlAnexos('requisicao', r.id)}</div>` : ''}
       <div class="largo acoes"><button class="btn prim" value="enviar">${r && r.status !== 'rascunho' && r.status !== 'devolvida' ? 'Salvar' : 'Enviar para Compras'}</button>
         ${!r || ['rascunho', 'devolvida'].includes(r.status) ? '<button class="btn" value="rascunho">Salvar rascunho</button>' : ''}<a class="btn" href="javascript:history.back()">Cancelar</a></div>
@@ -105,6 +109,8 @@ async function formRequisicao(tela, r = null) {
     if (!its.length) return aviso('Inclua pelo menos um item.', true);
     if (its.some(i => !(i.quantidade > 0))) return aviso('Informe a quantidade de cada item.', true);
     const total = Math.round(its.reduce((s, i) => s + i.quantidade * i.valor_estimado, 0) * 100) / 100;
+    const vaiEnviar = acao === 'enviar' && (!r || ['rascunho', 'devolvida'].includes(r.status));
+    if (vaiEnviar && !temAprov && !d.arq_aprov.length) return aviso('Anexe a aprovação do gestor para enviar a requisição a Compras (ou salve como rascunho).', true);
     await ocupado(e.submitter, async () => {
       try {
         const dados = { justificativa: d.justificativa, centro_custo_id: d.cc || null, data_necessidade: d.data_necessidade || null, urgencia: d.urgencia, valor_estimado: total };
@@ -119,8 +125,9 @@ async function formRequisicao(tela, r = null) {
           id = nova.id; numero = nova.numero;
         }
         await api.inserir('requisicao_itens', its.map(i => ({ requisicao_id: id, descricao: i.descricao, quantidade: i.quantidade, unidade: i.unidade, valor_estimado: i.valor_estimado })));
+        await anexar('requisicao', id, d.arq_aprov, 'Aprovação do gestor');
         await anexar('requisicao', id, d.arquivos);
-        if (acao === 'enviar' && (!r || ['rascunho', 'devolvida'].includes(r.status))) {
+        if (vaiEnviar) {
           await api.alterar('requisicoes', `id=eq.${id}`, { status: 'aguardando_cotacao' });
           aviso(`Requisição ${numero} enviada para Compras.`);
         } else aviso('Requisição salva.');
@@ -140,6 +147,7 @@ rota('/compras/requisicoes/ver/:id', async (tela, id) => {
     api.listar('pedidos', `requisicao_id=eq.${id}&order=criado_em.desc`).catch(() => [])]);
   const dono = r.solicitante_id === estado.usuario.id;
   const cot = cots.find(c => c.status !== 'cancelada');
+  if (cots.length) { const nps = await api.listar('cotacao_propostas', `cotacao_id=${lista(cots.map(c => c.id))}&select=cotacao_id`).catch(() => []); cots.forEach(c => (c._props = nps.some(p => p.cotacao_id === c.id))); }
   const podeEditar = (dono && ['rascunho', 'devolvida'].includes(r.status)) || (ehComprador() && ['aguardando_cotacao', 'em_cotacao'].includes(r.status));
   tela.innerHTML = `
     <div class="topo"><div><h1>Requisição ${esc(r.numero)}</h1><p class="sub">${tag(r.status)} · ${esc(r.justificativa || '')}</p></div>
@@ -147,7 +155,8 @@ rota('/compras/requisicoes/ver/:id', async (tela, id) => {
         ${ehComprador() && ['aguardando_cotacao', 'em_cotacao'].includes(r.status) ? `<button class="btn prim" id="cotar">${cot ? 'Abrir cotação' : 'Iniciar cotação'}</button>` : ''}
         ${dono && ['rascunho', 'devolvida'].includes(r.status) ? '<button class="btn prim" id="enviar">Enviar para Compras</button>' : ''}
         ${podeEditar ? `<a class="btn" href="#/compras/requisicoes/editar/${id}">Editar</a>` : ''}
-        ${(dono && ['rascunho', 'devolvida', 'aguardando_cotacao'].includes(r.status)) || (ehComprador() && ['aguardando_cotacao', 'em_cotacao'].includes(r.status)) ? '<button class="btn perigo" id="cancelar">Cancelar</button>' : ''}
+        ${(dono || ehComprador()) && ['rascunho', 'devolvida', 'aguardando_cotacao', 'em_cotacao', 'aguardando_aprovacao'].includes(r.status) ? '<button class="btn perigo" id="cancelar">Cancelar</button>' : ''}
+        ${(dono || ehComprador()) && ['rascunho', 'devolvida', 'aguardando_cotacao', 'cancelada'].includes(r.status) && !cots.some(c => c.status !== 'cancelada' && c._props) ? '<button class="btn perigo" id="excluir">Excluir</button>' : ''}
         <button class="btn" onclick="history.back()">Voltar</button></div></div>
     <div class="cartao"><div class="form">
       <div><div class="muted">Solicitante</div><b>${esc(r.solic?.nome || '')}</b><div class="muted">${dataHoraBR(r.criado_em)}</div></div>
@@ -163,17 +172,27 @@ rota('/compras/requisicoes/ver/:id', async (tela, id) => {
   $('#cotar')?.addEventListener('click', async e => ocupado(e.target, async () => {
     try { const c = await api.rpc('abrir_cotacao', { p_requisicao: id }); location.hash = '#/compras/cotacoes/ver/' + c; } catch (err) { falha(err); }
   }));
-  $('#enviar')?.addEventListener('click', async e => ocupado(e.target, async () => {
-    try { await api.alterar('requisicoes', `id=eq.${id}`, { status: 'aguardando_cotacao' }); aviso('Enviada para Compras.'); navegar(); } catch (err) { falha(err); }
-  }));
+  $('#enviar')?.addEventListener('click', async e => {
+    const tem_ = (await api.listar('anexos', `entidade=eq.requisicao&entidade_id=eq.${id}&descricao=eq.${encodeURIComponent('Aprovação do gestor')}&cancelado_em=is.null&select=id`).catch(() => [])).length;
+    let arqs = [];
+    if (!tem_) {
+      const m = await modal(`<form><h2>Aprovação do gestor</h2><p>Para enviar a Compras, anexe a aprovação do gestor (print, e-mail, PDF, foto… qualquer arquivo).</p>
+        <label class="campo largo">Arquivo(s)<input type="file" name="arq" multiple required></label>
+        <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Anexar e enviar</button></div></form>`, { validar: d => d.arq.length ? null : 'Escolha o arquivo.' });
+      if (!m) return; arqs = m.arq;
+    }
+    await ocupado(e.target, async () => {
+      try { await anexar('requisicao', id, arqs, 'Aprovação do gestor'); await api.alterar('requisicoes', `id=eq.${id}`, { status: 'aguardando_cotacao' }); aviso('Enviada para Compras.'); navegar(); } catch (err) { falha(err); }
+    });
+  });
   $('#cancelar')?.addEventListener('click', async () => {
-    const motivo = await confirmar('Cancelar esta requisição?', { comMotivo: true, botao: 'Cancelar requisição' });
+    const motivo = await confirmar(`Cancelar esta requisição?${cot ? ' A cotação e a aprovação pendente também são canceladas.' : ''}`, { comMotivo: true, botao: 'Cancelar requisição' });
     if (!motivo) return;
-    try {
-      if (cot && cot.status === 'aberta') await api.alterar('cotacoes', `id=eq.${cot.id}`, { status: 'cancelada', cancelado_em: new Date().toISOString(), cancelado_por: estado.usuario.id, motivo_cancelamento: motivo });
-      await api.alterar('requisicoes', `id=eq.${id}`, { status: 'cancelada', cancelado_em: new Date().toISOString(), cancelado_por: estado.usuario.id, motivo_cancelamento: motivo });
-      aviso('Requisição cancelada.'); navegar();
-    } catch (err) { falha(err); }
+    try { await api.rpc('cancelar_requisicao', { p_requisicao: id, p_motivo: motivo }); aviso('Requisição cancelada.'); navegar(); } catch (err) { falha(err); }
+  });
+  $('#excluir')?.addEventListener('click', async () => {
+    if (!await confirmar(`Excluir a requisição ${r.numero}? Ela some da lista (só é possível porque ainda não foi cotada).`, { botao: 'Excluir requisição' })) return;
+    try { await api.rpc('excluir_requisicao', { p_requisicao: id }); aviso(`Requisição ${r.numero} excluída.`); location.hash = '#/compras/requisicoes'; } catch (err) { falha(err); }
   });
 });
 
@@ -228,7 +247,10 @@ rota('/compras/cotacoes/ver/:id', async (tela, id) => {
   tela.innerHTML = `
     <div class="topo"><div><h1>Cotação ${esc(c.numero)}</h1><p class="sub">${tag(c.status)} · Requisição <a href="#/compras/requisicoes/ver/${c.requisicao_id}">${esc(r?.numero || '')}</a> · ${esc(r?.justificativa || '')}</p></div>
       <div class="acoes">${aberta ? '<button class="btn" id="nova-prop">+ Proposta</button><button class="btn prim" id="enviar">Enviar para aprovação</button>' : ''}
-        ${souAprovador ? '<a class="btn prim" href="#/aprovacoes">Decidir em Aprovações</a>' : ''}<button class="btn" onclick="history.back()">Voltar</button></div></div>
+        ${souAprovador ? '<a class="btn prim" href="#/aprovacoes">Decidir em Aprovações</a>' : ''}
+        ${ehComprador() && ['aberta', 'aguardando_aprovacao'].includes(c.status) ? '<button class="btn perigo" id="cancelar-cot">Cancelar compra</button>' : ''}
+        <button class="btn" onclick="history.back()">Voltar</button></div></div>
+    ${c.status === 'aguardando_aprovacao' && c.comprador_id === estado.usuario.id ? '<div class="cartao alerta-obs">Esta compra está com o aprovador. Quem cotou não aprova a própria compra; se foi um teste ou não vai mais acontecer, use <b>Cancelar compra</b>.</div>' : ''}
     ${c.status === 'aberta' && c.comentario_aprovacao ? `<div class="cartao alerta-obs"><b>Devolvida pelo aprovador:</b> ${esc(c.comentario_aprovacao)}</div>` : ''}
     <div class="grade" style="margin-bottom:16px">
       <div class="cartao kpi ${c.status === 'aberta' && props.length < exig ? 'alerta' : ''}"><div class="n">${props.length} / ${exig}</div><div class="r">propostas (mínimo obrigatório)</div></div>
@@ -249,6 +271,11 @@ rota('/compras/cotacoes/ver/:id', async (tela, id) => {
     <div class="cartao"><h2>Itens pedidos</h2>${tabelaItens(itens.map(i => ({ ...i, valor: i.valor_estimado })), 'Valor unit. estimado')}</div>
     ${aprs.length ? `<div class="cartao"><h2>Aprovação</h2><ul class="lista-simples">${aprs.map(a => `<li><span>${tag(a.decisao)} ${a.comentario ? esc(a.comentario) : ''}</span><span class="muted">${dataHoraBR(a.decidido_em || a.solicitado_em)}</span></li>`).join('')}</ul></div>` : ''}`;
 
+  $('#cancelar-cot')?.addEventListener('click', async () => {
+    const motivo = await confirmar('Cancelar esta compra? A requisição, a cotação e a aprovação pendente são canceladas (o histórico fica guardado).', { comMotivo: true, botao: 'Cancelar compra' });
+    if (!motivo) return;
+    try { await api.rpc('cancelar_requisicao', { p_requisicao: c.requisicao_id, p_motivo: motivo }); aviso('Compra cancelada.'); navegar(); } catch (err) { falha(err); }
+  });
   const formProposta = async (p = {}) => {
     const fsAtivos = forns.filter(f => f.ativo);
     return modal(`<form><h2>${p.id ? 'Editar proposta' : 'Nova proposta'}</h2><div class="form">
@@ -263,7 +290,7 @@ rota('/compras/cotacoes/ver/:id', async (tela, id) => {
       <label class="campo">Validade da proposta<input type="date" name="validade" value="${p.validade || ''}"></label>
       <label class="campo largo">O que está incluso (marca, modelo, frete)<input name="itens" value="${esc(p.itens_descricao || '')}"></label>
       <label class="campo largo">Observação<input name="obs" value="${esc(p.observacao || '')}"></label>
-      <label class="campo largo">Orçamento (PDF ou foto)${p.id ? '' : ' — obrigatório'}<input type="file" name="arquivos" accept="image/*,application/pdf" multiple></label>
+      <label class="campo largo">Orçamento (qualquer arquivo)${p.id ? '' : ' — obrigatório'}<input type="file" name="arquivos" multiple></label>
       ${p.id ? '' : '<label class="check largo"><input type="checkbox" name="verbal"> Orçamento por telefone/WhatsApp sem documento (explique na observação)</label>'}</div>
       <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Salvar</button></div></form>`, {
       aoAbrir: raiz => { const f = $('form', raiz); f.forn.onchange = () => { $('#novo-forn', raiz).hidden = f.forn.value !== 'novo'; };
@@ -384,7 +411,7 @@ rota('/compras/pedidos/ver/:id', async (tela, id) => {
   const anx = {}; await Promise.all(recs.map(async x => (anx[x.id] = await htmlAnexos('recebimento', x.id))));
   tela.innerHTML = `
     <div class="topo"><div><h1>Pedido ${esc(p.numero)}</h1><p class="sub">${tag(p.status)} · ${esc(nomeForn(forn))} · <b>${brl(p.valor_total)}</b></p></div>
-      <div class="acoes">${podeReceber ? '<button class="btn ok" id="receber">Registrar recebimento (NF)</button>' : ''}
+      <div class="acoes">${podeReceber ? '<button class="btn ok" id="receber">Registrar recebimento (nota/recibo)</button>' : ''}
         <button class="btn" id="imprimir">Imprimir pedido</button>
         ${ehComprador() && p.status === 'emitido' ? '<button class="btn perigo" id="cancelar">Cancelar pedido</button>' : ''}
         <button class="btn" onclick="history.back()">Voltar</button></div></div>
@@ -398,10 +425,10 @@ rota('/compras/pedidos/ver/:id', async (tela, id) => {
       ${p.motivo_cancelamento ? `<div class="largo alerta-obs"><b>Cancelado:</b> ${esc(p.motivo_cancelamento)}</div>` : ''}
     </div></div>
     <div class="cartao"><h2>Itens</h2>${tabelaItens(itens.map(i => ({ ...i, valor: i.valor_unitario })))}</div>
-    ${recs.length ? `<div class="cartao"><h2>Recebimento</h2><ul class="lista-simples">${recs.map(x => `<li style="flex-wrap:wrap"><span>${dataBR(x.data_recebimento)} · NF ${esc(x.numero_nf || '')} ${tag(x.status)}
+    ${recs.length ? `<div class="cartao"><h2>Recebimento</h2><ul class="lista-simples">${recs.map(x => `<li style="flex-wrap:wrap"><span>${dataBR(x.data_recebimento)} · ${esc(x.tipo_documento || 'NF')} ${esc(x.numero_nf || '')}${x.forma_pagamento ? ' · ' + esc(x.forma_pagamento) : ''} ${tag(x.status)}
         ${x.titulo_id && veTudo() ? ` · <a href="#/financeiro/pagar/ver/${x.titulo_id}">conta a pagar</a>` : ''}</span><b>${brl(x.valor_nf)}</b>
         ${x.divergencia ? `<div style="flex-basis:100%" class="alerta-obs">Divergência: ${esc(x.divergencia)}</div>` : ''}
-        <div style="flex-basis:100%"><span class="muted">Nota fiscal:</span> ${anx[x.id]}</div></li>`).join('')}</ul></div>` : ''}`;
+        <div style="flex-basis:100%"><span class="muted">Documento:</span> ${anx[x.id]}</div></li>`).join('')}</ul></div>` : ''}`;
 
   $('#imprimir').onclick = () => imprimirPedido(p, forn, itens, r);
   $('#cancelar')?.addEventListener('click', async () => {
@@ -419,20 +446,28 @@ rota('/compras/pedidos/ver/:id', async (tela, id) => {
       for (let k = 0; k < n; k++) ps.push({ vencimento: somaDias(primeiro, k * intervalo), valor: k === n - 1 ? Math.round((total - base * (n - 1)) * 100) / 100 : base });
       return ps;
     };
-    const venc1 = somaDias(hojeISO(), /(\d+)\s*d/i.test(p.condicao_pagamento || '') ? Number(p.condicao_pagamento.match(/(\d+)\s*d/i)[1]) : 30);
+    const prazoForn = forn?.prazo_faturamento_dias;
+    const prazo = prazoForn != null ? prazoForn : /(\d+)\s*d/i.test(p.condicao_pagamento || '') ? Number(p.condicao_pagamento.match(/(\d+)\s*d/i)[1]) : /vista/i.test(p.condicao_pagamento || '') ? 0 : 30;
+    const venc1 = somaDias(hojeISO(), prazo);
     const res = await modal(`<form><h2>Recebimento do pedido ${esc(p.numero)}</h2>
-      <p class="muted">Confira a mercadoria e a nota. Ao confirmar, a conta a pagar é criada para o Financeiro.</p><div class="form">
+      <p class="muted">Confira a mercadoria e o documento. Ao confirmar, a conta a pagar vai pronta para o Financeiro (valor, vencimento, documento e anexos).</p><div class="form">
       <label class="campo">Data do recebimento<input type="date" name="data" value="${hojeISO()}" required></label>
-      <label class="campo">Nº da nota fiscal<input name="nf" required></label>
-      <label class="campo">Valor da nota (R$)<input name="valor" inputmode="decimal" value="${Number(p.valor_total).toFixed(2).replace('.', ',')}" required></label>
+      <label class="campo">Tipo de documento<select name="tipo">${['NF', 'NFS-e', 'Cupom fiscal', 'Recibo', 'Fatura', 'Outro'].map(t => `<option ${t === 'NF' ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+      <label class="campo">Nº do documento<input name="nf" required></label>
+      <label class="campo">Valor do documento (R$)<input name="valor" inputmode="decimal" value="${Number(p.valor_total).toFixed(2).replace('.', ',')}" required></label>
+      <label class="campo">Forma de pagamento<select name="forma" required><option value="">Selecione…</option>${['Boleto', 'Pix', 'Transferência (TED/DOC)', 'Cartão', 'Débito automático', 'Dinheiro'].map(t => `<option ${/boleto/i.test(p.condicao_pagamento || '') && t === 'Boleto' || /pix/i.test(p.condicao_pagamento || '') && t === 'Pix' ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+      <label class="check"><input type="checkbox" name="avista" ${prazo === 0 ? 'checked' : ''}> Pago/pagar à vista</label>
+      <div class="largo muted">${prazoForn != null ? `Prazo de faturamento do fornecedor: <b>${prazoForn ? prazoForn + ' dias' : 'à vista'}</b> — o vencimento já vem calculado (altere só em caso extraordinário).` : `Fornecedor sem prazo no cadastro: vencimento pela condição do pedido (${esc(p.condicao_pagamento || '30 dias')}).`}</div>
       <div class="largo conferencia" id="conf"></div>
       <label class="campo largo" id="div-campo" hidden>O que mudou em relação ao pedido? (obrigatório)<textarea name="div" rows="2"></textarea></label>
       <label class="campo">Parcelas<input name="n" inputmode="numeric" value="1"></label>
       <label class="campo">1º vencimento<input type="date" name="venc" value="${venc1}"></label>
       <label class="campo">Intervalo (dias)<input name="int" inputmode="numeric" value="30"></label>
       <div class="largo" id="parcelas"></div>
+      <label class="campo largo" id="campo-linha">Linha digitável do boleto (opcional)<input name="linha" inputmode="numeric" placeholder="Só os números"></label>
       <label class="campo largo">Observação<input name="obs"></label>
-      <label class="campo largo">Nota fiscal (PDF ou foto) — obrigatório<input type="file" name="arquivos" accept="image/*,application/pdf" multiple></label></div>
+      <label class="campo largo">Nota fiscal / recibo / cupom — obrigatório (qualquer arquivo)<input type="file" name="arquivos" multiple></label>
+      <label class="campo largo" id="campo-boleto">Boleto (obrigatório quando a forma é boleto)<input type="file" name="boletos" multiple></label></div>
       <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn ok">Confirmar recebimento</button></div></form>`, {
       aoAbrir: raiz => {
         const f = $('form', raiz);
@@ -445,14 +480,21 @@ rota('/compras/pedidos/ver/:id', async (tela, id) => {
           $('#parcelas', raiz).innerHTML = ps.length ? '<div class="muted">Parcelas (pode ajustar):</div>' + ps.map((x, k) => `<div class="lado" style="gap:8px;margin:4px 0">
             <span class="nowrap">${k + 1}ª</span><input type="date" class="pv" value="${x.vencimento}" aria-label="Vencimento ${k + 1}"><input class="pval" inputmode="decimal" value="${x.valor.toFixed(2).replace('.', ',')}" aria-label="Valor ${k + 1}" style="width:120px"></div>`).join('') : '';
         };
-        ['valor', 'n', 'venc', 'int'].forEach(k => f[k].addEventListener('input', sinc)); sinc();
+        ['valor', 'n', 'venc', 'int'].forEach(k => f[k].addEventListener('input', sinc));
+        const forma = () => { const b = f.forma.value === 'Boleto'; $('#campo-linha', raiz).hidden = !b; $('#campo-boleto', raiz).hidden = !b; };
+        f.forma.addEventListener('change', forma); forma();
+        f.avista.addEventListener('change', () => { f.venc.value = f.avista.checked ? f.data.value : somaDias(f.data.value, prazo || 30); if (f.avista.checked) f.n.value = 1; sinc(); });
+        f.data.addEventListener('change', () => { f.venc.value = somaDias(f.data.value, f.avista.checked ? 0 : prazo); sinc(); });
+        sinc();
       },
       validar: d => {
         const v = num(d.valor);
-        if (!d.nf) return 'Informe o número da nota fiscal.';
-        if (!(v > 0)) return 'Informe o valor da nota.';
+        if (!d.nf) return 'Informe o número do documento.';
+        if (!(v > 0)) return 'Informe o valor do documento.';
+        if (!d.forma) return 'Informe a forma de pagamento.';
+        if (d.forma === 'Boleto' && !d.boletos.length) return 'Anexe o boleto.';
         if (Math.abs(v - Number(p.valor_total)) > 0.009 && !d.div) return 'O valor da nota é diferente do pedido: explique a divergência.';
-        if (!d.arquivos.length) return 'Anexe a nota fiscal.';
+        if (!d.arquivos.length) return 'Anexe a nota fiscal, o recibo ou o cupom.';
         const ps = $$('#parcelas .pv').map((el, k) => ({ vencimento: el.value, valor: num($$('#parcelas .pval')[k].value) || 0 }));
         if (ps.some(x => !x.vencimento || !(x.valor > 0))) return 'Confira as datas e os valores das parcelas.';
         if (Math.abs(ps.reduce((s, x) => s + x.valor, 0) - v) > 0.009) return `A soma das parcelas precisa dar ${brl(v)}.`;
@@ -461,8 +503,9 @@ rota('/compras/pedidos/ver/:id', async (tela, id) => {
     if (!res) return;
     try {
       const out = await api.rpc('registrar_recebimento', { p_pedido: id, p_data: res.data, p_nf: res.nf, p_valor_nf: num(res.valor),
-        p_parcelas: receber._parcelas, p_divergencia: res.div || null, p_obs: res.obs || null });
-      await anexarEm([['recebimento', out.recebimento], ['titulo', out.titulo]], res.arquivos);
+        p_parcelas: receber._parcelas, p_divergencia: res.div || null, p_obs: res.obs || null, p_tipo_doc: res.tipo, p_forma: res.forma, p_linha_digitavel: res.forma === 'Boleto' ? res.linha || null : null });
+      await anexarEm([['recebimento', out.recebimento], ['titulo', out.titulo]], res.arquivos, res.tipo);
+      if (res.forma === 'Boleto') await anexarEm([['titulo', out.titulo]], res.boletos, 'Boleto');
       aviso('Recebimento registrado. A conta a pagar foi criada.'); navegar();
     } catch (err) { falha(err); }
   });
@@ -470,14 +513,14 @@ rota('/compras/pedidos/ver/:id', async (tela, id) => {
 const receber = {};
 
 // Um arquivo, vários vínculos (ex.: a NF fica no recebimento e na conta a pagar)
-async function anexarEm(destinos, arquivos) {
+async function anexarEm(destinos, arquivos, descricao = null) {
   for (const original of arquivos || []) {
     const f = await prepararArquivo(original);
     const [ent0, id0] = destinos[0];
     const caminho = `${ent0}/${id0}/${Date.now()}-${nomeArquivo(f.name)}`;
     await api.enviarArquivo(caminho, f);
     await api.inserir('anexos', destinos.map(([entidade, entidade_id]) => ({ entidade, entidade_id, caminho_arquivo: caminho, nome_original: original.name,
-      tipo_mime: f.type, tamanho_bytes: f.size, enviado_por: estado.usuario.id })));
+      tipo_mime: f.type || 'application/octet-stream', tamanho_bytes: f.size, enviado_por: estado.usuario.id, descricao })));
   }
 }
 

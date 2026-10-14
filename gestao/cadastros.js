@@ -153,11 +153,53 @@ function mascaras(raiz) {
     e.target.value = d.length > 10 ? fmtTel(d) : d.length > 6 ? `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}` : d.length > 2 ? `(${d.slice(0, 2)}) ${d.slice(2)}` : d; });
 }
 
+
+// ---------- "+ Cadastrar novo cargo" em qualquer lista de cargos ----------
+function ligarNovoCargo(sel) {
+  if (!sel || sel.querySelector('option[value="__novo"]') || !tem('administrador', 'rh', 'dp')) return;
+  sel.insertAdjacentHTML('beforeend', '<option value="__novo">＋ Cadastrar novo cargo…</option>');
+  let ant = sel.value;
+  sel.addEventListener('change', async () => {
+    if (sel.value !== '__novo') { ant = sel.value; return; }
+    const ss = await cad('setores', 'select=id,nome,sigla,ativo&order=nome').catch(() => []);
+    const r = await modal(`<form><h2>Novo cargo</h2><div class="form">
+      <label class="campo largo">Nome do cargo *<input name="nome" required placeholder="Ex.: Auxiliar de logística"></label>
+      <label class="campo">CBO<input name="cbo" placeholder="Ex.: 4141-05"></label>
+      <label class="campo">Setor<select name="setor"><option value="">—</option>${ss.filter(x => x.ativo).map(x => `<option value="${x.id}">${esc(x.nome)}</option>`).join('')}</select></label>
+      <label class="check largo"><input type="checkbox" name="motorista"> É função de motorista (exige CNH)</label></div>
+      <p class="muted">Requisitos, carreira e treinamentos obrigatórios você completa depois em Cadastros › Cargos e funções.</p>
+      <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Cadastrar cargo</button></div></form>`);
+    if (!r) { sel.value = ant; return; }
+    try {
+      const [c] = await api.inserir('cargos', { nome: r.nome.trim(), cbo: r.cbo || null, setor_id: r.setor || null, motorista: !!r.motorista });
+      delete estado.cache.cargos;
+      sel.querySelector('option[value="__novo"]').insertAdjacentHTML('beforebegin', `<option value="${c.id}">${esc(c.nome)}</option>`);
+      sel.value = c.id; ant = c.id; sel.dispatchEvent(new Event('change', { bubbles: true })); aviso(`Cargo "${c.nome}" cadastrado.`);
+    } catch (err) { sel.value = ant; falha(/duplicate|unique/i.test(err.message) ? new Error('Já existe um cargo com esse nome.') : err); }
+  });
+}
+
+// ---------- Usuário puxa os dados do cadastro do RH (pelo CPF ou pelo nome completo) ----------
+async function puxarDoRH(raiz) {
+  const f = $('form', raiz), info = $('#colab-info', raiz);
+  const preencher = async filtro => {
+    const cs = await api.listar('colaboradores', `select=id,nome,cpf,telefone,email,email_corporativo,pix_chave,centro_custo_id,usuario_id,cargo:cargos(nome),setor:setores(nome)&ativo=eq.true&${filtro}&limit=2`).catch(() => []);
+    if (cs.length !== 1) return;
+    const c = cs[0], set = (n, v) => { if (v && f[n] && !f[n].value) { f[n].value = v; f[n].dispatchEvent(new Event('input', { bubbles: true })); } };
+    set('nome', c.nome); set('cpf', c.cpf); set('telefone', c.telefone); set('email', c.email_corporativo || c.email); set('chave_pix', c.pix_chave);
+    set('cargo', c.cargo?.nome); set('setor', c.setor?.nome); if (c.centro_custo_id && f.cc && !f.cc.value) f.cc.value = c.centro_custo_id;
+    f.colab_id.value = c.id;
+    info.innerHTML = `✔ Dados puxados do cadastro do RH: <b>${esc(c.nome)}</b>${c.usuario_id ? ' <span class="tag amarelo">já ligado a outro usuário</span>' : ' — o usuário fica ligado a este colaborador.'}`;
+  };
+  f.cpf?.addEventListener('input', () => { const d = soDigitos(f.cpf.value); if (d.length === 11 && cpfValido(d)) preencher('cpf=eq.' + d); });
+  f.nome?.addEventListener('change', () => { const n = f.nome.value.trim(); if (n.split(/\s+/).length >= 2) preencher('nome=ilike.' + encodeURIComponent(n)); });
+}
+
 function formUsuario(u, atuais, ccs, funcoes) {
   const novo = !u;
   return `<form><h2>${novo ? 'Cadastrar e convidar usuário' : esc(u.nome)}</h2>
-    ${novo ? '<p class="muted">A pessoa recebe um e-mail com o link para criar a senha e já entra no sistema com os perfis marcados.</p>' : `<p class="muted">${esc(u.email)}</p>`}
-    <div class="form">
+    ${novo ? '<p class="muted">A pessoa recebe um e-mail com o link para criar a senha e já entra no sistema com os perfis marcados. Se ela já está no cadastro do RH, digite o CPF (ou o nome completo): os dados vêm de lá.</p>' : `<p class="muted">${esc(u.email)}</p>`}
+    <div class="form"><input type="hidden" name="colab_id"><div class="largo muted" id="colab-info"></div>
       <label class="campo largo">Nome completo *<input name="nome" value="${esc(u?.nome || '')}" required autocomplete="off"></label>
       <label class="campo">CPF *<input name="cpf" value="${esc(fmtCPF(u?.cpf))}" inputmode="numeric" placeholder="000.000.000-00" required></label>
       ${novo ? '<label class="campo">E-mail *<input type="email" name="email" required autocomplete="off"></label>' : ''}
@@ -186,6 +228,7 @@ function formUsuario(u, atuais, ccs, funcoes) {
 
 function ligarMenus(raiz) {
   const atualiza = () => {
+    if (!$('[name=menus_padrao]', raiz)) return;   // janela já fechada
     const perfis = PERFIS.map(p => p[0]).filter(p => $(`[name=p_${p}]`, raiz)?.checked);
     $('#lista-menus', raiz).hidden = $('[name=menus_padrao]', raiz).checked;
     $$('[data-perfis]', raiz).forEach(c => { const req = c.dataset.perfis ? c.dataset.perfis.split(',') : null;
@@ -194,7 +237,7 @@ function ligarMenus(raiz) {
   raiz.addEventListener('change', atualiza); atualiza();
 }
 const menusEscolhidos = r => r.menus_padrao ? null : MENU.filter((i, k) => i[0] !== 'grupo' && r['m_' + k]).map(i => i[1]);
-const aoAbrirUsuario = raiz => { mascaras(raiz); ligarMenus(raiz); };
+const aoAbrirUsuario = raiz => { mascaras(raiz); ligarMenus(raiz); puxarDoRH(raiz); };
 
 function validarUsuario(r, todos, id) {
   const perfis = PERFIS.map(p => p[0]).filter(p => r['p_' + p]);
@@ -215,7 +258,10 @@ rota('/config/usuarios', async tela => {
   if (!tem('administrador')) { tela.innerHTML = '<div class="cartao vazio">Somente o administrador gerencia usuários.</div>'; return; }
   const [us, ps, ccs] = await Promise.all([api.listar('usuarios', 'select=*&order=nome'), api.listar('usuario_perfis', 'select=*'), centros()]);
   const perfisDe = id => ps.filter(p => p.usuario_id === id).map(p => p.perfil);
-  const funcoes = { cargos: [...new Set(us.map(u => u.cargo).filter(Boolean))].sort(), setores: us.map(u => u.setor).filter(Boolean) };
+  const cgsT = await cad('cargos', 'select=id,nome,cbo,setor_id,motorista,cnh_minima,experiencia_dias,proximo_cargo_id,requisitos_promocao,ativo&order=nome').catch(() => []);
+  const sesT = await cad('setores', 'select=id,nome,sigla,ativo&order=nome').catch(() => []);
+  const funcoes = { cargos: [...new Set([...cgsT.filter(c => c.ativo).map(c => c.nome), ...us.map(u => u.cargo).filter(Boolean)])].sort((a, b) => a.localeCompare(b, 'pt-BR')),
+                    setores: [...us.map(u => u.setor).filter(Boolean), ...sesT.filter(x => x.ativo).map(x => x.nome)] };
   const filtro = estado.params.get('ver') || 'ativos';
   const lista_ = us.filter(u => filtro === 'todos' || (filtro === 'ativos' ? u.ativo : !u.ativo));
   tela.innerHTML = `
@@ -245,6 +291,7 @@ rota('/config/usuarios', async tela => {
       await api.alterar('usuarios', `id=eq.${novo.id}`, { nome: r.nome, cpf: soDigitos(r.cpf), cargo: r.cargo, setor: r.setor,
         centro_custo_id: r.cc || null, telefone: soDigitos(r.telefone), chave_pix: r.chave_pix || null, ativo: true, menus: menusEscolhidos(r) });
       await salvarPerfis(novo.id, PERFIS.map(p => p[0]).filter(p => r['p_' + p]), []);
+      if (r.colab_id) await api.alterar('colaboradores', `id=eq.${r.colab_id}&usuario_id=is.null`, { usuario_id: novo.id }).catch(() => null);
       delete estado.cache.usuarios; aviso('Usuário cadastrado. Convite enviado para ' + email + '.'); navegar();
     } catch (err) { falha(err); }
   };
@@ -263,6 +310,7 @@ rota('/config/usuarios', async tela => {
           centro_custo_id: r.cc || null, telefone: soDigitos(r.telefone), chave_pix: r.chave_pix || null, menus: menusEscolhidos(r) });
         const sel = PERFIS.map(p => p[0]).filter(p => r['p_' + p] || (p === 'administrador' && u.id === estado.usuario.id && atuais.includes(p)));
         await salvarPerfis(u.id, sel, atuais);
+        if (r.colab_id) await api.alterar('colaboradores', `id=eq.${r.colab_id}&usuario_id=is.null`, { usuario_id: u.id }).catch(() => null);
       }
       delete estado.cache.usuarios; aviso('Usuário atualizado.'); navegar();
     } catch (err) { falha(err); }

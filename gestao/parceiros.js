@@ -30,11 +30,33 @@ function mascaraDoc(v) {
 }
 
 // Consulta pública da Receita (BrasilAPI) e dos Correios (ViaCEP)
+// Consulta de CNPJ: tenta várias bases públicas da Receita, uma depois da outra (se uma estiver fora do ar ou limitar, vai para a próxima).
+// Todas são devolvidas no mesmo formato (o da BrasilAPI).
+async function _getJSON(url, ms = 8000) {
+  const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), ms);
+  try { const r = await fetch(url, { signal: ctl.signal }); if (r.status === 404) return { _404: true }; if (!r.ok) throw new Error('HTTP ' + r.status); return await r.json(); }
+  finally { clearTimeout(t); }
+}
+const _FONTES_CNPJ = [
+  ['BrasilAPI', d => _getJSON('https://brasilapi.com.br/api/cnpj/v1/' + d), j => j],
+  ['Minha Receita', d => _getJSON('https://minhareceita.org/' + d), j => j],
+  ['CNPJ.ws', d => _getJSON('https://publica.cnpj.ws/cnpj/' + d), j => { const e = j.estabelecimento || {};
+    return { razao_social: j.razao_social, nome_fantasia: e.nome_fantasia, email: e.email, ddd_telefone_1: (e.ddd1 || '') + (e.telefone1 || ''), ddd_telefone_2: (e.ddd2 || '') + (e.telefone2 || ''),
+      cep: e.cep, descricao_tipo_de_logradouro: e.tipo_logradouro, logradouro: e.logradouro, numero: e.numero, complemento: e.complemento, bairro: e.bairro,
+      municipio: e.cidade?.nome, uf: e.estado?.sigla, descricao_situacao_cadastral: (e.situacao_cadastral || '').toUpperCase(), cnae_fiscal_descricao: e.atividade_principal?.descricao, _fonte: 'CNPJ.ws' }; }],
+  ['CNPJá', d => _getJSON('https://open.cnpja.com/office/' + d), j => { const a = j.address || {}, f = (j.phones || [])[0], f2 = (j.phones || [])[1];
+    return { razao_social: j.company?.name, nome_fantasia: j.alias, email: (j.emails || [])[0]?.address, ddd_telefone_1: f ? f.area + f.number : '', ddd_telefone_2: f2 ? f2.area + f2.number : '',
+      cep: a.zip, logradouro: a.street, numero: a.number, complemento: a.details, bairro: a.district, municipio: a.city, uf: a.state,
+      descricao_situacao_cadastral: (j.status?.text || '').toUpperCase(), cnae_fiscal_descricao: j.mainActivity?.text, _fonte: 'CNPJá' }; }],
+];
 async function consultarCNPJ(cnpj) {
-  const r = await fetch('https://brasilapi.com.br/api/cnpj/v1/' + soDigitos(cnpj));
-  if (r.status === 404) throw new Error('CNPJ não encontrado na Receita.');
-  if (!r.ok) throw new Error('A consulta da Receita não respondeu agora. Preencha manualmente ou tente de novo.');
-  return r.json();
+  const d = soDigitos(cnpj); let naoAchou = 0;
+  for (const [nome, buscar, converter] of _FONTES_CNPJ) {
+    try { const j = await buscar(d); if (j?._404) { naoAchou++; continue; } const r = converter(j); if (r?.razao_social) return { _fonte: nome, ...r }; }
+    catch { /* fora do ar ou limite de consultas: tenta a próxima */ }
+  }
+  throw new Error(naoAchou ? 'CNPJ não encontrado nas bases da Receita (confira os números; se a empresa é muito nova, pode ainda não constar). Preencha manualmente.'
+                           : 'As consultas de CNPJ não responderam agora (estão fora do ar ou sem internet). Preencha manualmente ou tente de novo em alguns minutos.');
 }
 async function consultarCEP(cep) {
   const r = await fetch(`https://viacep.com.br/ws/${soDigitos(cep)}/json/`);
@@ -225,7 +247,7 @@ async function formParceiro(tela, tabela, x = null) {
   ligarContas();
   f.documento.addEventListener('input', e => { e.target.value = mascaraDoc(e.target.value); const d = soDigitos(e.target.value);
     $('#rot-nome').textContent = d.length === 11 ? 'Nome completo' : 'Razão social';
-    if (d.length === 14 && cnpjValido(d) && !x) buscar(); });
+    if (d.length === 14 && cnpjValido(d) && (!x || soDigitos(x.documento || '') !== d)) buscar(); });
   ['telefone', 'telefone2'].forEach(n => f[n].addEventListener('input', e => { const d = soDigitos(e.target.value).slice(0, 11); e.target.value = d.length > 9 ? fmtTel(d) : d; }));
   f.cep.addEventListener('input', async e => { const d = soDigitos(e.target.value).slice(0, 8); e.target.value = fmtCEP(d);
     if (d.length === 8 && !f.logradouro.value) try { const c = await consultarCEP(d); f.logradouro.value = c.logradouro || ''; f.bairro.value = c.bairro || ''; f.cidade.value = c.localidade || ''; f.uf.value = c.uf || ''; f.numero.focus(); } catch {} });
@@ -242,7 +264,7 @@ async function formParceiro(tela, tabela, x = null) {
       set('cep', fmtCEP(r.cep)); set('logradouro', [r.descricao_tipo_de_logradouro, r.logradouro].filter(Boolean).join(' ')); set('numero', r.numero);
       set('complemento', r.complemento); set('bairro', r.bairro); set('cidade', r.municipio); set('uf', r.uf);
       f.situacao_cadastral.value = r.descricao_situacao_cadastral || '';
-      msg(`Dados da Receita preenchidos (${r.descricao_situacao_cadastral || 'situação não informada'}${r.cnae_fiscal_descricao ? ' · ' + r.cnae_fiscal_descricao : ''}). Confira e altere se precisar.`,
+      msg(`Dados da Receita preenchidos via ${r._fonte || 'consulta pública'} (${r.descricao_situacao_cadastral || 'situação não informada'}${r.cnae_fiscal_descricao ? ' · ' + r.cnae_fiscal_descricao : ''}). Confira e altere se precisar.`,
           r.descricao_situacao_cadastral && r.descricao_situacao_cadastral !== 'ATIVA');
     } catch (err) { msg(err.message, true); }
   };

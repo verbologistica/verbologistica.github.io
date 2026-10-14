@@ -145,13 +145,13 @@ async function prepararArquivo(f) {
   } catch { return f; }
 }
 
-async function anexar(entidade, id, arquivos) {
+async function anexar(entidade, id, arquivos, descricao = null) {
   for (const original of arquivos || []) {
     const f = await prepararArquivo(original);
     const caminho = `${entidade}/${id}/${Date.now()}-${nomeArquivo(f.name)}`;
     await api.enviarArquivo(caminho, f);
     await api.inserir('anexos', { entidade, entidade_id: id, caminho_arquivo: caminho, nome_original: original.name,
-                                  tipo_mime: f.type, tamanho_bytes: f.size, enviado_por: estado.usuario.id });
+                                  tipo_mime: f.type || 'application/octet-stream', tamanho_bytes: f.size, enviado_por: estado.usuario.id, descricao });
   }
 }
 
@@ -159,7 +159,7 @@ async function htmlAnexos(entidade, id) {
   const a = await api.listar('anexos', `entidade=eq.${entidade}&entidade_id=eq.${id}&cancelado_em=is.null&order=enviado_em`);
   if (!a.length) return '<span class="muted">Sem anexos</span>';
   return '<div class="anexos">' + a.map(x =>
-    `<span class="anexo" data-arquivo="${esc(x.caminho_arquivo)}">${x.tipo_mime?.includes('pdf') ? '📄' : '🖼️'} ${esc(x.nome_original || 'arquivo')}</span>`).join('') + '</div>';
+    `<span class="anexo" data-arquivo="${esc(x.caminho_arquivo)}" title="${esc(x.descricao || '')}">${x.tipo_mime?.includes('pdf') ? '📄' : x.tipo_mime?.startsWith('image/') ? '🖼️' : '📎'} ${x.descricao ? `<b>${esc(x.descricao)}:</b> ` : ''}${esc(x.nome_original || 'arquivo')}</span>`).join('') + '</div>';
 }
 
 document.addEventListener('click', async e => {
