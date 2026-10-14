@@ -594,7 +594,8 @@ rota('/inicio', async tela => {
       : '<div class="vazio">Nada em aberto.</div>'}</div>`; };
     agenda = `<div class="grade" style="grid-template-columns:repeat(auto-fit,minmax(320px,1fr))">${bloco('pagar', 'A pagar')}${bloco('receber', 'A receber')}</div>`;
   }
-  const notifs = await api.listar('notificacoes', `usuario_id=eq.${estado.usuario.id}&order=criado_em.desc&limit=8`);
+  const verAnt = estado.params?.get('avisos') === 'todos';
+  const notifs = await api.listar('notificacoes', `usuario_id=eq.${estado.usuario.id}${verAnt ? '' : '&lida=eq.false'}&order=criado_em.desc&limit=${verAnt ? 40 : 30}`);
   tela.innerHTML = `
     <div class="topo"><div><h1>Olá, ${esc(estado.usuario.nome.split(' ')[0])}</h1><p class="sub">${new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}</p></div>
       <div class="acoes"><a class="btn prim" href="#/reembolsos/novo">+ Lançar reembolso</a><a class="btn" href="#/compras/requisicoes/nova">+ Requisição de compra</a>${editaFin() ? '<a class="btn" href="#/financeiro/pagar/novo">+ Conta a pagar</a><a class="btn" href="#/financeiro/receber/novo">+ Conta a receber</a>' : ''}</div></div>
@@ -635,9 +636,13 @@ rota('/inicio', async tela => {
       ${veTudo() ? `<a class="cartao kpi ${p.a_verificar ? 'alerta' : ''}" href="#/financeiro/verificar"><div class="n">${p.a_verificar || 0}</div><div class="r">lançamentos a verificar</div></a>` : ''}
     </div>
     ${agenda}
-    <div class="cartao"><div class="topo" style="margin:0 0 6px"><h2 style="margin:0">Avisos</h2>${notifs.some(n => !n.lida) ? '<button class="btn peq" id="lidas">Marcar como lidos</button>' : ''}</div>
-      ${notifs.length ? `<ul class="lista-simples">${notifs.map(n => `<li class="${n.lida ? '' : 'nao-lida'}"><span>${n.link ? `<a href="${esc(n.link)}">${esc(n.titulo)}</a>` : esc(n.titulo)}${n.corpo ? `<br><span class="muted">${esc(n.corpo)}</span>` : ''}</span><span class="muted nowrap">${dataHoraBR(n.criado_em)}</span></li>`).join('')}</ul>`
-        : '<div class="vazio">Nenhum aviso por enquanto.</div>'}</div>`;
+    <div class="cartao"><div class="topo" style="margin:0 0 6px"><div><h2 style="margin:0">${verAnt ? 'Avisos (todos)' : 'Avisos pendentes'}</h2>
+        <p class="muted" style="margin:2px 0 0">Só você vê os seus avisos. Os de aprovação, pagamento e cotação somem sozinhos quando o assunto é resolvido.</p></div>
+        <div class="acoes">${notifs.some(n => !n.lida) ? '<button class="btn peq" id="lidas">Marcar todos como lidos</button>' : ''}<a class="btn peq" href="#/inicio${verAnt ? '' : '?avisos=todos'}">${verAnt ? 'Só pendentes' : 'Ver anteriores'}</a></div></div>
+      ${notifs.length ? `<ul class="lista-simples">${notifs.map(n => `<li class="${n.lida ? '' : 'nao-lida'}"><span>${n.link ? `<a href="${esc(n.link)}">${esc(n.titulo)}</a>` : esc(n.titulo)}${n.corpo ? `<br><span class="muted">${esc(n.corpo)}</span>` : ''}${n.resolvida_em ? ` <span class="tag verde">resolvido</span>` : ''}</span>
+        <span class="muted nowrap">${dataHoraBR(n.criado_em)}${!n.lida ? ` <button class="btn peq" data-lida="${n.id}" title="Marcar como lido">✓</button>` : ''}</span></li>`).join('')}</ul>`
+        : `<div class="vazio">${verAnt ? 'Nenhum aviso.' : 'Nenhum aviso pendente. 🎉'}</div>`}</div>`;
+  $$('[data-lida]', tela).forEach(b => b.onclick = async e => { e.preventDefault(); await api.alterar('notificacoes', `id=eq.${b.dataset.lida}`, { lida: true }); navegar(); });
   $('#lidas')?.addEventListener('click', async () => {
     await api.alterar('notificacoes', `usuario_id=eq.${estado.usuario.id}&lida=eq.false`, { lida: true }); navegar();
   });
