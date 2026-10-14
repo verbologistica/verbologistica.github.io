@@ -329,7 +329,8 @@ rota('/rh/treinamentos', async tela => {
         if (r._acao === 'desativar') { await api.alterar('treinamentos', `id=eq.${t.id}`, { ativo: false }); return navegar(); }
         const dados = { nome: r.nome, tipo: r.tipo, norma: r.norma || null, carga_horaria: num(r.carga_horaria), validade_meses: r.validade_meses ? Number(r.validade_meses) : null, conteudo: r.conteudo || null };
         let id = t?.id; if (t) await api.alterar('treinamentos', `id=eq.${id}`, dados); else [{ id }] = await api.inserir('treinamentos', dados);
-        for (const c of cgs) {
+        const todosCg = [...new Set([...cgs.map(c => c.id), ...Object.keys(r).filter(k => k.startsWith('cg_')).map(k => k.slice(3))])].map(id => ({ id }));
+        for (const c of todosCg) {
           const quer = !!r['cg_' + c.id], tem_ = tcTodos.find(x => x.treinamento_id === id && x.cargo_id === c.id);
           if (quer && !tem_) await api.inserir('treinamento_cargos', { treinamento_id: id, cargo_id: c.id });
           else if (tem_ && tem_.ativo !== quer) await api.alterar('treinamento_cargos', `id=eq.${tem_.id}`, { ativo: quer });

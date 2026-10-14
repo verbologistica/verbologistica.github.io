@@ -155,29 +155,72 @@ function mascaras(raiz) {
 
 
 // ---------- "+ Cadastrar novo cargo" em qualquer lista de cargos ----------
+// ---------- Cargo/função: em TODO campo de cargo ou função dá para cadastrar uma opção nova ----------
+const podeNovoCargo = () => tem('administrador', 'rh', 'dp');
+async function modalNovoCargo(nomeSugerido = '') {
+  const ss = await cad('setores', 'select=id,nome,sigla,ativo&order=nome').catch(() => []);
+  const r = await modal(`<form><h2>Novo cargo / função</h2><div class="form">
+    <label class="campo largo">Nome do cargo/função *<input name="nome" required value="${esc(nomeSugerido)}" placeholder="Ex.: Auxiliar de logística"></label>
+    <label class="campo">CBO<input name="cbo" placeholder="Ex.: 4141-05"></label>
+    <label class="campo">Setor<select name="setor"><option value="">—</option>${ss.filter(x => x.ativo).map(x => `<option value="${x.id}">${esc(x.nome)}</option>`).join('')}</select></label>
+    <label class="check largo"><input type="checkbox" name="motorista"> É função de motorista (exige CNH)</label></div>
+    <p class="muted">Fica disponível em todas as listas de cargo/função do sistema. Requisitos, carreira e treinamentos obrigatórios você completa depois em Cadastros › Cargos e funções.</p>
+    <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Cadastrar</button></div></form>`);
+  if (!r) return null;
+  try {
+    const [c] = await api.inserir('cargos', { nome: r.nome.trim(), cbo: r.cbo || null, setor_id: r.setor || null, motorista: !!r.motorista });
+    delete estado.cache.cargos; aviso(`Cargo/função "${c.nome}" cadastrado.`); return c;
+  } catch (err) { falha(/duplicate|unique/i.test(err.message) ? new Error('Já existe um cargo/função com esse nome.') : err); return null; }
+}
+// lista suspensa (select) de cargo
 function ligarNovoCargo(sel) {
-  if (!sel || sel.querySelector('option[value="__novo"]') || !tem('administrador', 'rh', 'dp')) return;
-  sel.insertAdjacentHTML('beforeend', '<option value="__novo">＋ Cadastrar novo cargo…</option>');
-  let ant = sel.value;
+  if (!sel || sel.dataset.novoCargo || !podeNovoCargo()) return;
+  sel.dataset.novoCargo = '1';
+  if (!sel.querySelector('option[value="__novo"]')) sel.insertAdjacentHTML('beforeend', '<option value="__novo">＋ Cadastrar novo cargo/função…</option>');
+  let ant = sel.value === '__novo' ? '' : sel.value;
   sel.addEventListener('change', async () => {
     if (sel.value !== '__novo') { ant = sel.value; return; }
-    const ss = await cad('setores', 'select=id,nome,sigla,ativo&order=nome').catch(() => []);
-    const r = await modal(`<form><h2>Novo cargo</h2><div class="form">
-      <label class="campo largo">Nome do cargo *<input name="nome" required placeholder="Ex.: Auxiliar de logística"></label>
-      <label class="campo">CBO<input name="cbo" placeholder="Ex.: 4141-05"></label>
-      <label class="campo">Setor<select name="setor"><option value="">—</option>${ss.filter(x => x.ativo).map(x => `<option value="${x.id}">${esc(x.nome)}</option>`).join('')}</select></label>
-      <label class="check largo"><input type="checkbox" name="motorista"> É função de motorista (exige CNH)</label></div>
-      <p class="muted">Requisitos, carreira e treinamentos obrigatórios você completa depois em Cadastros › Cargos e funções.</p>
-      <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Cadastrar cargo</button></div></form>`);
-    if (!r) { sel.value = ant; return; }
-    try {
-      const [c] = await api.inserir('cargos', { nome: r.nome.trim(), cbo: r.cbo || null, setor_id: r.setor || null, motorista: !!r.motorista });
-      delete estado.cache.cargos;
-      sel.querySelector('option[value="__novo"]').insertAdjacentHTML('beforebegin', `<option value="${c.id}">${esc(c.nome)}</option>`);
-      sel.value = c.id; ant = c.id; sel.dispatchEvent(new Event('change', { bubbles: true })); aviso(`Cargo "${c.nome}" cadastrado.`);
-    } catch (err) { sel.value = ant; falha(/duplicate|unique/i.test(err.message) ? new Error('Já existe um cargo com esse nome.') : err); }
+    const c = await modalNovoCargo();
+    if (!c) { sel.value = ant; return; }
+    // a mesma opção nova aparece nas outras listas de cargo abertas na tela
+    $$('select[data-novo-cargo]').forEach(o => { const nv = o.querySelector('option[value="__novo"]'); if (nv && !o.querySelector(`option[value="${c.id}"]`)) nv.insertAdjacentHTML('beforebegin', `<option value="${c.id}">${esc(c.nome)}</option>`); });
+    sel.value = c.id; ant = c.id; sel.dispatchEvent(new Event('change', { bubbles: true }));
   });
 }
+// campo de texto de função (com sugestões): botão para cadastrar a função nova na lista oficial
+function ligarNovaFuncaoTexto(inp) {
+  if (!inp || inp.dataset.novoCargo || !podeNovoCargo()) return;
+  inp.dataset.novoCargo = '1';
+  const b = document.createElement('button'); b.type = 'button'; b.className = 'link'; b.textContent = '＋ Cadastrar nova função na lista';
+  b.style.cssText = 'display:block;margin-top:4px;font-size:12px;background:none;border:0;padding:0;color:var(--verde,#0a6);cursor:pointer;text-align:left';
+  b.onclick = async () => { const c = await modalNovoCargo(inp.value.trim()); if (!c) return;
+    inp.value = c.nome; inp.dispatchEvent(new Event('input', { bubbles: true }));
+    const dl = inp.list; if (dl && ![...dl.options].some(o => o.value === c.nome)) dl.insertAdjacentHTML('beforeend', `<option value="${esc(c.nome)}">`); };
+  inp.after(b);
+  if (!inp.getAttribute('list')) {   // sem lista de sugestões: usa a lista oficial de cargos
+    const id = 'dl-cargos-' + Math.random().toString(36).slice(2, 8);
+    inp.setAttribute('list', id); inp.insertAdjacentHTML('afterend', `<datalist id="${id}"></datalist>`);
+    cargosL().then(cs => { const dl = document.getElementById(id); if (dl) dl.innerHTML = cs.filter(c => c.ativo).map(c => `<option value="${esc(c.nome)}">`).join(''); }).catch(() => {});
+  }
+}
+// lista de marcar (chips) de cargos, ex.: treinamento obrigatório para os cargos
+function ligarNovoCargoChips(box) {
+  if (!box || box.dataset.novoCargo || !podeNovoCargo()) return;
+  box.dataset.novoCargo = '1';
+  const b = document.createElement('button'); b.type = 'button'; b.className = 'chip'; b.textContent = '＋ Novo cargo/função';
+  b.onclick = async () => { const c = await modalNovoCargo(); if (!c) return;
+    b.insertAdjacentHTML('beforebegin', `<label class="chip"><input type="checkbox" name="cg_${c.id}" checked> ${esc(c.nome)}</label>`); };
+  box.append(b);
+}
+function prepararCargos() {
+  if (!estado.usuario || !podeNovoCargo()) return;
+  $$('select[name*="cargo"]:not([data-novo-cargo])').forEach(ligarNovoCargo);
+  $$('input[name="cargo"]:not([type=hidden]):not([data-novo-cargo]), input[name="cargo_pretendido"]:not([data-novo-cargo]), input[name="funcao"]:not([data-novo-cargo])').forEach(ligarNovaFuncaoTexto);
+  $$('.chips:not([data-novo-cargo])').forEach(c => { if (c.querySelector('input[name^="cg_"]')) ligarNovoCargoChips(c); });
+}
+let _cargoPend = false;
+new MutationObserver(() => { if (_cargoPend) return; _cargoPend = true; requestAnimationFrame(() => { _cargoPend = false; try { prepararCargos(); } catch (e) { } }); })
+  .observe(document.documentElement, { childList: true, subtree: true });
 
 // ---------- Usuário puxa os dados do cadastro do RH (pelo CPF ou pelo nome completo) ----------
 async function puxarDoRH(raiz) {

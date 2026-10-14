@@ -77,11 +77,14 @@ async function ocupado(btn, fn) {
 
 // Modal genérico: devolve uma Promise com os dados do formulário (ou null se cancelar)
 function modal(html, { aoAbrir, validar } = {}) {
-  const fundo = $('#modal');
+  // se já há uma janela aberta (ex.: cadastrar cargo novo de dentro de um formulário), abre outra por cima sem perder a de baixo
+  const base = $('#modal'), empilhada = !base.hidden && !!base.innerHTML;
+  const fundo = empilhada ? Object.assign(document.createElement('div'), { className: 'modal-fundo' }) : base;
+  if (empilhada) { fundo.style.zIndex = 60 + $$('.modal-fundo').length; document.body.append(fundo); }
   fundo.innerHTML = `<div class="modal" role="dialog" aria-modal="true">${html}</div>`;
   fundo.hidden = false;
   return new Promise(resolve => {
-    const fechar = v => { fundo.hidden = true; fundo.innerHTML = ''; resolve(v); };
+    const fechar = v => { if (empilhada) fundo.remove(); else { fundo.hidden = true; fundo.innerHTML = ''; } resolve(v); };
     // só fecha se o clique COMEÇOU e TERMINOU no fundo escuro (selecionar texto e soltar fora não fecha mais)
     let desceuNoFundo = false;
     fundo.onmousedown = e => { desceuNoFundo = e.target === fundo; };
