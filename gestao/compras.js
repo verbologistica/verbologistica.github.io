@@ -222,7 +222,7 @@ rota('/compras/cotacoes', async tela => {
       ${cots.map(c => { const venc = c.propostas.find(p => p.vencedora); const menor = c.propostas.length ? Math.min(...c.propostas.map(p => Number(p.valor_total))) : 0;
         const exig = minimoCot(Number(venc?.valor_total || menor || c.req?.valor_estimado || 0));
         return `<tr class="clicavel" onclick="location.hash='#/compras/cotacoes/ver/${c.id}'"><td data-r="Nº" class="nowrap">${esc(c.numero)}</td><td data-r="Requisição">${esc(c.req?.numero || '')}</td>
-        <td data-r="Para que">${esc(c.req?.justificativa || '')}</td><td data-r="Propostas">${c.propostas.length} de ${exig} ${c.status === 'aberta' && c.propostas.length < exig ? '<span class="tag amarelo">faltam</span>' : ''}</td>
+        <td data-r="Para que">${esc(c.req?.justificativa || '')}</td><td data-r="Propostas">${c.propostas.length} de ${exig} ${c.status === 'aberta' && c.propostas.length < exig ? '<span class="tag amarelo" title="Inclua mais orçamentos ou, se não houver outro fornecedor, informe o motivo ao enviar">faltam</span>' : ''}${c.justificativa_menos_orcamentos ? ' <span class="tag" title="' + esc(c.justificativa_menos_orcamentos) + '">justificado</span>' : ''}</td>
         <td data-r="Escolhida" class="num">${venc ? brl(venc.valor_total) : '—'}</td><td data-r="Situação">${tag(c.status)}</td></tr>`; }).join('')}
     </tbody></table></div>` : '<div class="vazio">Nenhuma cotação.</div>'}</div>`;
   $('#filtros').onsubmit = e => { e.preventDefault(); location.hash = '#/compras/cotacoes?status=' + formDados(e.target).status; };
@@ -255,7 +255,7 @@ rota('/compras/cotacoes/ver/:id', async (tela, id) => {
     ${c.status === 'aguardando_aprovacao' && c.comprador_id === estado.usuario.id ? '<div class="cartao alerta-obs">Esta compra está com o aprovador. Quem cotou não aprova a própria compra; se foi um teste ou não vai mais acontecer, use <b>Cancelar compra</b>.</div>' : ''}
     ${c.status === 'aberta' && c.comentario_aprovacao ? `<div class="cartao alerta-obs"><b>Devolvida pelo aprovador:</b> ${esc(c.comentario_aprovacao)}</div>` : ''}
     <div class="grade" style="margin-bottom:16px">
-      <div class="cartao kpi ${c.status === 'aberta' && props.length < exig ? 'alerta' : ''}"><div class="n">${props.length} / ${exig}</div><div class="r">propostas (mínimo obrigatório)</div></div>
+      <div class="cartao kpi ${c.status === 'aberta' && props.length < exig ? 'alerta' : ''}"><div class="n">${props.length} / ${exig}</div><div class="r">propostas (mínimo obrigatório)${c.status === 'aberta' && props.length && props.length < exig ? '<br><span style="color:var(--texto)">Sem outro fornecedor possível? Envie para aprovação informando o motivo.</span>' : ''}</div></div>
       <div class="cartao kpi"><div class="n" style="font-size:22px">${brl(r?.valor_estimado)}</div><div class="r">estimado na requisição</div></div>
       <div class="cartao kpi"><div class="n" style="font-size:22px">${props.length ? brl(menor) : '—'}</div><div class="r">menor proposta</div></div>
       ${venc ? `<div class="cartao kpi"><div class="n" style="font-size:22px">${brl(venc.valor_total)}</div><div class="r">escolhida · ${esc(nomeForn(fs[venc.fornecedor_id]))}</div></div>` : ''}
@@ -268,6 +268,7 @@ rota('/compras/cotacoes/ver/:id', async (tela, id) => {
           <td data-r="Pagamento">${esc(p.condicao_pagamento || '—')}</td><td data-r="Validade">${p.validade ? dataBR(p.validade) : '—'}</td><td data-r="Orçamento">${anx[p.id]}</td>
           <td>${aberta ? `<button class="btn peq" data-edit="${p.id}">Editar</button> <button class="btn peq perigo" data-del="${p.id}">Excluir</button>` : ''}</td></tr>`).join('')}
       </tbody></table></div>` : '<div class="vazio">Nenhuma proposta ainda. Clique em “+ Proposta” para incluir cada orçamento recebido.</div>'}
+      ${c.justificativa_menos_orcamentos ? `<p class="alerta-obs" style="margin-top:10px"><b>⚠️ Menos orçamentos que o exigido (${props.length} de ${exig}):</b> ${esc(c.justificativa_menos_orcamentos)}</p>` : ''}
       ${c.justificativa_escolha ? `<p class="alerta-obs" style="margin-top:10px"><b>Por que não a mais barata:</b> ${esc(c.justificativa_escolha)}</p>` : ''}
       ${conta ? `<p class="muted">Conta do plano: ${esc(conta.codigo + ' ' + conta.nome)}</p>` : ''}</div>
     <div class="cartao"><h2>Itens pedidos</h2>${tabelaItens(itens.map(i => ({ ...i, valor: i.valor_estimado })), 'Valor unit. estimado')}</div>
@@ -337,21 +338,24 @@ rota('/compras/cotacoes/ver/:id', async (tela, id) => {
           <span>${esc(nomeForn(fs[p.fornecedor_id]))} · <b>${brl(p.valor_total)}</b>${Number(p.valor_total) === menor ? ' <span class="tag azul">Menor preço</span>' : ''}</span></label>`).join('')}</div>
         <div class="largo conferencia" id="regra"></div>
         <label class="campo largo">Conta do plano de contas<select name="conta" required>${await opcoesContas(c.conta_id, ['custo', 'despesa', 'investimento'])}</select></label>
+        <label class="campo largo" id="menos-campo">Por que há menos orçamentos que o exigido? *<textarea name="menos" rows="3" placeholder="Ex.: fornecedor exclusivo/representante único da marca; peça original só vendida pelo fabricante; não há outro fornecedor na região.">${esc(c.justificativa_menos_orcamentos || '')}</textarea>
+          <span class="muted">Situação excepcional: a compra segue com os orçamentos disponíveis e o motivo vai em destaque para o aprovador.</span></label>
         <label class="campo largo" id="just-campo">Por que não a mais barata?<textarea name="just" rows="3">${esc(c.justificativa_escolha || '')}</textarea></label></div>
       <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Enviar para aprovação</button></div></form>`, {
       aoAbrir: raiz => {
         const f = $('form', raiz);
         const sinc = () => { const p = props.find(x => x.id === f.venc.value); const ex = minimoCot(Number(p.valor_total));
-          $('#regra', raiz).innerHTML = `Compra de <b>${brl(p.valor_total)}</b>: mínimo de <b>${ex}</b> cotação(ões) · esta tem <b>${props.length}</b> ${props.length < ex ? '<span class="tag vermelho">faltam ' + (ex - props.length) + '</span>' : '<span class="tag verde">ok</span>'}`;
+          $('#regra', raiz).innerHTML = `Compra de <b>${brl(p.valor_total)}</b>: mínimo de <b>${ex}</b> cotação(ões) · esta tem <b>${props.length}</b> ${props.length < ex ? '<span class="tag amarelo">faltam ' + (ex - props.length) + ' — informe o motivo abaixo</span>' : '<span class="tag verde">ok</span>'}`;
+          $('#menos-campo', raiz).hidden = props.length >= ex;
           $('#just-campo', raiz).hidden = Number(p.valor_total) <= menor; };
         $$('[name=venc]', raiz).forEach(x => (x.onchange = sinc)); sinc();
       },
       validar: d => { const p = props.find(x => x.id === d.venc); if (!p) return 'Escolha a proposta.';
-        if (props.length < minimoCot(Number(p.valor_total))) return `Para compras de ${brl(p.valor_total)} são obrigatórias ${minimoCot(Number(p.valor_total))} cotações.`;
+        if (props.length < minimoCot(Number(p.valor_total)) && String(d.menos || '').trim().length < 15) return `Para compras de ${brl(p.valor_total)} são exigidas ${minimoCot(Number(p.valor_total))} cotações e esta tem ${props.length}. Explique o motivo (pelo menos uma frase).`;
         if (!d.conta) return 'Escolha a conta do plano de contas.';
         if (Number(p.valor_total) > menor && !d.just) return 'Explique por que não escolheu a mais barata.'; return null; } });
     if (!r2) return;
-    try { await api.rpc('enviar_cotacao', { p_cotacao: id, p_vencedora: r2.venc, p_conta: r2.conta, p_justificativa: r2.just || null });
+    try { await api.rpc('enviar_cotacao', { p_cotacao: id, p_vencedora: r2.venc, p_conta: r2.conta, p_justificativa: r2.just || null, p_justificativa_menos: props.length < minimoCot(Number(props.find(x => x.id === r2.venc)?.valor_total || 0)) ? r2.menos : null });
           aviso('Compra enviada para aprovação.'); navegar(); } catch (err) { falha(err); }
   });
 });
@@ -373,6 +377,7 @@ async function cartoesCotacao(pend) {
       <p style="margin:4px 0 8px">${esc(c.req?.justificativa || '')} ${c.req?.urgencia === 'alta' ? '<span class="tag vermelho">Urgente</span>' : ''}</p>
       <ul class="lista-simples">${ps.map(p => `<li><span>${p.vencedora ? '✅ ' : ''}${esc(nomeForn(fs[p.fornecedor_id]))}${p.prazo_entrega_dias != null ? ` · ${p.prazo_entrega_dias} dia(s)` : ''}${p.condicao_pagamento ? ' · ' + esc(p.condicao_pagamento) : ''}</span>
         <b>${brl(p.valor_total)}${Number(p.valor_total) === menor ? ' <span class="tag azul">menor</span>' : ''}</b></li>`).join('')}</ul>
+      ${c.justificativa_menos_orcamentos ? `<p class="alerta-obs"><b>⚠️ Só ${ps.length} orçamento(s) (exigido: ${minimoCot(Number(v.valor_total || 0))}). Motivo:</b> ${esc(c.justificativa_menos_orcamentos)}</p>` : ''}
       ${c.justificativa_escolha ? `<p class="alerta-obs"><b>Por que não a mais barata:</b> ${esc(c.justificativa_escolha)}</p>` : ''}
       <div class="acoes" style="margin-top:12px"><button class="btn ok peq" data-d="aprovado">Aprovar compra</button>
         <button class="btn peq" data-d="devolvido">Devolver p/ Compras</button><button class="btn perigo peq" data-d="reprovado">Reprovar</button>
