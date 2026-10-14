@@ -238,99 +238,107 @@ const P_MAN = ['administrador', 'manutencao', 'operacao', 'diretoria'];
 const P_OP = ['administrador', 'operacao', 'diretoria'];
 const P_SSMA = ['administrador', 'ssma', 'rh', 'dp', 'diretoria'];
 const MENU = [
+  // [nome, rota, perfis (null = todos), ícone, pendência, sub-item]  ·  ['grupo', nome, ícone]  ·  ['sub', título da seção]
   ['Início', '#/inicio', null, '🏠'],
   ['Aprovações', '#/aprovacoes', null, '✅', 'aprovar'],
-  ['Meus reembolsos', '#/reembolsos', null, '🧾', 'devolvidos'],
-  ['Meus adiantamentos', '#/adiantamentos', null, '💵'],
-  ['grupo', 'Compras'],
+  ['grupo', 'Meu espaço', '👤'],
+  ['Meus reembolsos', '#/reembolsos', null, '🧾', 'devolvidos', true],
+  ['Meus adiantamentos', '#/adiantamentos', null, '💵', null, true],
+  ['Meus itens', '#/meus-itens', null, '🎒', null, true],
+  ['Minha jornada', '#/operacao/jornada', [...P_OP, 'motorista'], '⏱️', null, true],
+  ['Pesquisa de clima', '#/clima', null, '💬', 'pesquisa_aberta', true],
+  ['Registrar não conformidade', '#/qualidade/nc/nova', null, '📝', null, true],
+  ['grupo', 'Biblioteca', '📚'],
+  ['Modelos de documentos', '#/modelos', null, '📄', null, true],
+  ['Documentos da qualidade', '#/qualidade/documentos', null, '📘', 'qual_docs_ler', true],
+  ['grupo', 'Compras', '🛒'],
   ['Requisições', '#/compras/requisicoes', null, '🛒', null, true],
   ['Cotações', '#/compras/cotacoes', [...P_FIN, 'comprador', 'aprovador'], '📊', 'requisicoes_a_cotar', true],
   ['Pedidos', '#/compras/pedidos', null, '📦', 'pedidos_a_receber', true],
-  ['grupo', 'Financeiro'],
+  ['grupo', 'Financeiro', '💰'],
   ['Contas a pagar', '#/financeiro/pagar', [...P_FIN, 'comprador'], '💳', 'sem_comprovante', true],
   ['Contas a receber', '#/financeiro/receber', P_FIN, '📥', null, true],
   ['Reembolsos', '#/financeiro/reembolsos', [...P_FIN, 'aprovador'], '💰', 'reembolsos_a_pagar', true],
-  ['Fundo Fixo', '#/financeiro/fundo', P_FIN, '🪙', null, true],
   ['Adiantamentos', '#/financeiro/adiantamentos', P_FIN, '💵', 'prestacao_vencida', true],
+  ['Fundo Fixo', '#/financeiro/fundo', P_FIN, '🪙', null, true],
   ['A verificar', '#/financeiro/verificar', P_FIN, '⚠️', 'a_verificar', true],
-  ['grupo', 'Cadastros'],
-  ['Fornecedores', '#/cadastros/fornecedores', [...P_FIN, 'comprador'], '🏢', null, true],
-  ['Clientes', '#/cadastros/clientes', [...P_FIN, 'operacao'], '🤝', null, true],
-  ['Plano de contas', '#/cadastros/plano_contas', P_FIN, '📚', null, true],
-  ['Centros de custo', '#/cadastros/centros_custo', P_FIN, '🎯', null, true],
-  ['Bancos e caixa', '#/cadastros/contas_bancarias', P_FIN, '🏦', null, true],
+  ['grupo', 'Operação', '🚚'],
+  ['sub', 'Transporte'],
+  ['Painel do CCO', '#/operacao', [...P_OP, 'manutencao'], '📡', 'viagens_atrasadas', true],
+  ['Viagens', '#/operacao/viagens', [...P_OP, 'financeiro', 'manutencao'], '🛣️', 'viagens_em_transito', true],
+  ['Controle de jornada', '#/operacao/jornadas', [...P_OP, 'rh', 'dp'], '📋', 'jornada_alertas', true],
+  ['Ocorrências e multas', '#/operacao/ocorrencias', [...P_OP, 'rh', 'dp', 'financeiro'], '🚧', 'multas_indicar', true],
+  ['sub', 'Frota'],
   ['Equipamentos', '#/cadastros/equipamentos', [...P_FIN, 'operacao', 'manutencao'], '🚚', null, true],
   ['Documentos a vencer', '#/frota/documentos', [...P_FIN, 'operacao', 'manutencao'], '📑', 'docs_vencendo', true],
-  ['grupo', 'RH'],
-  ['Painel do RH', '#/rh', P_RH, '🧑‍💼', null, true],
-  ['Colaboradores', '#/rh/colaboradores', P_RH, '👷', null, true],
-  ['Admissões', '#/rh/admissoes', P_RH, '📝', 'admissoes_andamento', true],
-  ['Documentos dos colaboradores', '#/rh/documentos', P_RH, '🪪', 'rh_docs_vencendo', true],
-  ['Cargos e funções', '#/cadastros/cargos', P_RH, '🏷️', null, true],
-  ['Férias', '#/rh/ferias', P_RH, '🏖️', 'ferias_vencendo', true],
-  ['Treinamentos', '#/rh/treinamentos', P_RH, '🎓', 'treinamentos_pendentes', true],
-  ['Avaliações', '#/rh/avaliacoes', [...P_RH, 'aprovador'], '📈', null, true],
-  ['Recrutamento', '#/rh/recrutamento', P_RH, '🔍', 'vagas_abertas', true],
-  ['Banco de talentos', '#/rh/talentos', P_RH, '🗃️', null, true],
-  ['Ocorrências disciplinares', '#/rh/disciplinar', P_RH, '⚖️', null, true],
-  ['Desligamentos', '#/rh/desligamentos', P_RH, '🚪', 'desligamentos_andamento', true],
-  ['Pesquisas de clima', '#/rh/clima', P_RH, '🌡️', null, true],
-  ['Organograma', '#/rh/organograma', P_RH, '🏛️', null, true],
-  ['Promoções e cursos', '#/rh/desenvolvimento', P_RH, '🚀', null, true],
-  ['Tipos de documento', '#/cadastros/rh_tipos_documento', ['administrador', 'rh'], '🗂️', null, true],
-  ['grupo', 'Departamento Pessoal'],
-  ['Painel do DP', '#/dp', ['administrador', 'dp', 'diretoria'], '🧮', 'dp_a_importar', true],
-  ['Folha do mês', '#/dp/folha', ['administrador', 'dp', 'rh', 'diretoria'], '💼', 'dp_lancamentos_pendentes', true],
-  ['Benefícios', '#/dp/beneficios', ['administrador', 'dp', 'rh'], '🎁', null, true],
-  ['Rubricas da folha', '#/dp/rubricas', ['administrador', 'dp'], '📒', null, true],
-  ['grupo', 'Almoxarifado e Patrimônio'],
+  ['Abastecimentos', '#/operacao/abastecimentos', [...P_OP, 'financeiro', 'comprador', 'manutencao'], '⛽', 'abast_alertas', true],
+  ['grupo', 'Manutenção', '🛠️'],
+  ['Painel da manutenção', '#/manut', P_MAN, '🛠️', 'manut_preventivas_vencidas', true],
+  ['Ordens de serviço', '#/manut/os', [...P_MAN, 'almoxarifado', 'financeiro'], '🧰', 'manut_os_abertas', true],
+  ['Planos preventivos', '#/manut/preventivas', P_MAN, '🗓️', 'manut_preventivas_proximas', true],
+  ['Pneus', '#/manut/pneus', P_MAN, '🛞', 'pneus_sulco_baixo', true],
+  ['Checklist do veículo', '#/manut/checklist', [...P_MAN, 'motorista'], '✔️', null, true],
+  ['Km / horímetro', '#/manut/hodometro', [...P_MAN, 'motorista'], '🧭', null, true],
+  ['Custos da frota', '#/manut/custos', [...P_MAN, 'financeiro'], '📉', null, true],
+  ['grupo', 'Almoxarifado e Patrimônio', '📦'],
+  ['sub', 'Almoxarifado'],
   ['Painel do almoxarifado', '#/almox', P_ALM, '🏬', null, true],
   ['Itens e estoque', '#/almox/itens', P_ALM, '📦', 'almox_abaixo_minimo', true],
   ['Requisições de material', '#/almox/requisicoes', null, '🧾', 'almox_requisicoes_abertas', true],
   ['Entrada de material', '#/almox/entrada', ['administrador', 'almoxarifado'], '📥', null, true],
   ['Inventário', '#/almox/inventario', ['administrador', 'almoxarifado'], '🔢', null, true],
-  ['EPI e uniformes', '#/almox/epi', [...P_ALM, 'rh', 'dp'], '🦺', 'epi_troca', true],
+  ['EPI e uniformes', '#/almox/epi', [...P_ALM, 'rh', 'dp', 'ssma'], '🦺', 'epi_troca', true],
+  ['sub', 'Patrimônio'],
   ['Patrimônio', '#/patrimonio', [...P_ALM, 'rh', 'financeiro'], '🏷️', 'patrimonio_sem_termo', true],
   ['Avarias e responsabilização', '#/patrimonio/avarias', ['administrador', 'almoxarifado', 'rh', 'dp', 'diretoria'], '⚠️', 'patrimonio_avarias', true],
-  ['grupo', 'Operação'],
-  ['Painel do CCO', '#/operacao', [...P_OP, 'manutencao'], '📡', 'viagens_atrasadas', true],
-  ['Viagens', '#/operacao/viagens', [...P_OP, 'financeiro', 'manutencao'], '🛣️', 'viagens_em_transito', true],
-  ['Minha jornada', '#/operacao/jornada', [...P_OP, 'motorista'], '⏱️', null, true],
-  ['Controle de jornada', '#/operacao/jornadas', [...P_OP, 'rh', 'dp'], '📋', 'jornada_alertas', true],
-  ['Ocorrências e multas', '#/operacao/ocorrencias', [...P_OP, 'rh', 'dp', 'financeiro'], '🚧', 'multas_indicar', true],
-  ['Abastecimentos', '#/operacao/abastecimentos', [...P_OP, 'financeiro', 'comprador', 'manutencao'], '⛽', 'abast_alertas', true],
-  ['grupo', 'Manutenção'],
-  ['Painel da manutenção', '#/manut', P_MAN, '🛠️', 'manut_preventivas_vencidas', true],
-  ['Ordens de serviço', '#/manut/os', [...P_MAN, 'almoxarifado', 'financeiro'], '🧰', 'manut_os_abertas', true],
-  ['Planos preventivos', '#/manut/preventivas', P_MAN, '🗓️', 'manut_preventivas_proximas', true],
-  ['Pneus', '#/manut/pneus', P_MAN, '🛞', 'pneus_sulco_baixo', true],
-  ['Custos da frota', '#/manut/custos', [...P_MAN, 'financeiro'], '📉', null, true],
-  ['Checklist do veículo', '#/manut/checklist', [...P_MAN, 'motorista'], '✔️', null, true],
-  ['Km / horímetro', '#/manut/hodometro', [...P_MAN, 'motorista'], '🧭', null, true],
-  ['grupo', 'SSMA'],
+  ['grupo', 'RH', '👥'],
+  ['sub', 'Pessoas'],
+  ['Painel do RH', '#/rh', P_RH, '🧑‍💼', null, true],
+  ['Colaboradores', '#/rh/colaboradores', P_RH, '👷', null, true],
+  ['Admissões', '#/rh/admissoes', P_RH, '📝', 'admissoes_andamento', true],
+  ['Documentos dos colaboradores', '#/rh/documentos', P_RH, '🪪', 'rh_docs_vencendo', true],
+  ['Férias', '#/rh/ferias', P_RH, '🏖️', 'ferias_vencendo', true],
+  ['Ocorrências disciplinares', '#/rh/disciplinar', P_RH, '⚖️', null, true],
+  ['Desligamentos', '#/rh/desligamentos', P_RH, '🚪', 'desligamentos_andamento', true],
+  ['Organograma', '#/rh/organograma', P_RH, '🏛️', null, true],
+  ['sub', 'Desenvolvimento'],
+  ['Treinamentos', '#/rh/treinamentos', P_RH, '🎓', 'treinamentos_pendentes', true],
+  ['Avaliações', '#/rh/avaliacoes', [...P_RH, 'aprovador'], '📈', null, true],
+  ['Promoções e cursos', '#/rh/desenvolvimento', P_RH, '🚀', null, true],
+  ['Pesquisas de clima', '#/rh/clima', P_RH, '🌡️', null, true],
+  ['sub', 'Recrutamento'],
+  ['Vagas e seleção', '#/rh/recrutamento', P_RH, '🔍', 'vagas_abertas', true],
+  ['Banco de talentos', '#/rh/talentos', P_RH, '🗃️', null, true],
+  ['grupo', 'Departamento Pessoal', '🧮'],
+  ['Painel do DP', '#/dp', ['administrador', 'dp', 'diretoria'], '🧮', 'dp_a_importar', true],
+  ['Folha do mês', '#/dp/folha', ['administrador', 'dp', 'rh', 'diretoria'], '💼', 'dp_lancamentos_pendentes', true],
+  ['Benefícios', '#/dp/beneficios', ['administrador', 'dp', 'rh'], '🎁', null, true],
+  ['Rubricas da folha', '#/dp/rubricas', ['administrador', 'dp'], '📒', null, true],
+  ['grupo', 'SSMA', '⛑️'],
   ['Painel do SSMA', '#/ssma', P_SSMA, '⛑️', 'cat_pendente', true],
-  ['ASO e exames', '#/ssma/aso', P_SSMA, '🩺', 'aso_vencendo', true],
   ['Acidentes e CAT', '#/ssma/acidentes', [...P_SSMA, 'operacao', 'manutencao'], '🚑', 'acidentes_abertos', true],
+  ['ASO e exames', '#/ssma/aso', P_SSMA, '🩺', 'aso_vencendo', true],
   ['Plano de ação', '#/ssma/acoes', [...P_SSMA, 'operacao', 'manutencao', 'almoxarifado'], '🎯', 'ssma_acoes_atrasadas', true],
   ['Inspeções', '#/ssma/inspecoes', [...P_SSMA, 'operacao', 'manutencao'], '🔍', null, true],
   ['DDS', '#/ssma/dds', [...P_SSMA, 'operacao', 'manutencao'], '🗣️', null, true],
   ['Extintores', '#/ssma/extintores', [...P_SSMA, 'operacao', 'manutencao'], '🧯', 'extintores_vencendo', true],
-  ['EPI (entregas)', '#/almox/epi', ['ssma'], '🦺', 'epi_troca', true],
-  ['grupo', 'Qualidade'],
+  ['grupo', 'Qualidade', '🏅'],
   ['Painel da qualidade', '#/qualidade', ['administrador', 'qualidade', 'diretoria'], '🏅', 'qual_auditorias_proximas', true],
   ['Não conformidades', '#/qualidade/nc', ['administrador', 'qualidade', 'diretoria'], '❗', 'qual_nc_abertas', true],
   ['Auditorias', '#/qualidade/auditorias', ['administrador', 'qualidade', 'diretoria'], '🔎', null, true],
   ['Indicadores', '#/qualidade/indicadores', ['administrador', 'qualidade', 'diretoria'], '📊', null, true],
-  ['grupo', 'Biblioteca'],
-  ['Modelos de documentos', '#/modelos', null, '📄', null, true],
-  ['Pesquisa de clima', '#/clima', null, '💬', 'pesquisa_aberta', true],
-  ['Meus itens', '#/meus-itens', null, '🎒', null, true],
-  ['Comunicar acidente', '#/ssma/acidentes/novo', null, '🚨', null, true],
-  ['Documentos da qualidade', '#/qualidade/documentos', null, '📘', 'qual_docs_ler', true],
-  ['Registrar não conformidade', '#/qualidade/nc/nova', null, '📝', null, true],
-  ['grupo', 'Configurações'],
-  ['Dados da empresa', '#/cadastros/empresa', ['administrador'], '🏢', null, true],
+  ['grupo', 'Configurações', '⚙️'],
+  ['sub', 'Cadastros'],
+  ['Fornecedores', '#/cadastros/fornecedores', [...P_FIN, 'comprador'], '🏢', null, true],
+  ['Clientes', '#/cadastros/clientes', [...P_FIN, 'operacao'], '🤝', null, true],
+  ['Plano de contas', '#/cadastros/plano_contas', P_FIN, '📚', null, true],
+  ['Centros de custo', '#/cadastros/centros_custo', P_FIN, '🎯', null, true],
+  ['Bancos e caixa', '#/cadastros/contas_bancarias', P_FIN, '🏦', null, true],
   ['Setores', '#/cadastros/setores', ['administrador', 'rh'], '🧩', null, true],
+  ['Cargos e funções', '#/cadastros/cargos', P_RH, '🏷️', null, true],
+  ['Tipos de documento do RH', '#/cadastros/rh_tipos_documento', ['administrador', 'rh'], '🗂️', null, true],
+  ['sub', 'Sistema'],
+  ['Dados da empresa', '#/cadastros/empresa', ['administrador'], '🏢', null, true],
   ['Usuários e perfis', '#/config/usuarios', ['administrador'], '👥', null, true],
   ['Auditoria', '#/config/auditoria', P_FIN, '🔎', null, true],
   ['Calendário do CRLV', '#/config/calendario_crlv', ['administrador'], '📅', 'calendario_crlv', true],
@@ -340,35 +348,45 @@ const MENU = [
 function menuPara(perfis, menus) {
   const admin = perfis.includes('administrador');
   const lista = !admin && Array.isArray(menus) && menus.length ? menus : null;
-  const ok = MENU.filter(i => i[0] === 'grupo' || ((!i[2] || i[2].some(p => perfis.includes(p))) && (!lista || lista.includes(i[1]))));
-  return ok.filter((i, k) => i[0] !== 'grupo' || (ok[k + 1] && ok[k + 1][0] !== 'grupo'));
+  const ok = MENU.filter(i => i[0] === 'grupo' || i[0] === 'sub' || ((!i[2] || i[2].some(p => perfis.includes(p))) && (!lista || lista.includes(i[1]))));
+  const semSub = ok.filter((i, k) => i[0] !== 'sub' || (ok[k + 1] && !['sub', 'grupo'].includes(ok[k + 1][0])));
+  return semSub.filter((i, k) => i[0] !== 'grupo' || (semSub[k + 1] && semSub[k + 1][0] !== 'grupo'));
 }
 function menu() {
-  return menuPara(estado.perfis, estado.usuario?.menus).map(i => i[0] === 'grupo' ? ['grupo', i[1], true] : [i[0], i[1], true, i[3], i[4], i[5]]);
+  return menuPara(estado.perfis, estado.usuario?.menus).map(i => i[0] === 'grupo' ? ['grupo', i[1], true, i[2]] : i[0] === 'sub' ? ['sub', i[1]] : [i[0], i[1], true, i[3], i[4], i[5]]);
 }
-const telaPermitida = h => { const r = '#' + h; return !MENU.some(i => i[1] === r) || menu().some(i => i[1] === r); };
+const telaPermitida = h => { const r = '#' + h; return !MENU.some(i => i[0] !== 'grupo' && i[0] !== 'sub' && i[1] === r) || menu().some(i => i[1] === r); };
 
 // Menu lateral: grupos recolhíveis (abre um por vez), lembra o que estava aberto e
 // não é redesenhado a cada clique — assim a rolagem do menu fica onde estava.
 const menuAbertos = () => { try { return JSON.parse(localStorage.getItem('menuAbertos') || '[]'); } catch { return []; } };
 const salvarMenuAbertos = l => { try { localStorage.setItem('menuAbertos', JSON.stringify(l)); } catch { /* ok */ } };
 function htmlMenu(pend, melhor, celular = false) {
-  const itens = menu(); const grupos = []; let atual = { nome: null, itens: [] };
-  for (const i of itens) { if (i[0] === 'grupo') { grupos.push(atual); atual = { nome: i[1], itens: [] }; } else atual.itens.push(i); }
+  const itens = menu(); const grupos = []; let atual = { nome: null, ic: '', itens: [] };
+  for (const i of itens) { if (i[0] === 'grupo') { grupos.push(atual); atual = { nome: i[1], ic: i[3] || '', itens: [] }; } else atual.itens.push(i); }
   grupos.push(atual);
   const abertos = menuAbertos();
-  const link = i => `<a href="${i[1]}" class="${i[1] === melhor ? 'ativo' : ''} ${i[5] ? 'sub-item' : ''}"><span>${celular && i[3] ? i[3] + ' ' : ''}${esc(i[0])}</span>${i[4] && pend[i[4]] ? `<span class="tag amarelo">${pend[i[4]]}</span>` : ''}</a>`;
-  return grupos.filter(g => g.itens.length).map(g => {
-    if (!g.nome) return g.itens.map(link).join('');
+  const link = i => i[0] === 'sub' ? `<div class="mg-sub">${esc(i[1])}</div>`
+    : `<a href="${i[1]}" class="${i[1] === melhor ? 'ativo' : ''} ${i[5] ? 'sub-item' : ''}" data-busca="${esc(i[0].toLowerCase())}"><span class="mi"><span class="ic">${i[3] || ''}</span>${esc(i[0])}</span>${i[4] && pend[i[4]] ? `<span class="tag amarelo">${pend[i[4]]}</span>` : ''}</a>`;
+  const busca = `<div class="menu-busca"><input type="search" placeholder="🔎 Buscar no menu…" aria-label="Buscar no menu" autocomplete="off"></div>`;
+  return busca + grupos.filter(g => g.itens.some(i => i[0] !== 'sub')).map(g => {
+    if (!g.nome) return `<div class="menu-topo">${g.itens.map(link).join('')}</div>`;
     const temAtivo = g.itens.some(i => i[1] === melhor);
     const aberto = temAtivo || abertos.includes(g.nome);
     const soma = g.itens.reduce((x, i) => x + (i[4] && pend[i[4]] ? pend[i[4]] : 0), 0);
     return `<div class="mg ${aberto ? 'aberto' : ''}" data-g="${esc(g.nome)}">
-      <button type="button" class="mg-tit" aria-expanded="${aberto}"><span>${esc(g.nome)}</span><span class="mg-dir">${soma && !aberto ? `<span class="tag amarelo">${soma}</span>` : ''}<span class="mg-seta">▾</span></span></button>
+      <button type="button" class="mg-tit" aria-expanded="${aberto}"><span class="mi"><span class="ic">${g.ic}</span>${esc(g.nome)}</span><span class="mg-dir">${soma && !aberto ? `<span class="tag amarelo">${soma}</span>` : ''}<span class="mg-seta">▾</span></span></button>
       <div class="mg-itens">${g.itens.map(link).join('')}</div></div>`;
   }).join('');
 }
 function ligarMenu(raiz) {
+  const bx = raiz.querySelector('.menu-busca input');
+  if (bx) bx.oninput = () => {
+    const q = bx.value.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    raiz.querySelector('.menu').classList.toggle('buscando', !!q);
+    raiz.querySelectorAll('.menu a[data-busca]').forEach(a => { const t = a.dataset.busca.normalize('NFD').replace(/[\u0300-\u036f]/g, ''); a.classList.toggle('oculto', !!q && !t.includes(q)); });
+    raiz.querySelectorAll('.mg').forEach(g => { const tem_ = !q || g.querySelector('a[data-busca]:not(.oculto)'); g.classList.toggle('oculto', !tem_); if (q) g.classList.toggle('achou', !!tem_); else g.classList.remove('achou'); });
+  };
   raiz.querySelectorAll('.mg-tit').forEach(b => (b.onclick = () => {
     const g = b.closest('.mg'); const abrir = !g.classList.contains('aberto');
     // um grupo por vez (o da tela atual continua aberto)
@@ -454,8 +472,39 @@ function botaoVoltar(tela) {
   $('.btn-voltar', tela).onclick = () => { _voltando = true; location.hash = PILHA[PILHA.length - 2]; };
 }
 
+// ----- Atualização automática: quando sai versão nova, o sistema se atualiza sozinho num momento seguro
+// (ao trocar de tela, com a aba em segundo plano ou parado) — nunca no meio de um formulário ou janela aberta.
+const VERSAO_APP = Number(((document.querySelector('script[src*="app.js?v="]') || {}).src || '').match(/v=(\d+)/)?.[1] || 0);
+let _novaVersao = false, _sujo = false, _ultimoToque = Date.now();
+document.addEventListener('input', e => { if (e.target.closest('form, .modal-fundo')) _sujo = true; }, true);
+['pointerdown', 'keydown', 'wheel', 'touchstart'].forEach(ev => document.addEventListener(ev, () => (_ultimoToque = Date.now()), { passive: true, capture: true }));
+const _janelaAberta = () => [...document.querySelectorAll('.modal-fundo')].some(m => !m.hidden && m.innerHTML.trim());
+const _digitando = () => document.activeElement?.matches?.('input:not([type=search]), textarea, select');
+function tentarAtualizar() {
+  if (!_novaVersao || _sujo || _janelaAberta() || _digitando()) return false;
+  // proteção: não recarrega em sequência se a versão nova ainda não chegou ao navegador (cache da internet)
+  try { const t = JSON.parse(sessionStorage.getItem('vg_tentou') || 'null'); if (t && t.alvo === _novaVersao && Date.now() - t.em < 10 * 60 * 1000) return false;
+        sessionStorage.setItem('vg_tentou', JSON.stringify({ alvo: _novaVersao, em: Date.now() })); sessionStorage.setItem('vg_atualizado', String(VERSAO_APP)); } catch { return false; }
+  guardarRolagem(); location.reload(); return true;
+}
+async function checarVersao() {
+  if (_novaVersao || !VERSAO_APP) return tentarAtualizar();
+  try {
+    const t = await fetch('sw.js?t=' + Date.now(), { cache: 'no-store' }).then(r => r.text());
+    const n = Number(t.match(/vg-v(\d+)/)?.[1] || 0);
+    if (n > VERSAO_APP) { _novaVersao = n; navigator.serviceWorker?.getRegistration?.().then(g => g?.update()).catch(() => {}); tentarAtualizar(); }
+  } catch { /* sem internet: tenta depois */ }
+}
+setInterval(checarVersao, 3 * 60 * 1000);
+setInterval(() => { if (_novaVersao && Date.now() - _ultimoToque > 90 * 1000) tentarAtualizar(); }, 30 * 1000);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checarVersao(); else tentarAtualizar(); });
+window.addEventListener('focus', () => checarVersao());
+setTimeout(() => { try { const a = Number(sessionStorage.getItem('vg_atualizado') || 0); if (a) { sessionStorage.removeItem('vg_atualizado'); if (VERSAO_APP > a) aviso('Sistema atualizado para a versão mais nova ✓'); } } catch { /* ok */ } }, 2500);
+
 async function navegar() {
   if (!estado.usuario) return;
+  _sujo = false;                      // trocou de tela / salvou: o que estava sendo digitado já foi tratado
+  if (_novaVersao && tentarAtualizar()) return;
   guardarRolagem();
   const telaAtual = location.hash || '#/inicio';
   const mesmaRota = _ultimaTela && _ultimaTela.split('?')[0] === telaAtual.split('?')[0];

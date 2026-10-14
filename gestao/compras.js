@@ -166,9 +166,11 @@ rota('/compras/requisicoes/ver/:id', async (tela, id) => {
       ${r.motivo_cancelamento ? `<div class="largo alerta-obs"><b>Cancelada:</b> ${esc(r.motivo_cancelamento)}</div>` : ''}
       <div class="largo"><div class="muted">Anexos</div>${await htmlAnexos('requisicao', id)}</div>
     </div></div>
+    <div class="cartao" id="lt-req"><h2>Acompanhamento</h2><div class="muted">Carregando etapas…</div></div>
     <div class="cartao"><h2>Itens</h2>${tabelaItens(itens.map(i => ({ ...i, valor: i.valor_estimado })), 'Valor unit. estimado')}</div>
     ${cots.length ? `<div class="cartao"><h2>Cotação</h2><ul class="lista-simples">${cots.map(c => `<li>${veCompras() ? `<a href="#/compras/cotacoes/ver/${c.id}">${esc(c.numero)}</a>` : esc(c.numero)} ${tag(c.status)}${c.comentario_aprovacao ? `<br><span class="muted">${esc(c.comentario_aprovacao)}</span>` : ''}</li>`).join('')}</ul></div>` : ''}
     ${peds.length ? `<div class="cartao"><h2>Pedido de compra</h2><ul class="lista-simples">${peds.map(p => `<li><a href="#/compras/pedidos/ver/${p.id}">${esc(p.numero)}</a> ${tag(p.status)}<b>${brl(p.valor_total)}</b></li>`).join('')}</ul></div>` : ''}`;
+  linhaTempoReq(id, $('#lt-req'));
   $('#cotar')?.addEventListener('click', async e => ocupado(e.target, async () => {
     try { const c = await api.rpc('abrir_cotacao', { p_requisicao: id }); location.hash = '#/compras/cotacoes/ver/' + c; } catch (err) { falha(err); }
   }));
@@ -544,4 +546,30 @@ function imprimirPedido(p, forn, itens, r) {
     <p class="bl muted">Favor informar o número deste pedido na nota fiscal.</p>
     <script>window.onload=()=>setTimeout(()=>window.print(),300)<\/script></body></html>`);
   w.document.close();
+}
+
+
+// ----- Linha do tempo da requisição (quem pediu acompanha cada etapa) -----
+const ETAPAS_REQ = [['criada', 'Criada'], ['compras', 'Enviada a Compras'], ['cotacao', 'Em cotação'], ['aprovacao', 'Aprovação'], ['pedido', 'Pedido emitido'], ['recebida', 'Recebida'], ['paga', 'Paga']];
+const NIVEL_EV = { criada: 0, rascunho: 0, aguardando_cotacao: 1, cotacao: 2, propostas: 2, aguardando_aprovacao: 3, decisao: 3, pedido: 4, recebimento: 5, pagamento: 6 };
+async function linhaTempoReq(id, box) {
+  if (!box) return;
+  let d;
+  try { d = await api.rpc('requisicao_linha_tempo', { p_id: id }); }
+  catch (err) { box.innerHTML = `<h2>Acompanhamento</h2><div class="muted">${esc(err.message)}</div>`; return; }
+  // junta repetidos (mesma etapa em sequência, poucos segundos de diferença)
+  const ev = []; for (const e of d.eventos || []) { const u = ev[ev.length - 1]; if (u && u.titulo === e.titulo && Math.abs(new Date(e.quando) - new Date(u.quando)) < 120000) continue; ev.push(e); }
+  const encerrada = ['cancelada', 'reprovada'].includes(d.status);
+  let feito = ev.reduce((m, e) => Math.max(m, NIVEL_EV[e.etapa] ?? -1), 0);
+  if (ev.some(e => e.etapa === 'decisao' && /^Aprovada/.test(e.titulo))) feito = Math.max(feito, 3);
+  if (d.status === 'devolvida' || d.status === 'rascunho') feito = 0;
+  const atual = encerrada ? -1 : Math.min(feito + 1, ETAPAS_REQ.length - 1);
+  const passos = ETAPAS_REQ.map(([k, t], i) => `<li class="${i <= feito ? 'feito' : ''} ${i === atual && feito < ETAPAS_REQ.length - 1 ? 'atual' : ''}"><span class="pt"></span><span class="nm">${t}</span></li>`).join('');
+  const quando = q => new Date(q).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  box.innerHTML = `<h2>Acompanhamento</h2>
+    ${encerrada ? `<div class="alerta-obs" style="margin-bottom:10px"><b>${d.status === 'cancelada' ? 'Requisição cancelada' : 'Compra reprovada'}.</b> Veja o motivo abaixo.</div>`
+      : `<ol class="etapas">${passos}</ol><p class="muted" style="margin:6px 0 12px">${feito >= ETAPAS_REQ.length - 1 ? 'Processo <b>concluído</b>' : `Concluído até: <b>${ETAPAS_REQ[feito][1]}</b> · próxima etapa: <b>${ETAPAS_REQ[atual][1]}</b>`}${d.status === 'devolvida' ? ' — <b>devolvida para você corrigir</b>' : ''}</p>`}
+    <ul class="linha-tempo">${ev.slice().reverse().map(e => `<li class="lt-${esc(e.etapa)}"><div class="lt-q">${quando(e.quando)}</div>
+      <div class="lt-t"><b>${esc(e.titulo)}</b>${e.quem ? ` <span class="muted">· ${esc(e.quem)}</span>` : ''}${e.detalhe ? `<div class="muted">${esc(e.detalhe)}</div>` : ''}</div></li>`).join('')
+      || '<li class="muted">Sem movimentações ainda.</li>'}</ul>`;
 }

@@ -257,7 +257,8 @@ function formUsuario(u, atuais, ccs, funcoes) {
       <div class="largo"><div class="muted" style="margin-bottom:6px">Telas que pode acessar</div>
         <label class="check"><input type="checkbox" name="menus_padrao" ${!u?.menus?.length ? 'checked' : ''}> Todas as telas liberadas pelos perfis marcados</label>
         <div id="lista-menus" class="grade" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:4px 12px;margin-top:8px" ${!u?.menus?.length ? 'hidden' : ''}>
-          ${MENU.map((i, k) => i[0] === 'grupo' ? `<div class="menu-titulo" style="grid-column:1/-1;font-weight:700;margin-top:6px">${esc(i[1])}</div>`
+          ${MENU.map((i, k) => i[0] === 'grupo' ? `<div class="menu-titulo" style="grid-column:1/-1;font-weight:700;margin-top:6px">${i[2] || ''} ${esc(i[1])}</div>`
+            : i[0] === 'sub' ? `<div class="muted" style="grid-column:1/-1;font-size:12px;text-transform:uppercase;letter-spacing:.05em;margin-top:2px">${esc(i[1])}</div>`
             : `<label class="check"><input type="checkbox" name="m_${k}" data-perfis="${(i[2] || []).join(',')}" ${!u?.menus?.length || u.menus.includes(i[1]) ? 'checked' : ''}> ${esc(i[0])}</label>`).join('')}
         </div>
         <p class="muted" style="margin-top:6px">O perfil define o que a pessoa pode fazer; aqui você escolhe quais telas aparecem para ela.</p></div>
@@ -279,7 +280,7 @@ function ligarMenus(raiz) {
   };
   raiz.addEventListener('change', atualiza); atualiza();
 }
-const menusEscolhidos = r => r.menus_padrao ? null : MENU.filter((i, k) => i[0] !== 'grupo' && r['m_' + k]).map(i => i[1]);
+const menusEscolhidos = r => r.menus_padrao ? null : MENU.filter((i, k) => i[0] !== 'grupo' && i[0] !== 'sub' && r['m_' + k]).map(i => i[1]);
 const aoAbrirUsuario = raiz => { mascaras(raiz); ligarMenus(raiz); puxarDoRH(raiz); };
 
 function validarUsuario(r, todos, id) {
