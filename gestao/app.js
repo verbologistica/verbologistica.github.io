@@ -710,7 +710,7 @@ rota('/inicio', async tela => {
       </div>
     </section>
     <div class="grade inicio-kpis">
-      ${!tem('motorista') || veTudo() || tem('aprovador') ? `<a class="cartao kpi ${p.aprovar ? 'alerta' : ''}" href="#/aprovacoes"><div class="n">${p.aprovar || 0}</div><div class="r">para você aprovar</div></a>` : ''}
+      ${p.aprovar || veTudo() || tem('aprovador', 'financeiro') ? `<a class="cartao kpi ${p.aprovar ? 'alerta' : ''}" href="#/aprovacoes"><div class="n">${p.aprovar || 0}</div><div class="r">para você aprovar</div></a>` : ''}
       <a class="cartao kpi ${p.devolvidos ? 'alerta' : ''}" href="#/reembolsos"><div class="n">${p.devolvidos || 0}</div><div class="r">reembolsos devolvidos para correção</div></a>
       ${editaFin() ? `<a class="cartao kpi" href="#/financeiro/reembolsos?status=aprovado"><div class="n">${p.reembolsos_a_pagar || 0}</div><div class="r">reembolsos aprovados a pagar</div></a>` : ''}
       ${editaFin() ? `<a class="cartao kpi ${p.sem_comprovante ? 'alerta' : ''}" href="#/financeiro/pagar?status=semcomp"><div class="n">${p.sem_comprovante || 0}</div><div class="r">pagamentos sem comprovante</div></a>` : ''}
@@ -755,6 +755,7 @@ rota('/inicio', async tela => {
   // ícone de cada indicador (o mesmo do menu) e resumo do dia no topo
   $$('.inicio-kpis .kpi', tela).forEach(k => {
     const href = k.getAttribute('href') || '', base = href.split('?')[0];
+    if (base && !telaPermitida(base.slice(1))) { k.remove(); return; }   // não mostra indicador de tela que a pessoa não pode abrir
     const item = MENU.filter(m => m[0] !== 'grupo' && m[0] !== 'sub' && (base === m[1] || base.startsWith(m[1] + '/'))).sort((x, y) => y[1].length - x[1].length)[0];
     k.insertAdjacentHTML('afterbegin', `<span class="k-ic">${item?.[3] || '📌'}</span>`);
     if (k.querySelector('.n')?.textContent.trim() === '0') k.classList.add('zero');
