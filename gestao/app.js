@@ -545,23 +545,78 @@ rota('/menu', tela => {
 });
 
 // ===================== Login e primeiro acesso =====================
+
+// ===================== Identidade visual (capa e início) =====================
+const SVG_CHEVRON = `<svg viewBox="0 0 1200 900" aria-hidden="true"><polygon fill="#02654D" points="0,140 519,899 560,899 639,818 260,140"/><polygon fill="#DDA936" points="1199,140 858,141 560,519 719,719"/></svg>`;
+function svgMapa({ rotulos = true } = {}) {
+  return `<svg class="mapa-svg" viewBox="0 0 1040 720" role="img" aria-label="Corredor operacional: Três Lagoas (MS), Guararapes (SP) e Lençóis Paulista (SP)">
+    <defs>
+      <radialGradient id="mg-sp" cx="65%" cy="62%" r="60%"><stop offset="0" stop-color="#0a6b52"/><stop offset="1" stop-color="#0b3f31"/></radialGradient>
+      <filter id="mg-brilho" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="6" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+      <pattern id="mg-pontos" width="22" height="22" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="1.2" fill="rgba(255,255,255,.07)"/></pattern>
+    </defs>
+    <rect width="1040" height="720" fill="url(#mg-pontos)"/>
+    <polygon class="mapa-uf" fill="#0d3a2f" points="5,142 16,192 0,219 0,441 105,456 157,472 173,519 188,585 242,585 268,596 316,512 353,473 383,428 420,385 510,267 475,222 368,123 353,63 298,52 245,79 182,63 91,55 28,75"/>
+    <polygon class="mapa-uf" fill="url(#mg-sp)" points="353,473 388,482 451,482 518,490 568,500 590,508 640,588 644,641 689,653 727,692 744,671 806,635 861,593 930,576 976,542 1014,494 975,468 897,491 834,461 854,386 839,339 794,291 755,276 686,283 622,267 510,267 420,385 383,428"/>
+    <text class="mapa-uf-nome" x="70" y="140">MATO GROSSO DO SUL</text><text class="mapa-uf-nome" x="760" y="640">SÃO PAULO</text>
+    <path class="mapa-rota-base" d="M457,332 C495,305 520,330 537,373 C565,440 615,468 674,480"/>
+    <path class="mapa-rota" filter="url(#mg-brilho)" d="M457,332 C495,305 520,330 537,373 C565,440 615,468 674,480"/>
+    <circle class="mapa-veiculo" r="7" fill="#fff"><animateMotion dur="5.5s" repeatCount="indefinite" path="M457,332 C495,305 520,330 537,373 C565,440 615,468 674,480"/></circle>
+    ${[[457, 332, 'ouro'], [537, 373, 'branco'], [674, 480, 'ouro']].map(([x, y, c], i) => `<g class="mapa-ponto" style="animation-delay:${i * .6}s">
+      <circle cx="${x}" cy="${y}" r="26" class="pulso" style="animation-delay:${i * .6}s"/><circle cx="${x}" cy="${y}" r="17" fill="none" stroke="#DDA936" stroke-opacity=".55" stroke-width="2"/>
+      <circle cx="${x}" cy="${y}" r="10" fill="${c === 'ouro' ? '#DDA936' : '#fff'}" stroke="#0b3f31" stroke-width="3"/></g>`).join('')}
+    ${rotulos ? `<g class="mapa-rotulo"><text x="420" y="290" text-anchor="end" class="r-tipo">ORIGEM</text><text x="420" y="318" text-anchor="end" class="r-nome">Três Lagoas <tspan class="r-uf">MS</tspan></text></g>
+    <g class="mapa-rotulo"><text x="575" y="335" class="r-tipo">APOIO · ADMINISTRATIVO</text><text x="575" y="363" class="r-nome">Guararapes <tspan class="r-uf">SP</tspan></text></g>
+    <g class="mapa-rotulo"><text x="706" y="455" class="r-tipo">DESTINO</text><text x="706" y="483" class="r-nome">Lençóis Paulista <tspan class="r-uf">SP</tspan></text></g>` : ''}
+  </svg>`;
+}
+const ICONE = {
+  olho: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+  carta: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>',
+  cadeado: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+  escudo: '<path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/><path d="m9 12 2 2 4-4"/>',
+};
+const ic = (n, cls = '') => `<svg class="ico ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONE[n]}</svg>`;
+function casaLogin(titulo, sub, corpo) {
+  return `<div class="capa">
+    <div class="capa-fundo" aria-hidden="true"></div><div class="capa-chevron" aria-hidden="true">${SVG_CHEVRON}</div>
+    <section class="capa-hero">
+      <img class="capa-logo" src="logo.png" alt="Verbo Logística">
+      <div class="capa-eyebrow">Sistema de Gestão Integrada</div>
+      <h1 class="capa-titulo">Mais que transporte,<br><em>movemos conquistas.</em></h1>
+      <p class="capa-texto">Operação florestal, frota, pessoas e finanças conectadas em um só lugar — com segurança, controle e indicadores confiáveis.</p>
+      <div class="capa-mapa"><div class="capa-mapa-tit"><span>Principal corredor operacional</span><span class="ao-vivo"><i></i>Operação ativa</span></div>${svgMapa()}</div>
+      <ul class="capa-valores"><li>Segurança</li><li>Pessoas</li><li>Resultados</li><li>Sustentabilidade</li></ul>
+    </section>
+    <section class="capa-lado">
+      <div class="capa-cartao">
+        <div class="capa-cartao-topo"><span class="capa-v">${SVG_CHEVRON}</span><div><h2>${titulo}</h2><p>${sub}</p></div></div>
+        ${corpo}
+      </div>
+      <p class="capa-meta">${ic('escudo')} <span><b>Zero acidentes.</b> Essa é a nossa meta.</span></p>
+    </section>
+    <footer class="capa-rodape">© ${new Date().getFullYear()} Verbo Logística · Logística que conecta pessoas, movimenta o Brasil.</footer>
+  </div>`;
+}
+
 function telaLogin(msg = '') {
-  $('#app').innerHTML = `
-    <div class="login"><div class="login-caixa">
-      <img class="login-logo" src="logo.png" alt="Verbo Logística"><div class="login-sub">Sistema de Gestão</div>
-      <div class="cartao"><h2>Entrar</h2>
-      <form id="f-login" class="form" style="grid-template-columns:1fr">
-        <label class="campo">E-mail<input name="email" type="email" autocomplete="username" required></label>
-        <label class="campo">Senha<input name="senha" type="password" autocomplete="current-password" required></label>
-        <div id="msg" class="${msg.startsWith('!') ? 'erro-txt' : 'muted'}">${esc(msg.replace(/^!/, ''))}</div>
-        <button class="btn prim">Entrar</button>
-        <button type="button" class="btn" id="primeiro">Primeiro acesso ou esqueci a senha</button>
-      </form>
-    </div></div></div>`;
+  const h = new Date().getHours(), sauda = h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite';
+  $('#app').innerHTML = casaLogin(`${sauda}!`, 'Acesse com seu e-mail e senha.', `
+      <form id="f-login" class="capa-form" novalidate>
+        <label class="capa-campo"><span>E-mail</span><div class="capa-in">${ic('carta')}<input name="email" type="email" autocomplete="username" placeholder="seu.nome@empresa.com.br" required></div></label>
+        <label class="capa-campo"><span>Senha</span><div class="capa-in">${ic('cadeado')}<input name="senha" type="password" autocomplete="current-password" placeholder="••••••••" required>
+          <button type="button" class="capa-olho" id="ver-senha" aria-label="Mostrar senha" title="Mostrar senha">${ic('olho')}</button></div></label>
+        <div id="msg" class="${msg.startsWith('!') ? 'erro-txt' : 'muted'}" role="status">${esc(msg.replace(/^!/, ''))}</div>
+        <button class="btn prim capa-entrar">Entrar <span aria-hidden="true">→</span></button>
+        <button type="button" class="capa-link" id="primeiro">Primeiro acesso ou esqueci a senha</button>
+      </form>`);
+  $('#ver-senha').onclick = () => { const i = $('#f-login [name=senha]'); i.type = i.type === 'password' ? 'text' : 'password'; $('#ver-senha').classList.toggle('on', i.type === 'text'); i.focus(); };
+  setTimeout(() => $('#f-login [name=email]')?.focus(), 50);
   const f = $('#f-login');
   f.onsubmit = async e => {
     e.preventDefault();
     const d = formDados(f);
+    if (!d.email || !d.senha) { $('#msg').className = 'erro-txt'; $('#msg').textContent = 'Informe e-mail e senha.'; return; }
     await ocupado(e.submitter, async () => {
       try { await api.entrar(d.email, d.senha); await iniciar(); }
       catch (err) { $('#msg').className = 'erro-txt'; $('#msg').textContent = err.message; }
@@ -579,16 +634,13 @@ function telaLogin(msg = '') {
 }
 
 function telaNovaSenha() {
-  $('#app').innerHTML = `
-    <div class="login"><div class="login-caixa">
-      <img class="login-logo" src="logo.png" alt="Verbo Logística"><div class="login-sub">Sistema de Gestão</div>
-      <div class="cartao"><h2>Crie sua senha</h2>
-      <form id="f-senha" class="form" style="grid-template-columns:1fr">
-        <label class="campo">Nova senha<input name="s1" type="password" minlength="8" autocomplete="new-password" required></label>
-        <label class="campo">Repita a senha<input name="s2" type="password" minlength="8" autocomplete="new-password" required></label>
+  $('#app').innerHTML = casaLogin('Crie sua senha', 'Defina a senha que você vai usar para entrar no sistema.', `
+      <form id="f-senha" class="capa-form">
+        <label class="capa-campo"><span>Nova senha</span><div class="capa-in">${ic('cadeado')}<input name="s1" type="password" minlength="8" autocomplete="new-password" required></div></label>
+        <label class="capa-campo"><span>Repita a senha</span><div class="capa-in">${ic('cadeado')}<input name="s2" type="password" minlength="8" autocomplete="new-password" required></div></label>
         <div class="muted">Pelo menos 8 caracteres.</div><div id="msg" class="erro-txt"></div>
-        <button class="btn prim">Salvar senha e entrar</button>
-      </form></div></div></div>`;
+        <button class="btn prim capa-entrar">Salvar senha e entrar <span aria-hidden="true">→</span></button>
+      </form>`);
   const f = $('#f-senha');
   f.onsubmit = async e => {
     e.preventDefault();
@@ -645,10 +697,19 @@ rota('/inicio', async tela => {
   }
   const verAnt = estado.params?.get('avisos') === 'todos';
   const notifs = await api.listar('notificacoes', `usuario_id=eq.${estado.usuario.id}${verAnt ? '' : '&lida=eq.false'}&order=criado_em.desc&limit=${verAnt ? 40 : 30}`);
+  const hh = new Date().getHours(), sauda = hh < 12 ? 'Bom dia' : hh < 18 ? 'Boa tarde' : 'Boa noite';
+  const dataLonga = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   tela.innerHTML = `
-    <div class="topo"><div><h1>Olá, ${esc(estado.usuario.nome.split(' ')[0])}</h1><p class="sub">${new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}</p></div>
-      <div class="acoes"><a class="btn prim" href="#/reembolsos/novo">+ Lançar reembolso</a><a class="btn" href="#/compras/requisicoes/nova">+ Requisição de compra</a>${editaFin() ? '<a class="btn" href="#/financeiro/pagar/novo">+ Conta a pagar</a><a class="btn" href="#/financeiro/receber/novo">+ Conta a receber</a>' : ''}</div></div>
-    <div class="grade" style="margin-bottom:16px">
+    <section class="inicio-hero">
+      <div class="ih-chevron" aria-hidden="true">${SVG_CHEVRON}</div><div class="ih-mapa" aria-hidden="true">${svgMapa({ rotulos: false })}</div>
+      <div class="ih-conteudo">
+        <div class="ih-data">${esc(dataLonga)}</div>
+        <h1>${sauda}, ${esc(estado.usuario.nome.split(' ')[0])}!</h1>
+        <p class="ih-resumo" id="ih-resumo">Mais que transporte, movemos conquistas.</p>
+        <div class="ih-acoes"><a class="ih-btn prim" href="#/reembolsos/novo">＋ Lançar reembolso</a><a class="ih-btn" href="#/compras/requisicoes/nova">🛒 Requisição de compra</a>${editaFin() ? '<a class="ih-btn" href="#/financeiro/pagar/novo">💳 Conta a pagar</a><a class="ih-btn" href="#/financeiro/receber/novo">📥 Conta a receber</a>' : ''}</div>
+      </div>
+    </section>
+    <div class="grade inicio-kpis">
       ${!tem('motorista') || veTudo() || tem('aprovador') ? `<a class="cartao kpi ${p.aprovar ? 'alerta' : ''}" href="#/aprovacoes"><div class="n">${p.aprovar || 0}</div><div class="r">para você aprovar</div></a>` : ''}
       <a class="cartao kpi ${p.devolvidos ? 'alerta' : ''}" href="#/reembolsos"><div class="n">${p.devolvidos || 0}</div><div class="r">reembolsos devolvidos para correção</div></a>
       ${editaFin() ? `<a class="cartao kpi" href="#/financeiro/reembolsos?status=aprovado"><div class="n">${p.reembolsos_a_pagar || 0}</div><div class="r">reembolsos aprovados a pagar</div></a>` : ''}
@@ -691,6 +752,16 @@ rota('/inicio', async tela => {
       ${notifs.length ? `<ul class="lista-simples">${notifs.map(n => `<li class="${n.lida ? '' : 'nao-lida'}"><span>${n.link ? `<a href="${esc(n.link)}">${esc(n.titulo)}</a>` : esc(n.titulo)}${n.corpo ? `<br><span class="muted">${esc(n.corpo)}</span>` : ''}${n.resolvida_em ? ` <span class="tag verde">resolvido</span>` : ''}</span>
         <span class="muted nowrap">${dataHoraBR(n.criado_em)}${!n.lida ? ` <button class="btn peq" data-lida="${n.id}" title="Marcar como lido">✓</button>` : ''}</span></li>`).join('')}</ul>`
         : `<div class="vazio">${verAnt ? 'Nenhum aviso.' : 'Nenhum aviso pendente. 🎉'}</div>`}</div>`;
+  // ícone de cada indicador (o mesmo do menu) e resumo do dia no topo
+  $$('.inicio-kpis .kpi', tela).forEach(k => {
+    const href = k.getAttribute('href') || '', base = href.split('?')[0];
+    const item = MENU.filter(m => m[0] !== 'grupo' && m[0] !== 'sub' && (base === m[1] || base.startsWith(m[1] + '/'))).sort((x, y) => y[1].length - x[1].length)[0];
+    k.insertAdjacentHTML('afterbegin', `<span class="k-ic">${item?.[3] || '📌'}</span>`);
+    if (k.querySelector('.n')?.textContent.trim() === '0') k.classList.add('zero');
+  });
+  { const al = $$('.inicio-kpis .kpi.alerta', tela).length, ap = Number(p.aprovar || 0);
+    const partes = [ap ? `<b>${ap}</b> item(ns) para aprovar` : '', al ? `<b>${al}</b> ponto(s) de atenção` : ''].filter(Boolean);
+    $('#ih-resumo', tela).innerHTML = partes.length ? `Hoje você tem ${partes.join(' e ')}.` : 'Tudo em dia por aqui. ✓'; }
   $$('[data-lida]', tela).forEach(b => b.onclick = async e => { e.preventDefault(); await api.alterar('notificacoes', `id=eq.${b.dataset.lida}`, { lida: true }); navegar(); });
   $('#lidas')?.addEventListener('click', async () => {
     await api.alterar('notificacoes', `usuario_id=eq.${estado.usuario.id}&lida=eq.false`, { lida: true }); navegar();
