@@ -219,7 +219,7 @@ function prepararCargos() {
   $$('.chips:not([data-novo-cargo])').forEach(c => { if (c.querySelector('input[name^="cg_"]')) ligarNovoCargoChips(c); });
 }
 let _cargoPend = false;
-new MutationObserver(() => { if (_cargoPend) return; _cargoPend = true; requestAnimationFrame(() => { _cargoPend = false; try { prepararCargos(); } catch (e) { } }); })
+new MutationObserver(() => { if (_cargoPend) return; _cargoPend = true; setTimeout(() => { _cargoPend = false; try { prepararCargos(); } catch (e) { } }, 30); })
   .observe(document.documentElement, { childList: true, subtree: true });
 
 // ---------- Usuário puxa os dados do cadastro do RH (pelo CPF ou pelo nome completo) ----------

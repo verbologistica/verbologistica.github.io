@@ -66,7 +66,7 @@ function sincOutro(el) {
 }
 document.addEventListener('change', e => { if (e.target.dataset?.outroOk) sincOutro(e.target); });
 let _outroPend = false;
-new MutationObserver(() => { if (_outroPend) return; _outroPend = true; requestAnimationFrame(() => { _outroPend = false; prepararOutros(); }); })
+new MutationObserver(() => { if (_outroPend) return; _outroPend = true; setTimeout(() => { _outroPend = false; prepararOutros(); }, 30); })
   .observe(document.documentElement, { childList: true, subtree: true });
 
 async function ocupado(btn, fn) {
