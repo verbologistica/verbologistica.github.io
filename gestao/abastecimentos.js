@@ -16,6 +16,10 @@ const lt = v => v == null ? '—' : Number(v).toLocaleString('pt-BR', { minimumF
 const n2 = (v, d = 2) => v == null || isNaN(v) ? '—' : Number(v).toLocaleString('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d });
 const brl3 = v => v == null ? '—' : 'R$ ' + Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
 const mesAb = iso => { const [a, m] = String(iso).split('-'); return ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'][Number(m) - 1] + '/' + a; };
+const ddmm = iso => iso ? String(iso).slice(8, 10) + '/' + String(iso).slice(5, 7) : '';
+const mesInteiro = f => String(f.periodo_inicio).slice(8) === '01' && somaDias(f.periodo_fim, 1).slice(8) === '01' && String(f.periodo_inicio).slice(0, 7) === String(f.periodo_fim).slice(0, 7);
+const perAb = f => f.em_aberto ? `em aberto${f.primeiro_abast ? ` · ${ddmm(f.primeiro_abast)}${f.ultimo_abast !== f.primeiro_abast ? ' a ' + ddmm(f.ultimo_abast) : ''}` : ''}`
+  : mesInteiro(f) ? mesAb(f.periodo_inicio) : `${ddmm(f.periodo_inicio)} a ${dataBR(f.periodo_fim)}`;
 const vinculoAb = a => a.reembolso_numero
   ? `<a href="#/reembolsos/ver/${a.reembolso_id}" onclick="event.stopPropagation()">${esc(a.reembolso_numero)}</a> <span class="muted">${esc(ST_RMB_AB[a.reembolso_status] || a.reembolso_status || '')}${a.reembolso_custeio === 'adiantamento' ? ' · adiantamento' : ''}</span>`
   : a.fatura_numero ? `<a href="#/operacao/abastecimentos/fatura/${a.fechamento_id}" onclick="event.stopPropagation()">${esc(a.fatura_numero)}</a> <span class="muted">${esc(ST_FAT[a.fatura_status]?.[0] || '')}</span>` : '—';
@@ -120,13 +124,15 @@ async function abaFaturas(tela, topo) {
   const fs = await api.listar('v_faturas_postos', 'order=periodo_inicio.desc,posto');
   const abertas = fs.filter(f => ['em_conferencia', 'com_divergencia'].includes(f.status));
   tela.innerHTML = `${topo}
-    <div class="cartao" style="border-left:4px solid var(--ouro)"><p style="margin:0">Cada posto que fatura para a empresa tem <b>uma fatura por mês</b>: os abastecimentos "Empresa" vão somando nela e ela já aparece em <b>Contas a pagar como prevista</b>.
-      Quando a nota/fatura do posto chegar, abra a fatura, confira os itens e registre a nota — aí a conta fica liberada para pagamento.</p></div>
+    <div class="cartao" style="border-left:4px solid var(--ouro)"><p style="margin:0">Os abastecimentos "Empresa" vão somando na <b>fatura em aberto</b> de cada posto (já aparece em <b>Contas a pagar como prevista</b>).
+      Quando o posto mandar o fechamento (ex.: semanal), clique em <b>🗓️ Fechar período do posto</b>: escolha as datas, marque os abastecimentos que o posto cobrou e informe a nota e o vencimento.
+      Os marcados viram uma conta a pagar liberada; os desmarcados <b>ficam de fora</b>, em aberto, para o próximo fechamento.</p>
+      ${editaAbast() || editaFin() ? '<div class="acoes" style="margin-top:10px"><a class="btn prim" href="#/operacao/abastecimentos/fechar">🗓️ Fechar período do posto</a></div>' : ''}</div>
     <div class="grade" style="margin-bottom:14px"><div class="cartao kpi"><div class="n">${abertas.length}</div><div class="r">fatura(s) em formação/conferência</div></div>
       <div class="cartao kpi"><div class="n">${brl(abertas.reduce((s, f) => s + Number(f.valor_lancado || 0), 0))}</div><div class="r">a pagar aos postos (lançado)</div></div></div>
-    <div class="cartao">${fs.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Nº</th><th>Posto</th><th>Mês</th><th class="num">Abast.</th><th class="num">Litros</th><th class="num">Lançado</th><th class="num">Nota do posto</th><th class="num">Diferença</th><th>Vencimento</th><th>Conta a pagar</th><th>Situação</th></tr></thead><tbody>
+    <div class="cartao">${fs.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Nº</th><th>Posto</th><th>Período</th><th class="num">Abast.</th><th class="num">Litros</th><th class="num">Lançado</th><th class="num">Nota do posto</th><th class="num">Diferença</th><th>Vencimento</th><th>Conta a pagar</th><th>Situação</th></tr></thead><tbody>
       ${fs.map(f => `<tr class="clicavel" onclick="location.hash='#/operacao/abastecimentos/fatura/${f.id}'"${fAttr('posto', f.posto)}${fAttr('sit', ST_FAT[f.status]?.[0])}${fAttr('data', f.periodo_inicio)}${fAttr('valor', f.valor_nota || f.valor_lancado)}>
-        <td data-r="Nº" class="mono"><b>${esc(f.numero)}</b></td><td data-r="Posto">${esc(f.posto)}</td><td data-r="Mês">${mesAb(f.periodo_inicio)}</td><td data-r="Abast." class="num">${f.qtd}</td><td data-r="Litros" class="num">${n2(f.litros)}</td>
+        <td data-r="Nº" class="mono"><b>${esc(f.numero)}</b></td><td data-r="Posto">${esc(f.posto)}</td><td data-r="Período">${perAb(f)}</td><td data-r="Abast." class="num">${f.qtd}</td><td data-r="Litros" class="num">${n2(f.litros)}</td>
         <td data-r="Lançado" class="num">${brl(f.valor_lancado)}</td><td data-r="Nota do posto" class="num">${f.valor_nota != null ? brl(f.valor_nota) + (f.numero_nota ? `<div class="muted">nº ${esc(f.numero_nota)}</div>` : '') : '—'}</td>
         <td data-r="Diferença" class="num">${f.valor_nota != null && Number(f.diferenca) ? `<b style="color:var(--vermelho)">${brl(f.diferenca)}</b>` : '—'}</td><td data-r="Vencimento">${dataBR(f.vencimento) || '—'}</td>
         <td data-r="Conta a pagar">${f.titulo_id ? `<a href="#/financeiro/pagar/ver/${f.titulo_id}" onclick="event.stopPropagation()">${esc(f.titulo_numero)}</a> <span class="muted">${esc(f.titulo_status || '')}</span>` : '—'}</td><td data-r="Situação">${tagSt(ST_FAT, f.status)}</td></tr>`).join('')}</tbody></table></div>`
@@ -140,8 +146,8 @@ rota('/operacao/abastecimentos/fatura/:id', async (tela, id) => {
   const ativos = itens.filter(a => a.status !== 'cancelado');
   const aberta = ['em_conferencia', 'com_divergencia'].includes(f.status), pode = editaAbast() || editaFin();
   tela.innerHTML = `
-    <div class="topo"><div><h1>${esc(f.numero)} · ${esc(f.posto)} · ${mesAb(f.periodo_inicio)}</h1><p class="sub">${tagSt(ST_FAT, f.status)} · ${ativos.length} abastecimento(s) · ${lt(ativos.reduce((s, a) => s + Number(a.litros), 0))}</p></div>
-      <div class="acoes">${aberta && pode ? '<button class="btn prim" id="fat-nota">Registrar nota/fatura do posto</button>' : ''}${f.titulo_id ? `<a class="btn" href="#/financeiro/pagar/ver/${f.titulo_id}">Conta a pagar ${esc(f.titulo_numero)}</a>` : ''}<a class="btn" href="#/operacao/abastecimentos?aba=faturas">Voltar</a></div></div>
+    <div class="topo"><div><h1>${esc(f.numero)} · ${esc(f.posto)} · ${perAb(f)}</h1><p class="sub">${tagSt(ST_FAT, f.status)} · ${ativos.length} abastecimento(s) · ${lt(ativos.reduce((s, a) => s + Number(a.litros), 0))}</p></div>
+      <div class="acoes">${aberta && pode ? `<a class="btn prim" href="#/operacao/abastecimentos/fechar?posto=${f.fornecedor_id}">🗓️ Fechar período (escolher abastecimentos)</a><button class="btn" id="fat-nota">Fechar tudo com a nota</button>` : ''}${f.titulo_id ? `<a class="btn" href="#/financeiro/pagar/ver/${f.titulo_id}">Conta a pagar ${esc(f.titulo_numero)}</a>` : ''}<a class="btn" href="#/operacao/abastecimentos?aba=faturas">Voltar</a></div></div>
     <div class="grade" style="margin-bottom:14px">
       <div class="cartao kpi"><div class="n">${brl(f.valor_lancado)}</div><div class="r">lançado pelos motoristas</div></div>
       <div class="cartao kpi"><div class="n">${f.valor_nota != null ? brl(f.valor_nota) : '—'}</div><div class="r">nota do posto${f.numero_nota ? ' nº ' + esc(f.numero_nota) : ''}</div></div>
@@ -151,11 +157,11 @@ rota('/operacao/abastecimentos/fatura/:id', async (tela, id) => {
       ${itens.map(a => `<tr class="clicavel" onclick="location.hash='#/operacao/abastecimentos/ver/${a.id}'"${a.status === 'cancelado' ? ' style="opacity:.5"' : ''}><td data-r="Nº" class="mono"><b>${esc(a.numero)}</b>${a.alerta && !a.conferido_em && a.status !== 'cancelado' ? ' ⚠️' : ''}</td><td data-r="Data">${dataBR(a.data)}</td><td data-r="Placa" class="mono">${esc(a.placa || '')}</td><td data-r="Motorista">${esc(a.motorista || '')}</td>
         <td data-r="Combustível">${esc(a.combustivel || '')}</td><td data-r="Litros" class="num">${n2(a.litros)}</td><td data-r="R$/L" class="num">${n2(a.preco_litro, 3)}</td><td data-r="Valor" class="num">${brl(a.valor_total)}</td><td data-r="Situação">${tagSt(ST_AB, a.status)}</td></tr>`).join('')}</tbody>
       <tfoot><tr><td colspan="5"><b>Total</b></td><td class="num"><b>${n2(ativos.reduce((s, a) => s + Number(a.litros), 0))}</b></td><td></td><td class="num"><b>${brl(ativos.reduce((s, a) => s + Number(a.valor_total), 0))}</b></td><td></td></tr></tfoot></table></div>
-      ${ativos.some(a => a.alerta && !a.conferido_em) ? '<p class="muted">⚠️ Há lançamentos com alerta: confira-os (foto do cupom) antes de registrar a nota.</p>' : ''}</div>
+      ${aberta && ativos.some(a => a.alerta && !a.conferido_em) ? '<p class="muted">⚠️ Há lançamentos com alerta: confira-os (foto do cupom) antes de registrar a nota.</p>' : ''}</div>
     <div class="cartao"><h2>Nota/fatura do posto</h2><div id="anx-fat"></div></div>`;
   $('#anx-fat').innerHTML = await htmlAnexos('fechamento', id);
   $('#fat-nota')?.addEventListener('click', async () => {
-    const r = await modal(`<form><h2>Nota/fatura do ${esc(f.posto)} · ${mesAb(f.periodo_inicio)}</h2><div class="form">
+    const r = await modal(`<form><h2>Nota/fatura do ${esc(f.posto)} · ${perAb(f)}</h2><p class="muted">Fecha <b>todos</b> os ${ativos.length} abastecimento(s) desta fatura em aberto. Para escolher período e quais entram, use <b>Fechar período</b>.</p><div class="form">
       <label class="campo">Nº da nota/fatura<input name="nota" value="${esc(f.numero_nota || '')}"></label>
       <label class="campo">Valor da nota (R$) *<input name="valor" inputmode="decimal" required value="${f.valor_nota != null ? n2(f.valor_nota) : n2(f.valor_lancado)}"></label>
       <label class="campo">Vencimento *<input type="date" name="venc" required value="${f.vencimento || ''}"></label>
@@ -177,6 +183,89 @@ rota('/operacao/abastecimentos/fatura/:id', async (tela, id) => {
       aviso('Fatura conferida. A conta a pagar foi liberada.'); navegar();
     } catch (err) { falha(err); }
   });
+});
+
+// ----- Fechamento do posto por período, escolhendo os abastecimentos -----
+rota('/operacao/abastecimentos/fechar', async tela => {
+  if (!(editaAbast() || editaFin())) { tela.innerHTML = '<div class="cartao vazio">Sem permissão.</div>'; return; }
+  const abertos = await api.listar('v_abastecimentos', 'forma_pagamento=eq.faturado&status=eq.aguardando_fechamento&order=data_hora');
+  const postos = [...new Map(abertos.filter(a => a.posto_id).map(a => [a.posto_id, a.posto])).entries()].sort((x, y) => String(x[1]).localeCompare(String(y[1]), 'pt-BR'));
+  if (!postos.length) { tela.innerHTML = '<div class="topo"><div><h1>🗓️ Fechar período do posto</h1></div><div class="acoes"><a class="btn" href="#/operacao/abastecimentos?aba=faturas">Voltar</a></div></div><div class="cartao vazio">Nenhum abastecimento "Empresa" em aberto para fechar.</div>'; return; }
+  let posto = estado.params.get('posto'); if (!postos.some(p => p[0] === posto)) posto = postos[0][0];
+  // semana anterior (segunda a domingo) como sugestão
+  const h = new Date(hojeISO() + 'T12:00:00'), dw = (h.getDay() + 6) % 7;
+  let ini = somaDias(hojeISO(), -dw - 7), fim = somaDias(ini, 6);
+  const marcados = new Set(); let tocados = false;
+  tela.innerHTML = `<div class="topo"><div><h1>🗓️ Fechar período do posto</h1><p class="sub">Escolha o período, marque o que o posto cobrou e informe a nota. O que ficar desmarcado continua em aberto para o próximo fechamento.</p></div>
+      <div class="acoes"><a class="btn" href="#/operacao/abastecimentos?aba=faturas">Voltar</a></div></div>
+    <form id="f-fech">
+    <div class="cartao"><div class="form">
+      <label class="campo largo">Posto *<select name="posto" id="fc-posto">${postos.map(([id, n]) => `<option value="${id}" ${id === posto ? 'selected' : ''}>${esc(n)} (${abertos.filter(a => a.posto_id === id).length} em aberto)</option>`).join('')}</select></label>
+      <label class="campo">Período — de *<input type="date" name="ini" id="fc-ini" required value="${ini}"></label>
+      <label class="campo">até *<input type="date" name="fim" id="fc-fim" required value="${fim}"></label></div>
+      <div class="acoes" style="margin-top:6px"><button type="button" class="btn" data-sem="-1">◀ Semana anterior</button><button type="button" class="btn" data-sem="1">Próxima semana ▶</button>
+        <button type="button" class="btn" id="fc-tudo">Marcar todos</button><button type="button" class="btn" id="fc-nada">Desmarcar todos</button></div></div>
+    <div class="cartao"><h2>Abastecimentos em aberto deste posto</h2><p class="muted">Ao mudar o período, os do período são marcados automaticamente. Desmarque o que o posto <b>não</b> incluiu no fechamento (ele fica para o próximo).</p>
+      <div id="fc-lista"></div></div>
+    <div class="cartao"><h2>Nota/fatura do posto</h2><div class="form">
+      <label class="campo">Nº da nota/fatura<input name="nota"></label>
+      <label class="campo">Valor da nota (R$) *<input name="valor" id="fc-valor" inputmode="decimal" required></label>
+      <label class="campo">Vencimento *<input type="date" name="venc" id="fc-venc" required></label>
+      <label class="campo largo">Arquivo da nota/fatura / relatório do posto<input type="file" name="arquivos" multiple></label></div>
+      <p class="muted" id="fc-resumo"></p>
+      <div class="acoes"><button class="btn prim">Fechar período e liberar pagamento</button><a class="btn" href="#/operacao/abastecimentos?aba=faturas">Cancelar</a></div></div>
+    </form>`;
+  let prazo = 15, valorEditado = false, vencEditado = false;
+  const doPosto = () => abertos.filter(a => a.posto_id === posto);
+  const noPeriodo = a => a.data >= ini && a.data <= fim;
+  const autoMarcar = () => { marcados.clear(); doPosto().filter(noPeriodo).forEach(a => marcados.add(a.id)); };
+  const carregaPrazo = async () => { const f = await api.um('fornecedores', `id=eq.${posto}&select=prazo_faturamento_dias`).catch(() => null); prazo = f?.prazo_faturamento_dias ?? 15; };
+  const desenhar = () => {
+    const ls = doPosto(), sel = ls.filter(a => marcados.has(a.id)), fora = ls.filter(a => !marcados.has(a.id));
+    const tot = sel.reduce((s, a) => s + Number(a.valor_total), 0), lit = sel.reduce((s, a) => s + Number(a.litros), 0);
+    $('#fc-lista').innerHTML = ls.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th style="width:36px"></th><th>Nº</th><th>Data</th><th>Placa</th><th>Motorista</th><th>Combustível</th><th class="num">Litros</th><th class="num">R$/L</th><th class="num">Valor</th><th>Fatura em aberto</th></tr></thead><tbody>
+      ${ls.map(a => `<tr style="${marcados.has(a.id) ? '' : 'opacity:.55'}"><td data-r="Entra?"><input type="checkbox" data-id="${a.id}" ${marcados.has(a.id) ? 'checked' : ''} style="width:20px;height:20px"></td>
+        <td data-r="Nº" class="mono" style="white-space:nowrap"><a href="#/operacao/abastecimentos/ver/${a.id}">${esc(a.numero)}</a>${a.alerta && !a.conferido_em ? ' ⚠️' : ''}</td><td data-r="Data">${dataBR(a.data)}${noPeriodo(a) ? '' : ' <span class="tag">fora do período</span>'}</td>
+        <td data-r="Placa" class="mono">${esc(a.placa || '')}</td><td data-r="Motorista">${esc(a.motorista || '')}</td><td data-r="Combustível">${esc(a.combustivel || '')}</td>
+        <td data-r="Litros" class="num">${n2(a.litros)}</td><td data-r="R$/L" class="num">${n2(a.preco_litro, 3)}</td><td data-r="Valor" class="num">${brl(a.valor_total)}</td><td data-r="Fatura">${esc(a.fatura_numero || '')}</td></tr>`).join('')}</tbody>
+      <tfoot><tr><td colspan="6"><b>Entram no fechamento: ${sel.length}</b> · ficam de fora: ${fora.length}</td><td class="num"><b>${n2(lit)}</b></td><td></td><td class="num"><b>${brl(tot)}</b></td><td></td></tr></tfoot></table></div>`
+      : '<div class="vazio">Nada em aberto neste posto.</div>';
+    $$('#fc-lista input[type=checkbox]').forEach(c => c.onchange = () => { tocados = true; c.checked ? marcados.add(c.dataset.id) : marcados.delete(c.dataset.id); desenhar(); });
+    if (!valorEditado) $('#fc-valor').value = n2(tot);
+    if (!vencEditado) $('#fc-venc').value = somaDias(fim, prazo);
+    $('#fc-resumo').innerHTML = `Marcados: <b>${sel.length}</b> abastecimento(s), <b>${lt(lit)}</b>, <b>${brl(tot)}</b>. ${fora.length ? `Ficam de fora (seguem em aberto): <b>${fora.length}</b> — ${brl(fora.reduce((s, a) => s + Number(a.valor_total), 0))}.` : ''}
+      Vencimento sugerido: fim do período + ${prazo} dia(s) (prazo do posto).`;
+  };
+  const mudouPeriodo = () => { ini = $('#fc-ini').value; fim = $('#fc-fim').value; if (!ini || !fim) return; autoMarcar(); desenhar(); };
+  $('#fc-ini').onchange = mudouPeriodo; $('#fc-fim').onchange = mudouPeriodo;
+  $$('[data-sem]').forEach(b => b.onclick = () => { const n = Number(b.dataset.sem) * 7; $('#fc-ini').value = somaDias($('#fc-ini').value || ini, n); $('#fc-fim').value = somaDias($('#fc-fim').value || fim, n); mudouPeriodo(); });
+  $('#fc-tudo').onclick = () => { doPosto().forEach(a => marcados.add(a.id)); desenhar(); };
+  $('#fc-nada').onclick = () => { marcados.clear(); desenhar(); };
+  $('#fc-posto').onchange = async e => { posto = e.target.value; await carregaPrazo(); autoMarcar(); desenhar(); };
+  $('#fc-valor').oninput = () => { valorEditado = true; };
+  $('#fc-venc').oninput = () => { vencEditado = true; };
+  await carregaPrazo(); autoMarcar(); desenhar();
+  $('#f-fech').onsubmit = async e => {
+    e.preventDefault(); const d = formDados(e.target);
+    const ids = doPosto().filter(a => marcados.has(a.id)).map(a => a.id), fora = doPosto().filter(a => !marcados.has(a.id)).map(a => a.id);
+    if (!ids.length) return aviso('Marque ao menos um abastecimento que entrou no fechamento.', true);
+    if (d.fim < d.ini) return aviso('O fim do período é antes do início.', true);
+    const args = { p_forn: posto, p_ini: d.ini, p_fim: d.fim, p_ids: ids, p_numero_nota: d.nota || null, p_valor_nota: num(d.valor), p_vencimento: d.venc, p_fora: fora };
+    await ocupado(e.submitter, async () => { try {
+      let res = await api.rpc('fatura_posto_fechar', args);
+      if (!res.ok) {
+        const m = await modal(`<form><h2>A nota não bate com os marcados</h2><p>Nota: <b>${brl(num(d.valor))}</b> · Marcados: <b>${brl(res.lancado)}</b> · Diferença: <b style="color:var(--vermelho)">${brl(res.diferenca)}</b></p>
+          <p class="muted">Confira se falta marcar algum abastecimento (ou se marcou algum que o posto não cobrou). Você pode voltar e ajustar, ou aceitar a diferença explicando o motivo (ex.: desconto do posto).</p>
+          <label class="campo">Motivo para aceitar a diferença<textarea name="motivo" required></textarea></label>
+          <div class="rodape"><button type="button" class="btn" data-fechar>Voltar e ajustar</button><button class="btn prim">Aceitar diferença e fechar</button></div></form>`);
+        if (!m) return;
+        res = await api.rpc('fatura_posto_fechar', { ...args, p_aceitar_diferenca: true, p_motivo: m.motivo });
+      }
+      if (d.arquivos?.length) await anexar('fechamento', res.fechamento, d.arquivos, 'Nota/fatura do posto');
+      aviso(`Fechamento ${res.numero} registrado: conta a pagar liberada.${fora.length ? ` ${fora.length} abastecimento(s) ficaram em aberto para o próximo fechamento.` : ''}`);
+      location.hash = '#/operacao/abastecimentos/fatura/' + res.fechamento;
+    } catch (err) { falha(err); } });
+  };
 });
 
 // ----- App dos motoristas: listas -----

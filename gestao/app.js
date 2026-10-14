@@ -82,7 +82,15 @@ function modal(html, { aoAbrir, validar } = {}) {
   fundo.hidden = false;
   return new Promise(resolve => {
     const fechar = v => { fundo.hidden = true; fundo.innerHTML = ''; resolve(v); };
-    fundo.onclick = e => { if (e.target === fundo) fechar(null); };
+    // só fecha se o clique COMEÇOU e TERMINOU no fundo escuro (selecionar texto e soltar fora não fecha mais)
+    let desceuNoFundo = false;
+    fundo.onmousedown = e => { desceuNoFundo = e.target === fundo; };
+    fundo.ontouchstart = e => { desceuNoFundo = e.target === fundo; };
+    fundo.onclick = e => {
+      const sel = window.getSelection && String(window.getSelection() || '');
+      if (desceuNoFundo && e.target === fundo && !sel) fechar(null);
+      desceuNoFundo = false;
+    };
     $$('[data-fechar]', fundo).forEach(b => (b.onclick = () => fechar(null)));
     const form = $('form', fundo);
     if (form) form.onsubmit = e => {
