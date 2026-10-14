@@ -218,3 +218,8 @@ a.org-no span { font-size: 12px; opacity: .7; }
 .menu .mg.aberto .mg-itens { display: block; }
 .menu .mg-itens a.sub-item { padding-left: 12px; }
 .menu-cel .menu .mg-tit { font-size: 13px; padding: 13px 10px; }
+
+/* Botão voltar (aparece quando se chega por um botão de outra tela) */
+.btn-voltar { display: inline-flex; align-items: center; gap: 4px; background: none; border: 0; padding: 4px 0; margin: 0 0 6px; color: var(--azul-2, #02654D); font-weight: 600; font-size: 14px; cursor: pointer; }
+.btn-voltar:hover { text-decoration: underline; }
+@media print { .btn-voltar { display: none !important; } }

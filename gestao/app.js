@@ -184,7 +184,7 @@ async function cad(tabela, consulta, forcar = false) {
 const contas = f => cad('plano_contas', 'select=id,codigo,nome,tipo,aceita_lancamento,ativo&order=codigo', f);
 const centros = f => cad('centros_custo', 'select=id,codigo,nome,ativo&order=nome', f);
 const usuarios = f => cad('usuarios', 'select=id,nome,email,ativo,centro_custo_id&order=nome', f);
-const fornecedores = f => cad('fornecedores', 'select=id,razao_social,nome_fantasia,documento,ativo,boleto,prazo_faturamento_dias,conta_padrao_id&order=razao_social', f);
+const fornecedores = f => cad('fornecedores', 'select=id,razao_social,nome_fantasia,documento,ativo,boleto,prazo_faturamento_dias,conta_padrao_id,cobranca&order=razao_social', f);
 const bancos = f => cad('contas_bancarias', 'select=id,nome,tipo,ativo&order=nome', f);
 const veiculos = f => cad('veiculos', 'select=id,placa,modelo,ativo&order=placa', f);
 const porId = arr => Object.fromEntries(arr.map(x => [x.id, x]));
@@ -417,12 +417,39 @@ const ROLAGEM = (() => { try { return JSON.parse(sessionStorage.getItem('rolagem
 let _ultimaTela = null;
 function guardarRolagem() { if (_ultimaTela) { ROLAGEM[_ultimaTela] = window.scrollY; try { sessionStorage.setItem('rolagem', JSON.stringify(ROLAGEM)); } catch { /* ok */ } } }
 window.addEventListener('scroll', () => { clearTimeout(window._tRol); window._tRol = setTimeout(guardarRolagem, 150); }, { passive: true });
+// Botão "← Voltar": aparece sempre que se chega a uma tela por um botão/link de outra tela (não pelo menu)
+let _viaMenu = true, _voltando = false;
+document.addEventListener('click', e => { if (e.target.closest('.menu a, .barra-baixo a, .menu-cel a')) _viaMenu = true; }, true);
+const PILHA = (() => { try { return JSON.parse(sessionStorage.getItem('pilha') || '[]'); } catch { return []; } })();
+const _base = h => (h || '').split('?')[0];
+const _ehForm = h => /\/(novo|nova|editar)(\/|$|\?)/.test(h);
+function atualizarPilha(h) {
+  const topoP = PILHA[PILHA.length - 1], ant = PILHA[PILHA.length - 2];
+  if (_viaMenu || !PILHA.length) { PILHA.length = 0; PILHA.push(h); }
+  else if (_voltando || (ant && _base(ant) === _base(h))) { PILHA.pop(); PILHA[PILHA.length - 1] = h; }   // voltou
+  else if (_base(topoP) === _base(h)) PILHA[PILHA.length - 1] = h;                                          // mesma tela (filtro, aba)
+  else if (_ehForm(topoP) && !_ehForm(h)) PILHA[PILHA.length - 1] = h;                                      // saiu do formulário salvo: não volta para ele
+  else PILHA.push(h);
+  if (PILHA.length > 40) PILHA.splice(0, PILHA.length - 40);
+  _viaMenu = false; _voltando = false;
+  try { sessionStorage.setItem('pilha', JSON.stringify(PILHA)); } catch { /* ok */ }
+}
+function botaoVoltar(tela) {
+  if (PILHA.length < 2 || $('.btn-voltar', tela)) return;
+  const topo = $('.topo', tela) || tela.firstElementChild; if (!topo) return;
+  // os "Voltar" fixos da própria tela dão lugar a este (que volta para onde você estava)
+  $$('.topo .acoes a, .topo .acoes button', tela).forEach(b => { if (/^voltar$/i.test(b.textContent.trim())) b.hidden = true; });
+  topo.insertAdjacentHTML('beforebegin', `<button type="button" class="btn-voltar" title="Voltar para a tela anterior">← Voltar</button>`);
+  $('.btn-voltar', tela).onclick = () => { _voltando = true; location.hash = PILHA[PILHA.length - 2]; };
+}
+
 async function navegar() {
   if (!estado.usuario) return;
   guardarRolagem();
   const telaAtual = location.hash || '#/inicio';
   const mesmaRota = _ultimaTela && _ultimaTela.split('?')[0] === telaAtual.split('?')[0];
   const yAntes = window.scrollY;
+  atualizarPilha(telaAtual);
   const [h, qs] = (location.hash || '#/inicio').slice(1).split('?');
   estado.params = new URLSearchParams(qs || '');
   if (!telaPermitida(h)) { aviso('Você não tem acesso a esta tela.', true); location.hash = '#/inicio'; return; }
@@ -434,7 +461,7 @@ async function navegar() {
     if (m) {
       // enquanto carrega, a tela antiga fica com a altura dela (evita o "pulo" para o topo)
       tela.style.minHeight = tela.offsetHeight + 'px';
-      try { await ROTAS[padrao](tela, ...m.slice(1).map(decodeURIComponent)); if (typeof ferramentasExportacao === 'function') ferramentasExportacao(tela); }
+      try { await ROTAS[padrao](tela, ...m.slice(1).map(decodeURIComponent)); if (typeof ferramentasExportacao === 'function') ferramentasExportacao(tela); botaoVoltar(tela); }
       catch (e) { tela.innerHTML = `<div class="cartao erro-txt">Não foi possível abrir esta tela: ${esc(e.message)}</div>`; console.error(e); }
       tela.style.minHeight = '';
       const alvo = mesmaRota ? yAntes : (ROLAGEM[telaAtual] ?? 0);

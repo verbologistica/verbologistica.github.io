@@ -83,7 +83,7 @@ function rotasParceiros(tabela) {
           <td data-r="Nome"><b>${esc(x[P.nome])}</b>${x.nome_fantasia ? `<div class="muted">${esc(x.nome_fantasia)}</div>` : ''}${(x.categorias || []).length ? `<div class="muted">${esc(x.categorias.join(', '))}</div>` : ''}</td>
           <td data-r="CNPJ / CPF" class="nowrap">${esc(fmtDoc(x.documento) || '—')}</td>
           <td data-r="Cidade">${esc([x.cidade, x.uf].filter(Boolean).join('/') || '—')}</td>
-          <td data-r="Pagamento">${x.boleto ? '<span class="tag azul">Boleto</span> ' : ''}${x.prazo_faturamento_dias != null ? `${x.prazo_faturamento_dias} dias` : ''}${(x.dados_bancarios || []).some(c => c.pix_chave) ? ' <span class="tag">Pix</span>' : ''}</td>
+          <td data-r="Pagamento">${x.cobranca === 'fixa_mensal' ? '<span class="tag amarelo">Fixo mensal</span> ' : ''}${x.boleto ? '<span class="tag azul">Boleto</span> ' : ''}${x.prazo_faturamento_dias != null ? (x.prazo_faturamento_dias === 0 ? 'À vista' : `${x.prazo_faturamento_dias} dias`) : ''}${(x.dados_bancarios || []).some(c => c.pix_chave) ? ' <span class="tag">Pix</span>' : ''}</td>
           <td>${x.ativo ? '' : '<span class="tag">Inativo</span>'}${x.situacao_cadastral && x.situacao_cadastral !== 'ATIVA' ? ` <span class="tag vermelho">${esc(x.situacao_cadastral)}</span>` : ''}</td></tr>`).join('')}
       </tbody></table></div>` : '<div class="vazio">Nenhum cadastro encontrado.</div>'}</div>`;
     $('#filtros').onsubmit = e => { e.preventDefault(); const q = formDados(e.target).q;
@@ -97,6 +97,7 @@ function rotasParceiros(tabela) {
     const bancos = await listaBancos();
     const cbs = x.dados_bancarios || [];
     const conta = x.conta_padrao_id ? (await contas()).find(c => c.id === x.conta_padrao_id) : null;
+    const ctV = tabela === 'fornecedores' ? await api.um('contas_recorrentes', `fornecedor_id=eq.${id}&ativo=eq.true&order=criado_em.desc&limit=1`).catch(() => null) : null;
     const end = [x.logradouro, x.numero, x.complemento, x.bairro, [x.cidade, x.uf].filter(Boolean).join('/'), x.cep && 'CEP ' + fmtCEP(x.cep)].filter(Boolean).join(', ');
     tela.innerHTML = `
       <div class="topo"><div><h1>${esc(x[P.nome])}</h1><p class="sub">${esc(x.nome_fantasia || '')}${x.nome_fantasia ? ' · ' : ''}${esc(fmtDoc(x.documento) || 'sem CNPJ/CPF')}${x.ativo ? '' : ' · <span class="tag">Inativo</span>'}</p></div>
@@ -114,7 +115,9 @@ function rotasParceiros(tabela) {
       </div></div>
       <div class="cartao"><h2>Pagamento e faturamento</h2><div class="form">
         <div><div class="muted">${esc(P.boleto)}</div><b>${x.boleto ? 'Sim' : 'Não'}</b></div>
-        <div><div class="muted">Prazo de faturamento</div><b>${x.prazo_faturamento_dias != null ? x.prazo_faturamento_dias + ' dias' : '—'}</b></div>
+        ${tabela === 'fornecedores' ? `<div class="largo"><div class="muted">Cobrança</div><b>${ctV ? `Valor fixo mensal: ${brl(ctV.valor)} todo dia ${ctV.dia_vencimento} — ${esc(ctV.descricao)}` : 'Variável (cada despesa com seu valor)'}</b>
+          ${ctV ? `<div class="muted">Desde ${dataBR(ctV.inicio)}${ctV.fim ? ' · até ' + dataBR(ctV.fim) : ' · sem data de término'} · <a href="#/financeiro/pagar?aba=fixas">ver contas fixas</a></div>` : ''}</div>` : ''}
+        <div><div class="muted">Prazo de faturamento</div><b>${x.prazo_faturamento_dias == null ? '—' : x.prazo_faturamento_dias === 0 ? 'À vista' : x.prazo_faturamento_dias + ' dias'}</b></div>
         <div><div class="muted">Condição combinada</div><b>${esc(x.condicao_padrao || '—')}</b></div>
         ${tabela === 'fornecedores' ? `<div><div class="muted">Conta padrão do plano</div><b>${esc(conta ? conta.codigo + ' ' + conta.nome : '—')}</b></div>` : ''}
       </div>
@@ -148,6 +151,8 @@ async function formParceiro(tela, tabela, x = null) {
       <label class="opcao"><input type="radio" name="b_principal" value="${i}" ${c.principal ? 'checked' : ''}> <span>Conta principal</span></label>
       <div style="text-align:right"><button type="button" class="btn peq perigo rem-conta">Remover conta</button></div></div></div>`;
   const contasIni = (x?.dados_bancarios || []).length ? x.dados_bancarios : [{ principal: true }];
+  const ct = tabela === 'fornecedores' && x ? await api.um('contas_recorrentes', `fornecedor_id=eq.${x.id}&ativo=eq.true&order=criado_em.desc&limit=1`).catch(() => null) : null;
+  const ccsP = tabela === 'fornecedores' ? await centros().catch(() => []) : [];
   const cats = x?.categorias || [];
   tela.innerHTML = `
     <div class="topo"><div><h1>${x ? 'Editar ' + P.um : 'Novo ' + P.um}</h1><p class="sub">Digite o CNPJ: os dados da Receita são preenchidos sozinhos e você pode alterar o que quiser. Para pessoa física, use o CPF (dados de CPF não são públicos, preencha à mão).</p></div></div>
@@ -179,7 +184,21 @@ async function formParceiro(tela, tabela, x = null) {
       </div></div>
       <div class="cartao"><h2>Pagamento e faturamento</h2><div class="form">
         <label class="check largo"><input type="checkbox" name="boleto" ${x?.boleto ? 'checked' : ''}> ${esc(P.boleto)}</label>
-        <label class="campo">Prazo de faturamento (dias)<input name="prazo" type="number" min="0" max="365" value="${x?.prazo_faturamento_dias ?? ''}" placeholder="Ex.: 28"></label>
+        ${tabela === 'fornecedores' ? `<div class="largo"><div class="muted" style="margin-bottom:6px">Como este fornecedor cobra?</div><div class="chips">
+          <label class="chip"><input type="radio" name="cobranca" value="variavel" ${x?.cobranca !== 'fixa_mensal' ? 'checked' : ''}> Cada despesa tem seu valor (faturamento por prazo)</label>
+          <label class="chip"><input type="radio" name="cobranca" value="fixa_mensal" ${x?.cobranca === 'fixa_mensal' ? 'checked' : ''}> Valor fixo mensal, em data fixa (aluguel, internet, contador…)</label></div></div>
+        <div class="largo cartao" id="box-fixo" style="margin:4px 0;padding:12px;border-left:4px solid var(--ouro)"><div class="form">
+          <label class="campo largo">Serviço / descrição *<input name="fx_desc" value="${esc(ct?.descricao || '')}" placeholder="Ex.: Aluguel do galpão, Internet, Honorários contábeis"></label>
+          <label class="campo">Valor mensal (R$) *<input name="fx_valor" inputmode="decimal" value="${ct ? Number(ct.valor).toFixed(2).replace('.', ',') : ''}"></label>
+          <label class="campo">Vence todo dia *<input name="fx_dia" type="number" min="1" max="31" value="${ct?.dia_vencimento ?? ''}" placeholder="1 a 31"></label>
+          <label class="campo">Cobrar a partir de *<input type="date" name="fx_inicio" value="${ct?.inicio || hojeISO().slice(0, 8) + '01'}"></label>
+          <label class="campo">Serviço até (cancelamento)<input type="date" name="fx_fim" value="${ct?.fim || ''}"></label>
+          <label class="campo">Centro de custo<select name="fx_cc">${opcoes((ccsP || []).filter(c => c.ativo || c.id === ct?.centro_custo_id), null, c => c.nome, ct?.centro_custo_id || (ccsP || []).find(c => c.codigo === 'GERAL')?.id, null)}</select></label>
+          <p class="largo muted" style="margin:0">O sistema lança sozinho a conta de cada mês (desde "Cobrar a partir de" até o mês que vem) em <b>Contas a pagar › Contas fixas mensais</b>, até a data de cancelamento. O Financeiro só confirma o pagamento.
+            Quando o serviço for cancelado, preencha "Serviço até": as contas dos meses seguintes são canceladas sozinhas.</p></div></div>` : ''}
+        <label class="campo" id="campo-prazo">Prazo de faturamento<select name="prazo_sel">${[['', 'Não informado'], ['0', 'À vista'], ...[7, 10, 14, 15, 21, 28, 30, 35, 45, 60, 90, 120].map(n => [String(n), n + ' dias']), ['outro', 'Outro…']]
+          .map(([v, t]) => `<option value="${v}" ${(x?.prazo_faturamento_dias == null ? '' : [0, 7, 10, 14, 15, 21, 28, 30, 35, 45, 60, 90, 120].includes(x.prazo_faturamento_dias) ? String(x.prazo_faturamento_dias) : 'outro') === v ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+        <label class="campo" id="campo-prazo-outro">Prazo (dias)<input name="prazo" type="number" min="0" max="365" value="${x?.prazo_faturamento_dias ?? ''}" placeholder="Ex.: 40"></label>
         <label class="campo">Condição combinada<input name="condicao_padrao" value="${esc(x?.condicao_padrao || '')}" placeholder="Ex.: quinzenal, fechamento dia 15"></label>
         ${tabela === 'fornecedores' ? `<label class="campo largo">Conta padrão do plano de contas<select name="conta_padrao_id">${await opcoesContas(x?.conta_padrao_id)}</select></label>` : ''}
       </div>
@@ -192,6 +211,13 @@ async function formParceiro(tela, tabela, x = null) {
     </form>`;
   const f = $('#f-parc');
   let receita = null;
+  const mostraCobranca = () => {
+    const fixo = $('[name=cobranca]:checked', f)?.value === 'fixa_mensal';
+    if ($('#box-fixo')) $('#box-fixo').hidden = !fixo;
+    $('#campo-prazo-outro').hidden = f.prazo_sel.value !== 'outro';
+  };
+  f.addEventListener('change', e => { if (['cobranca', 'prazo_sel'].includes(e.target.name)) { if (e.target.name === 'prazo_sel' && e.target.value !== 'outro') f.prazo.value = e.target.value; mostraCobranca(); } });
+  mostraCobranca();
   const msg = (t, erro) => { $('#doc-msg').className = 'largo ' + (erro ? 'erro-txt' : 'muted'); $('#doc-msg').textContent = t; };
   const ligarContas = () => $$('.rem-conta', f).forEach(b => (b.onclick = () => { b.closest('.conta-banc').remove(); renumerar(); }));
   const renumerar = () => $$('[name=b_principal]', f).forEach((r, i) => (r.value = i));
@@ -226,6 +252,12 @@ async function formParceiro(tela, tabela, x = null) {
     e.preventDefault();
     const d = formDados(f), acao = e.submitter?.value || 'salvar';
     const doc = soDigitos(d.documento);
+    const fixo = tabela === 'fornecedores' && d.cobranca === 'fixa_mensal';
+    if (fixo) {
+      if (!editaFin()) return aviso('Só o Financeiro cadastra contrato de valor fixo mensal.', true);
+      if (!d.fx_desc || !(num(d.fx_valor) > 0) || !(Number(d.fx_dia) >= 1 && Number(d.fx_dia) <= 31) || !d.fx_inicio) return aviso('Contrato fixo: informe o serviço, o valor mensal, o dia do vencimento e a partir de quando cobrar.', true);
+    }
+    if (d.prazo_sel !== 'outro') d.prazo = d.prazo_sel;
     if (doc && !(doc.length === 11 ? cpfValido(doc) : doc.length === 14 ? cnpjValido(doc) : false)) return aviso('CNPJ/CPF inválido: confira os números.', true);
     const principal = Number($('[name=b_principal]:checked', f)?.value ?? 0);
     const contasBanc = $$('.conta-banc', f).map((el, i) => {
@@ -254,7 +286,14 @@ async function formParceiro(tela, tabela, x = null) {
       try {
         let id = x?.id;
         if (x) await api.alterar(tabela, `id=eq.${id}`, dados); else [{ id }] = await api.inserir(tabela, dados);
-        delete estado.cache[tabela]; aviso('Cadastro salvo.'); location.hash = `#/cadastros/${tabela}/ver/${id}`;
+        let extra = '';
+        if (tabela === 'fornecedores' && (fixo || x?.cobranca === 'fixa_mensal') && editaFin()) {
+          const r = await api.rpc('salvar_conta_fixa', { p_fornecedor: id, p_dados: fixo
+            ? { cobranca: 'fixa_mensal', descricao: d.fx_desc, valor: num(d.fx_valor), dia: Number(d.fx_dia), inicio: d.fx_inicio, fim: d.fx_fim || null, centro_custo_id: d.fx_cc || null, conta_id: d.conta_padrao_id || null }
+            : { cobranca: 'variavel', motivo: 'Fornecedor passou a cobrança variável' } });
+          extra = fixo ? ` Contas fixas do contrato atualizadas${r.canceladas ? ` (${r.canceladas} conta(s) futura(s) cancelada(s) pelo encerramento)` : ''}.` : ' Contrato fixo encerrado.';
+        }
+        delete estado.cache[tabela]; aviso('Cadastro salvo.' + extra); location.hash = `#/cadastros/${tabela}/ver/${id}`;
       } catch (err) { falha(/duplicate|unique/i.test(err.message) ? new Error('Já existe um cadastro com esse CNPJ/CPF.') : err); }
     });
   };

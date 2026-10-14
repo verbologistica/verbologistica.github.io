@@ -21,8 +21,14 @@ const TIPO = {
 const FORMAS_BAIXA = ['Pix', 'Boleto', 'Transferência (TED/DOC)', 'Cartão', 'Débito automático', 'Cheque', 'Dinheiro'];
 const clientes = f => cad('clientes', 'select=id,nome,nome_fantasia,documento,ativo,boleto,prazo_faturamento_dias&order=nome', f);
 
+const ABAS_PAGAR = [['variaveis', 'Despesas variáveis'], ['fixas', 'Contas fixas mensais'], ['todas', 'Todas']];
+const abasPagar = aba => `<div class="abas">${ABAS_PAGAR.map(([k, t]) => `<a href="#/financeiro/pagar?aba=${k}" class="${k === aba ? 'ativa' : ''}">${t}</a>`).join('')}</div>`;
+
 async function listaTitulos(tela, tipo) {
   const T = TIPO[tipo];
+  const aba = tipo === 'pagar' ? (estado.params.get('aba') || 'variaveis') : 'todas';
+  if (tipo === 'pagar') await api.rpc('gerar_contas_fixas').catch(() => 0);   // lança os meses das contas fixas (não duplica)
+  if (aba === 'fixas') return listaFixas(tela);
   const st = estado.params.get('status') || 'abertas';
   const faixa = estado.params.get('faixa') || '';
   const busca = (estado.params.get('q') || '').toLowerCase();
@@ -30,7 +36,7 @@ async function listaTitulos(tela, tipo) {
   const semCompIds = new Set(semComp.map(x => x.parcela_id));
   const filtroSt = { abertas: 'status=in.(aberta,aprovada,prevista)', pagas: 'status=eq.paga', todas: 'status=neq.cancelada',
                      semcomp: semCompIds.size ? 'id=' + lista([...semCompIds]) : 'id=is.null' }[st] || 'status=neq.cancelada';
-  let ps = await api.listar('v_parcelas', `tipo=eq.${tipo}&${filtroSt}&order=vencimento,titulo_numero&limit=2000`);
+  let ps = await api.listar('v_parcelas', `tipo=eq.${tipo}&${filtroSt}${aba === 'variaveis' ? '&origem=neq.recorrente' : ''}&order=vencimento,titulo_numero&limit=2000`);
   const [planoC, ccsT] = await Promise.all([contas().catch(() => []), centros().catch(() => [])]);
   const nomeConta = id => planoC.find(c => c.id === id)?.nome, nomeCC = id => ccsT.find(c => c.id === id)?.nome;
   const ORIG_T = { reembolso: 'Reembolso', adiantamento: 'Adiantamento', pedido: 'Pedido de compra', fechamento: 'Fechamento de fornecedor', fatura_cartao: 'Fatura de cartão', recorrente: 'Conta fixa', avulso: 'Lançamento avulso', legado: 'Anterior ao sistema' };
@@ -42,9 +48,10 @@ async function listaTitulos(tela, tipo) {
   const total = ps.reduce((s, p) => s + Number(pagas ? p.valor_pago : p.saldo), 0);
   const colValor = pagas ? T.feito : 'Saldo';
   tela.innerHTML = `
-    <div class="topo"><div><h1>${T.titulo}</h1><p class="sub">${ps.length} parcela(s) · ${brl(total)}</p></div>
+    <div class="topo"><div><h1>${T.titulo}</h1><p class="sub">${ps.length} parcela(s) · ${brl(total)}${aba === 'variaveis' ? ' · sem as contas fixas mensais' : ''}</p></div>
       ${editaFin() ? `<div class="acoes"><a class="btn prim" href="${T.rota}/novo">+ ${T.novo}</a></div>` : ''}</div>
-    <form class="filtros" id="filtros">
+    ${tipo === 'pagar' ? abasPagar(aba) : ''}
+    <form class="filtros" id="filtros"><input type="hidden" name="aba" value="${tipo === 'pagar' ? aba : ''}">
       <select name="status">${[['abertas', 'Em aberto'], ['pagas', T.feitas], ...(tipo === 'pagar' ? [['semcomp', 'Pagas sem comprovante']] : []), ['todas', 'Todas']].map(([v, t]) => `<option value="${v}" ${v === st ? 'selected' : ''}>${t}</option>`).join('')}</select>
       <select name="faixa"><option value="">Qualquer vencimento</option>${Object.entries(FAIXAS).filter(([k]) => k !== 'vencidos').map(([k, [t]]) => `<option value="${k}" ${k === faixa ? 'selected' : ''}>${t}</option>`).join('')}</select>
       <input name="q" placeholder="Buscar ${T.pessoa.toLowerCase()} ou descrição" value="${esc(estado.params.get('q') || '')}">
@@ -81,6 +88,8 @@ async function novoTitulo(tela, tipo) {
       <label class="campo">Nº de parcelas<input type="number" name="parcelas" min="1" max="60" value="1" required></label>
       <label class="campo">1º vencimento<input type="date" name="vencimento" value="${hojeISO()}" required></label>
       <label class="campo">Intervalo<select name="intervalo"><option value="mes">Mensal</option><option value="30">A cada 30 dias</option><option value="15">A cada 15 dias</option><option value="7">Semanal</option></select></label>
+      <label class="check"><input type="checkbox" name="avista"> Pago/pagar à vista (vence na data de emissão)</label>
+      <div class="largo" id="prazo-info"></div>
       <label class="check largo"><input type="checkbox" name="legado"> ${T.legado}</label>
       <label class="campo largo">Anexos (${tipo === 'pagar' ? 'boleto, nota' : 'nota, CT-e, comprovante'})<input type="file" name="arquivos" accept="image/*,application/pdf" multiple></label>
       <div class="largo muted" id="previa"></div>
@@ -96,11 +105,26 @@ async function novoTitulo(tela, tipo) {
   const prev = () => { const d = formDados(f); $('#campo-fav').hidden = !!d.pessoa_id;
     $('#previa').innerHTML = num(d.valor) ? plano(d).map(x => `${x.parcela}ª ${dataBR(x.vencimento)} · ${brl(x.valor)}`).join(' &nbsp;|&nbsp; ') : ''; };
   f.oninput = prev; prev();
-  // prazo de faturamento e conta padrão do cadastro
-  f.pessoa_id.addEventListener('change', () => { const p = pess.find(x => x.id === f.pessoa_id.value); if (!p) return;
-    if (p.prazo_faturamento_dias != null) f.vencimento.value = somaDias(f.data_emissao.value, p.prazo_faturamento_dias);
-    if (p.conta_padrao_id && !f.conta_id.value) f.conta_id.value = p.conta_padrao_id;
-    prev(); });
+  // vencimento automático pelo prazo de faturamento do cadastro (editável em caso extraordinário)
+  let vencManual = false;
+  f.vencimento.addEventListener('input', () => { vencManual = true; });
+  const prazoAuto = () => {
+    const p = pess.find(x => x.id === f.pessoa_id.value);
+    const info = $('#prazo-info');
+    if (f.avista.checked) { f.vencimento.value = f.data_emissao.value; vencManual = false;
+      info.innerHTML = '<span class="muted">À vista: vencimento = data de emissão.</span>'; }
+    else if (p && p.prazo_faturamento_dias != null) {
+      if (!vencManual) f.vencimento.value = somaDias(f.data_emissao.value, p.prazo_faturamento_dias);
+      info.innerHTML = `<span class="muted">${p.prazo_faturamento_dias ? `Faturamento de <b>${p.prazo_faturamento_dias} dias</b>` : 'Fornecedor recebe <b>à vista</b>'} (do cadastro): vencimento calculado sozinho${vencManual ? ' — <b>alterado à mão</b> <button type="button" class="btn peq" id="volta-prazo">Voltar ao prazo</button>' : '. Mude a data só em caso extraordinário.'}</span>`;
+      $('#volta-prazo')?.addEventListener('click', () => { vencManual = false; prazoAuto(); prev(); });
+    } else info.innerHTML = p ? '<span class="muted">Este cadastro não tem prazo de faturamento: informe o vencimento (ou cadastre o prazo no fornecedor).</span>' : '';
+    if (p?.cobranca === 'fixa_mensal') info.innerHTML += '<div class="cartao" style="border-left:4px solid var(--ouro);margin:8px 0 0;padding:10px">Este fornecedor tem <b>valor fixo mensal</b>: a conta de cada mês já é lançada sozinha em <a href="#/financeiro/pagar?aba=fixas">Contas fixas mensais</a>. Lance aqui só uma despesa extra (fora do contrato).</div>';
+  };
+  f.pessoa_id.addEventListener('change', () => { const p = pess.find(x => x.id === f.pessoa_id.value); vencManual = false;
+    if (p?.conta_padrao_id && !f.conta_id.value) f.conta_id.value = p.conta_padrao_id;
+    prazoAuto(); prev(); });
+  f.data_emissao.addEventListener('change', () => { prazoAuto(); prev(); });
+  f.avista.addEventListener('change', () => { prazoAuto(); prev(); });
   f.onsubmit = async e => {
     e.preventDefault();
     const d = formDados(f);
@@ -134,10 +158,10 @@ async function verTitulo(tela, id, tipo) {
   const reembs = t.origem === 'reembolso' ? await api.listar('reembolsos', `titulo_id=eq.${id}&select=id,numero,data_despesa,descricao,valor&order=data_despesa`) : [];
   const pessoa = t.forn?.razao_social || t.cli?.nome || t.colab?.nome || t.favorecido_nome || '—';
   const pix = t.forn?.chave_pix || t.colab?.chave_pix;
-  const origens = { reembolso: 'Reembolso', avulso: 'Lançamento avulso', legado: tipo === 'pagar' ? 'Compra anterior ao sistema' : 'Venda anterior ao sistema', pedido: 'Pedido de compra' };
+  const origens = { reembolso: 'Reembolso', avulso: 'Lançamento avulso', legado: tipo === 'pagar' ? 'Compra anterior ao sistema' : 'Venda anterior ao sistema', pedido: 'Pedido de compra', recorrente: 'Conta fixa mensal (contrato do fornecedor)', fechamento: 'Fatura do posto (abastecimentos)', adiantamento: 'Adiantamento' };
   tela.innerHTML = `
     <div class="topo"><div><h1>${esc(t.numero)} · ${esc(pessoa)}</h1><p class="sub">${tagTitulo(t.status, false, tipo)} · ${esc(t.descricao || '')}</p></div>
-      <div class="acoes">${editaFin() && !['pago', 'cancelado'].includes(t.status) && !baixas.length ? '<button class="btn perigo" id="cancelar">Cancelar conta</button>' : ''}
+      <div class="acoes">${editaFin() && t.status !== 'cancelado' ? `<a class="btn prim" href="${T.rota}/editar/${id}">Editar</a>` : ''}${editaFin() && !['pago', 'cancelado'].includes(t.status) && !baixas.length ? '<button class="btn perigo" id="cancelar">Cancelar conta</button>' : ''}
         ${editaFin() && t.status !== 'cancelado' && baixas.length ? '<button class="btn perigo" id="estornar">Estornar pagamento</button>' : ''}
         <button class="btn" onclick="history.back()">Voltar</button></div></div>
     <div class="cartao"><div class="form">
@@ -196,9 +220,16 @@ async function verTitulo(tela, id, tipo) {
     } catch (err) { falha(err); }
   });
   $$('[data-baixa]', tela).forEach(b => b.addEventListener('click', async () => {
-    const p = ps.find(x => x.id === b.dataset.baixa);
-    const saldo = Number(p.valor) - Number(p.valor_pago);
-    const r = await modal(`<form><h2>${T.baixa} · ${p.parcela}ª parcela</h2><div class="form">
+    if (await modalBaixa(ps.find(x => x.id === b.dataset.baixa), tipo)) navegar();
+  }));
+}
+
+// Registrar pagamento/recebimento de uma parcela (usado na conta e na lista de contas fixas)
+async function modalBaixa(p, tipo, titulo = '') {
+  const T = TIPO[tipo]; const bs = await bancos();
+  const saldo = Number(p.valor) - Number(p.valor_pago);
+  const r = await modal(`<form><h2>${T.baixa} · ${titulo ? esc(titulo) + ' · ' : ''}${p.parcela}ª parcela</h2>
+      <p class="muted">Vencimento ${dataBR(p.vencimento)} · ${brl(p.valor)}</p><div class="form">
       <label class="campo">Data<input type="date" name="data" value="${hojeISO()}" required></label>
       <label class="campo">Valor (R$)<input name="valor" inputmode="decimal" value="${saldo.toFixed(2).replace('.', ',')}" required></label>
       <label class="campo">${T.conta}<select name="conta" required>${opcoes(bs.filter(x => x.ativo), null, x => x.nome, bs.find(x => x.tipo === 'corrente')?.id, null)}</select></label>
@@ -209,24 +240,112 @@ async function verTitulo(tela, id, tipo) {
       <label class="campo largo">Observação<input name="obs"></label>
       <label class="campo largo">Comprovante ${tipo === 'pagar' ? '(obrigatório, exceto dinheiro)' : ''}<input type="file" name="arquivos" accept="image/*,application/pdf" multiple></label></div>
       <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn ok">Confirmar</button></div></form>`,
-      { validar: d => !d.forma ? 'Informe a forma de pagamento.'
-          : tipo === 'pagar' && d.forma !== 'Dinheiro' && !d.arquivos.length ? 'Anexe o comprovante do pagamento. Só pagamento em dinheiro dispensa comprovante.' : null });
-    if (!r) return;
-    try {
-      const baixaId = await api.rpc('registrar_baixa', { p_parcela: p.id, p_data: r.data, p_valor: num(r.valor), p_conta_bancaria: r.conta,
-        p_juros: num(r.juros) || 0, p_multa: num(r.multa) || 0, p_desconto: num(r.desconto) || 0, p_obs: r.obs || null, p_forma: r.forma });
-      await anexar('baixa', baixaId, r.arquivos);
-      aviso(T.baixaFeita); navegar();
-    } catch (err) { falha(err); }
-  }));
+    { validar: d => !d.forma ? 'Informe a forma de pagamento.'
+        : tipo === 'pagar' && d.forma !== 'Dinheiro' && !d.arquivos.length ? 'Anexe o comprovante do pagamento. Só pagamento em dinheiro dispensa comprovante.' : null });
+  if (!r) return false;
+  try {
+    const baixaId = await api.rpc('registrar_baixa', { p_parcela: p.id, p_data: r.data, p_valor: num(r.valor), p_conta_bancaria: r.conta,
+      p_juros: num(r.juros) || 0, p_multa: num(r.multa) || 0, p_desconto: num(r.desconto) || 0, p_obs: r.obs || null, p_forma: r.forma });
+    await anexar('baixa', baixaId, r.arquivos);
+    aviso(T.baixaFeita); return true;
+  } catch (err) { falha(err); return false; }
+}
+
+// ---------- Contas fixas mensais ----------
+async function listaFixas(tela) {
+  const mes = estado.params.get('mes') || hojeISO().slice(0, 7);
+  const ini = mes + '-01', fim = somaDias(somaMeses(ini, 1), -1);
+  const [cts, ps, atras] = await Promise.all([
+    api.listar('v_contas_fixas', 'order=fornecedor').catch(() => []),
+    api.listar('v_parcelas', `tipo=eq.pagar&origem=eq.recorrente&vencimento=gte.${ini}&vencimento=lte.${fim}&status=neq.cancelada&order=vencimento`),
+    api.listar('v_parcelas', `tipo=eq.pagar&origem=eq.recorrente&vencimento=lt.${ini}&status=in.(aberta,aprovada)&order=vencimento`)]);
+  const forn = porId(await fornecedores());
+  const nome = p => forn[p.fornecedor_id]?.nome_fantasia || forn[p.fornecedor_id]?.razao_social || p.favorecido_nome || '—';
+  const ativos = cts.filter(c => c.ativo && (!c.fim || c.fim >= ini));
+  const pagas = ps.filter(p => p.status === 'paga'), abertas = ps.filter(p => p.status !== 'paga');
+  const linha = p => `<tr data-t="${p.titulo_id}"${fAttr('pessoa', nome(p))}${fAttr('valor', p.valor)}><td data-r="Vence" class="nowrap">${dataBR(p.vencimento)}</td><td data-r="Fornecedor"><b>${esc(nome(p))}</b><div class="muted">${esc(p.descricao || '')}</div></td>
+    <td data-r="Valor" class="num"><b>${brl(p.valor)}</b></td><td data-r="Situação">${p.status === 'paga' ? '<span class="tag verde">Pago</span>' : tag(p.status, p.vencida)}</td>
+    <td data-r="">${p.status !== 'paga' && editaFin() ? `<button class="btn ok peq" data-pagar="${p.id}">Confirmar pagamento</button>` : ''} <a class="btn peq" href="#/financeiro/pagar/ver/${p.titulo_id}">Abrir</a></td></tr>`;
+  tela.innerHTML = `
+    <div class="topo"><div><h1>Contas a pagar</h1><p class="sub">Fornecedores com valor fixo em data fixa: o sistema lança a conta de cada mês sozinho — aqui você só confirma o pagamento.</p></div>
+      ${editaFin() ? '<div class="acoes"><a class="btn" href="#/cadastros/fornecedores">Cadastrar/alterar contrato fixo</a></div>' : ''}</div>
+    ${abasPagar('fixas')}
+    <form class="filtros" id="f-mes"><label class="fl-data">Mês<input type="month" name="mes" value="${mes}"></label>
+      <button type="button" class="btn peq" data-m="-1">◀ Mês anterior</button><button type="button" class="btn peq" data-m="1">Próximo mês ▶</button></form>
+    <div class="grade" style="margin-bottom:14px">
+      <div class="cartao kpi"><div class="n">${brl(ps.reduce((a, p) => a + Number(p.valor), 0))}</div><div class="r">contas fixas de ${mesAb2(mes)} (${ps.length})</div></div>
+      <div class="cartao kpi"><div class="n">${brl(pagas.reduce((a, p) => a + Number(p.valor_pago), 0))}</div><div class="r">já pago (${pagas.length})</div></div>
+      <div class="cartao kpi ${abertas.some(p => p.vencida) ? 'alerta' : ''}"><div class="n">${brl(abertas.reduce((a, p) => a + Number(p.saldo), 0))}</div><div class="r">falta confirmar (${abertas.length})</div></div>
+      <div class="cartao kpi"><div class="n">${brl(ativos.reduce((a, c) => a + Number(c.valor), 0))}</div><div class="r">${ativos.length} contrato(s) fixo(s) ativo(s) / mês</div></div></div>
+    ${atras.length ? `<div class="cartao" style="border-left:4px solid var(--vermelho)"><h2>⚠️ Meses anteriores sem pagamento confirmado (${atras.length})</h2><div class="tabela-wrap"><table class="responsiva"><tbody>${atras.map(linha).join('')}</tbody></table></div>
+      <p class="muted">Se já foi pago, confirme o pagamento com a data certa. Se o mês não era devido, abra a conta e cancele.</p></div>` : ''}
+    <div class="cartao"><h2>${mesAb2(mes)}</h2>${ps.length ? `<div class="tabela-wrap"><table class="responsiva" id="t-fixas"><thead><tr><th>Vence</th><th>Fornecedor / serviço</th><th class="num">Valor</th><th>Situação</th><th></th></tr></thead><tbody>${ps.map(linha).join('')}</tbody></table></div>`
+      : '<div class="vazio">Nenhuma conta fixa neste mês.</div>'}</div>
+    <div class="cartao"><h2>Contratos fixos</h2>${cts.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Fornecedor</th><th>Serviço</th><th class="num">Valor mensal</th><th>Dia</th><th>Desde</th><th>Até</th><th>Próximo vencimento</th></tr></thead><tbody>
+      ${cts.map(c => `<tr class="clicavel" onclick="location.hash='#/cadastros/fornecedores/ver/${c.fornecedor_id}'"${c.ativo ? '' : ' style="opacity:.55"'}><td data-r="Fornecedor"><b>${esc(c.fornecedor)}</b></td><td data-r="Serviço">${esc(c.descricao)}</td><td data-r="Valor mensal" class="num">${brl(c.valor)}</td>
+        <td data-r="Dia">dia ${c.dia_vencimento}</td><td data-r="Desde">${dataBR(c.inicio)}</td><td data-r="Até">${c.fim ? dataBR(c.fim) + (c.ativo ? '' : ' <span class="tag">Encerrado</span>') : '<span class="muted">sem prazo</span>'}</td><td data-r="Próximo vencimento">${dataBR(c.proximo_vencimento) || '—'}</td></tr>`).join('')}</tbody></table></div>`
+      : '<div class="vazio">Nenhum contrato fixo. No cadastro do fornecedor, marque "Valor fixo mensal" e informe o valor e o dia do vencimento.</div>'}</div>`;
+  $('#f-mes').onchange = e => { location.hash = '#/financeiro/pagar?aba=fixas&mes=' + e.target.value; };
+  $$('[data-m]', tela).forEach(b => (b.onclick = () => { location.hash = '#/financeiro/pagar?aba=fixas&mes=' + somaMeses(ini, Number(b.dataset.m)).slice(0, 7); }));
+  $$('[data-pagar]', tela).forEach(b => (b.onclick = async () => { const p = [...ps, ...atras].find(x => x.id === b.dataset.pagar);
+    if (await modalBaixa(p, 'pagar', nome(p))) navegar(); }));
+}
+const mesAb2 = m => { const [a, mm] = m.split('-'); return ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'][+mm - 1] + ' de ' + a; };
+
+// ---------- Editar lançamento ----------
+async function editarTitulo(tela, id, tipo) {
+  const T = TIPO[tipo];
+  if (!editaFin()) { tela.innerHTML = '<div class="cartao vazio">Sem permissão.</div>'; return; }
+  const t = await api.um('titulos', `id=eq.${id}`);
+  if (!t || t.status === 'cancelado') { tela.innerHTML = '<div class="cartao vazio">Conta não encontrada ou cancelada.</div>'; return; }
+  const [ps, pess, ccs] = await Promise.all([api.listar('titulo_parcelas', `titulo_id=eq.${id}&status=neq.cancelada&order=parcela`), tipo === 'pagar' ? fornecedores(true) : clientes(true), centros()]);
+  const valorLivre = ['avulso', 'legado', 'recorrente', 'pedido'].includes(t.origem);
+  const pessoaFixa = ['reembolso', 'adiantamento'].includes(t.origem);
+  const rot = x => (tipo === 'pagar' ? x.razao_social : x.nome) + (x.nome_fantasia ? ` (${x.nome_fantasia})` : '');
+  const pid = tipo === 'pagar' ? t.fornecedor_id : t.cliente_id;
+  tela.innerHTML = `
+    <div class="topo"><div><h1>Editar ${esc(t.numero)}</h1><p class="sub">Corrija o que foi lançado errado. Tudo fica no histórico da conta, com o motivo.</p></div></div>
+    <form class="cartao" id="f-ed"><div class="form">
+      ${pessoaFixa ? '' : `<label class="campo largo">${T.cadastro}<select name="pessoa_id">${opcoes(pess.filter(f => f.ativo || f.id === pid), null, rot, pid, 'Sem cadastro (nome abaixo)')}</select></label>
+      <label class="campo largo" id="ed-fav">Nome do ${T.pessoa.toLowerCase()}<input name="favorecido_nome" value="${esc(t.favorecido_nome || '')}"></label>`}
+      <label class="campo largo">Descrição<input name="descricao" required value="${esc(t.descricao || '')}"></label>
+      <label class="campo">Nº do documento<input name="documento" value="${esc(t.documento || '')}"></label>
+      <label class="campo">Data de emissão<input type="date" name="data_emissao" required value="${t.data_emissao}"></label>
+      <label class="campo">Conta do plano<select name="conta_id">${await opcoesContas(t.conta_id, T.tiposConta)}</select></label>
+      <label class="campo">Centro de custo<select name="centro_custo_id">${opcoes(ccs.filter(c => c.ativo || c.id === t.centro_custo_id), null, c => c.nome, t.centro_custo_id, '—')}</select></label></div>
+      <h2 style="margin-top:14px">Parcelas</h2>
+      <div class="tabela-wrap"><table><thead><tr><th>Parcela</th><th>Vencimento</th><th class="num">Valor (R$)</th><th>Situação</th></tr></thead><tbody>
+        ${ps.map(p => { const trava = p.status === 'paga' || Number(p.valor_pago) > 0;
+          return `<tr data-p="${p.id}"><td>${p.parcela}ª</td><td><input type="date" name="v_${p.id}" value="${p.vencimento}" ${trava ? 'disabled' : ''}></td>
+            <td class="num"><input name="x_${p.id}" inputmode="decimal" value="${Number(p.valor).toFixed(2).replace('.', ',')}" style="max-width:130px;text-align:right" ${trava || !valorLivre ? 'disabled' : ''}></td>
+            <td>${trava ? '<span class="tag verde">Pago</span> <span class="muted">(estorne para mudar)</span>' : tag(p.status, p.vencimento < hojeISO())}</td></tr>`; }).join('')}
+      </tbody></table></div>
+      ${valorLivre ? '' : `<p class="muted">O valor desta conta vem do documento de origem (${esc(t.origem)}) — corrija lá; aqui só o vencimento e os dados da conta.</p>`}
+      ${t.origem === 'recorrente' ? '<p class="muted">Conta fixa mensal: mudar aqui vale só para este mês. Para mudar todos os meses, altere o contrato no cadastro do fornecedor.</p>' : ''}
+      <label class="campo largo" style="margin-top:10px">Motivo da correção *<textarea name="motivo" required rows="2" placeholder="Ex.: valor digitado errado; vencimento combinado com o fornecedor"></textarea></label>
+      <div class="acoes"><button class="btn prim">Salvar correção</button><a class="btn" href="javascript:history.back()">Cancelar</a></div></form>`;
+  const f = $('#f-ed');
+  const favVis = () => { if (f.pessoa_id) $('#ed-fav').hidden = !!f.pessoa_id.value; };
+  f.pessoa_id?.addEventListener('change', favVis); favVis();
+  f.onsubmit = async e => { e.preventDefault(); const d = formDados(f);
+    const dados = { descricao: d.descricao, documento: d.documento || '', data_emissao: d.data_emissao, conta_id: d.conta_id || '', centro_custo_id: d.centro_custo_id || '' };
+    if (!pessoaFixa) { dados.pessoa_id = d.pessoa_id || ''; dados.favorecido_nome = d.favorecido_nome || ''; }
+    const parcelas = ps.filter(p => !(p.status === 'paga' || Number(p.valor_pago) > 0)).map(p => ({ id: p.id, vencimento: d['v_' + p.id], valor: valorLivre ? num(d['x_' + p.id]) : Number(p.valor) }));
+    if (parcelas.some(p => !p.vencimento || !(p.valor > 0))) return aviso('Confira vencimentos e valores.', true);
+    await ocupado(e.submitter, async () => { try {
+      const r = await api.rpc('editar_titulo', { p_id: id, p_dados: dados, p_parcelas: parcelas, p_motivo: d.motivo });
+      aviso('Conta corrigida: ' + (r.alteracoes || []).join('; ')); location.hash = T.rota + '/ver/' + id;
+    } catch (err) { falha(err); } }); };
 }
 
 rota('/financeiro/pagar', tela => listaTitulos(tela, 'pagar'));
 rota('/financeiro/pagar/novo', tela => novoTitulo(tela, 'pagar'));
 rota('/financeiro/pagar/ver/:id', (tela, id) => verTitulo(tela, id, 'pagar'));
+rota('/financeiro/pagar/editar/:id', (tela, id) => editarTitulo(tela, id, 'pagar'));
 rota('/financeiro/receber', tela => listaTitulos(tela, 'receber'));
 rota('/financeiro/receber/novo', tela => novoTitulo(tela, 'receber'));
 rota('/financeiro/receber/ver/:id', (tela, id) => verTitulo(tela, id, 'receber'));
+rota('/financeiro/receber/editar/:id', (tela, id) => editarTitulo(tela, id, 'receber'));
 
 // ---------- Lançamentos a verificar (contas e reembolsos) ----------
 rota('/financeiro/verificar', async tela => {
