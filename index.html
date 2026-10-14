@@ -86,6 +86,9 @@ select.in{appearance:none;-webkit-appearance:none;background-image:linear-gradie
 .calc{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-radius:10px;background:var(--surface-2);font-size:14px}
 .calc b{font-family:var(--mono);font-size:17px}
 .calc.warn{background:var(--warn-soft);color:var(--ink)}
+.in.auto{background:var(--surface-2);color:var(--ink);font-weight:600;cursor:default}
+.in.auto.warn{background:var(--warn-soft)}
+.calc[hidden]{display:none}
 .photo{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .pbtn{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;min-height:88px;border:1.5px dashed var(--line);border-radius:12px;background:var(--surface-2);font-weight:600;font-size:14px;color:var(--brand);cursor:pointer;padding:8px}
 .pbtn.bad{border-color:var(--bad)}
@@ -184,11 +187,13 @@ select.in{appearance:none;-webkit-appearance:none;background-image:linear-gradie
           <label class="pay"><input type="radio" name="pag" value="Reembolso"><span>Eu paguei<small>Pedir reembolso</small></span></label>
         </div>
         <p class="payhint" id="payhint" hidden>Este valor vai para o controle de reembolsos. Guarde o comprovante.</p></div>
+      <label class="f"><span>Valor Total do abastecimento R$ <em>*</em></span><input class="in num" id="inValor" inputmode="decimal" placeholder="0,00"></label>
+      <p class="payhint" style="margin:-4px 0 8px">Digite o <b>valor total pago</b> (o que aparece no cupom), não o preço do litro.</p>
       <div class="row2">
         <label class="f"><span>Litros <em>*</em></span><input class="in num" id="inLitros" inputmode="decimal" placeholder="0,000"></label>
-        <label class="f"><span>Valor total (R$) <em>*</em></span><input class="in num" id="inValor" inputmode="decimal" placeholder="0,00"></label>
+        <label class="f"><span>Valor unitário (R$/L)</span><input class="in num auto" id="inUnit" readonly tabindex="-1" placeholder="automático"></label>
       </div>
-      <div class="calc" id="calc"><span>Preço por litro</span><b>—</b></div>
+      <div class="calc" id="calc" hidden><span></span><b></b></div>
     </section>
 
     <section class="card">
@@ -324,11 +329,13 @@ const lastComb=ls("verbo.comb");if(lastComb){const r=[...document.querySelectorA
 /* ---------- Preço por litro ---------- */
 function calc(){
   const l=parseNum($("#inLitros").value),v=parseNum($("#inValor").value);const el=$("#calc");
+  const u=$("#inUnit");
   if(l>0&&v>0){const p=v/l;const c=document.querySelector("input[name=comb]:checked")?.value||"";
     const fora=c==="ARLA 32"?(p<1.5||p>8):(p<3||p>12);
-    el.classList.toggle("warn",fora);
-    el.innerHTML=`<span>${fora?"Confira litros e valor — preço fora do comum":"Preço por litro"}</span><b>${brl.format(p)}</b>`}
-  else{el.classList.remove("warn");el.innerHTML=`<span>Preço por litro</span><b>—</b>`}
+    u.value=brl.format(p);u.classList.toggle("warn",fora);
+    el.classList.toggle("warn",fora);el.hidden=!fora;
+    el.innerHTML=`<span>⚠️ Preço por litro fora do comum. Confira se digitou os <b>litros</b> e o <b>valor total</b> do cupom.</span>`}
+  else{u.value="";u.classList.remove("warn");el.classList.remove("warn");el.hidden=true;el.innerHTML=""}
 }
 ["#inLitros","#inValor"].forEach(s=>$(s).addEventListener("input",calc));
 $("#chips").addEventListener("change",calc);
