@@ -547,7 +547,7 @@ rota('/menu', tela => {
 // ===================== Login e primeiro acesso =====================
 
 // ===================== Identidade visual (capa e início) =====================
-const SVG_CHEVRON = `<svg viewBox="0 0 1200 900" aria-hidden="true"><polygon fill="#02654D" points="0,140 519,899 560,899 639,818 260,140"/><polygon fill="#DDA936" points="1199,140 858,141 560,519 719,719"/></svg>`;
+const SVG_CHEVRON = `<svg aria-hidden="true" viewBox="0 0 560 336"><path fill="#02654D" d="M3,36 L2,40 L30,73 L40,87 L46,93 L52,102 L82,138 L130,201 L136,207 L138,211 L175,257 L213,308 L222,318 L226,325 L233,331 L241,334 L252,334 L263,328 L318,255 L324,249 L325,246 L333,237 L336,231 L343,223 L342,219 L332,218 L325,215 L322,215 L309,206 L303,200 L249,130 L203,66 L187,50 L184,49 L178,44 L156,35 L144,34 L139,32 L106,32 L105,33 L75,33 L74,34 L48,34 L47,35 L5,35Z"/><path fill="#DDA936" d="M558,2 L510,2 L509,3 L463,3 L462,4 L452,4 L451,5 L442,5 L433,8 L428,8 L423,11 L418,11 L405,17 L402,17 L391,23 L389,23 L380,29 L378,29 L363,38 L360,41 L358,41 L351,47 L341,53 L302,86 L271,117 L271,121 L327,191 L333,195 L343,199 L357,199 L363,196 L364,193 L384,166 L403,144 L464,82 L511,40 L516,37 L537,19 L557,5Z"/></svg>`;   // ícone oficial da Verbo (traçado do logotipo)
 function svgMapa({ rotulos = true } = {}) {
   return `<svg class="mapa-svg" viewBox="0 0 1040 720" role="img" aria-label="Corredor operacional: Três Lagoas (MS), Guararapes (SP) e Lençóis Paulista (SP)">
     <defs>

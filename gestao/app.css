@@ -385,3 +385,6 @@ a.org-no span { font-size: 12px; opacity: .7; }
   .inicio-kpis .k-ic { grid-row: auto; width: 34px; height: 34px; font-size: 17px; border-radius: 10px; }
   .inicio-kpis .kpi .n { font-size: 24px; }
 }
+.capa-v svg { width: 36px; }
+.capa-chevron { width: min(70vw, 980px); right: -6vw; bottom: -8vh; }
+.ih-chevron { width: 380px; right: -40px; top: -30px; }
