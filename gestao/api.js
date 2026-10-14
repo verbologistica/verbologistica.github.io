@@ -92,6 +92,27 @@ const api = {
       { email, create_user: true, data: { nome } });
   },
 
+  // Função do servidor (só administrador): link de acesso para WhatsApp e correção de e-mail
+  async acessoUsuario(acao, usuario_id, extra = {}) {
+    await this.garantir();
+    return this._fetch(SB_URL + '/functions/v1/acesso-usuario', { method: 'POST',
+      headers: { apikey: SB_KEY, Authorization: 'Bearer ' + this.sessao.access_token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ acao, usuario_id, ...extra }) });
+  },
+  linkAcessoDe(token) { return APP_URL + '#acesso=' + encodeURIComponent(token); },
+
+  // Volta do link enviado pelo WhatsApp: #acesso=<token> (o token só é usado aqui, pelo próprio app)
+  async lerAcessoWhatsApp() {
+    const m = location.hash.match(/^#acesso=([^&]+)/);
+    if (!m) return null;
+    history.replaceState(null, '', location.pathname);
+    try {
+      const d = await this.auth('verify', { type: 'recovery', token_hash: decodeURIComponent(m[1]) });
+      this.salvar(this._sessaoDe(d));
+      return { tipo: 'recovery' };
+    } catch { return { erro: 'link' }; }
+  },
+
   async definirSenha(senha) {
     const u = await this.auth('user', { password: senha, data: { senha_definida: true } }, 'PUT', true);
     this.sessao.user = u; this.salvar(this.sessao);

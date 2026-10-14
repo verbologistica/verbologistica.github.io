@@ -241,11 +241,11 @@ async function puxarDoRH(raiz) {
 function formUsuario(u, atuais, ccs, funcoes) {
   const novo = !u;
   return `<form><h2>${novo ? 'Cadastrar e convidar usuário' : esc(u.nome)}</h2>
-    ${novo ? '<p class="muted">A pessoa recebe um e-mail com o link para criar a senha e já entra no sistema com os perfis marcados. Se ela já está no cadastro do RH, digite o CPF (ou o nome completo): os dados vêm de lá.</p>' : `<p class="muted">${esc(u.email)}</p>`}
+    ${novo ? '<p class="muted">Depois de cadastrar, você envia o link de acesso pelo <b>WhatsApp</b> (para o telefone informado) e/ou por e-mail. A pessoa cria a senha e já entra com os perfis marcados. Se ela já está no cadastro do RH, digite o CPF (ou o nome completo): os dados vêm de lá.</p>' : ''}
     <div class="form"><input type="hidden" name="colab_id"><div class="largo muted" id="colab-info"></div>
       <label class="campo largo">Nome completo *<input name="nome" value="${esc(u?.nome || '')}" required autocomplete="off"></label>
       <label class="campo">CPF *<input name="cpf" value="${esc(fmtCPF(u?.cpf))}" inputmode="numeric" placeholder="000.000.000-00" required></label>
-      ${novo ? '<label class="campo">E-mail *<input type="email" name="email" required autocomplete="off"></label>' : ''}
+      <label class="campo">E-mail *<input type="email" name="email" required autocomplete="off" value="${esc(u?.email || '')}">${novo ? '' : '<span class="muted">Se estiver errado, corrija aqui e salve: o login passa a ser o e-mail novo.</span>'}</label>
       <label class="campo">Função *<input name="cargo" value="${esc(u?.cargo || '')}" list="lista-funcoes" required placeholder="Ex.: Motorista, Analista financeiro"></label>
       <label class="campo">Setor *<input name="setor" value="${esc(u?.setor || '')}" list="lista-setores" required></label>
       <label class="campo">Centro de custo<select name="cc">${opcoes(ccs.filter(c => c.ativo), null, c => c.nome, u?.centro_custo_id, 'Não informar')}</select></label>
@@ -265,7 +265,7 @@ function formUsuario(u, atuais, ccs, funcoes) {
     <datalist id="lista-setores">${[...new Set([...SETORES, ...funcoes.setores])].sort().map(x => `<option value="${esc(x)}">`).join('')}</datalist>
     <datalist id="lista-funcoes">${funcoes.cargos.map(x => `<option value="${esc(x)}">`).join('')}</datalist>
     <div class="rodape">${!novo && u.id !== estado.usuario.id ? `<button class="btn ${u.ativo ? 'perigo' : ''}" value="${u.ativo ? 'desativar' : 'ativar'}" formnovalidate>${u.ativo ? 'Desativar acesso' : 'Reativar acesso'}</button>
-      <button class="btn" value="reenviar" formnovalidate>Reenviar convite</button>` : ''}
+      <button class="btn" value="reenviar" formnovalidate>Reenviar convite por e-mail</button><button class="btn" value="whatsapp" formnovalidate>📲 Enviar acesso pelo WhatsApp</button>` : ''}
       <button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim" value="salvar">${novo ? 'Cadastrar e enviar convite' : 'Salvar'}</button></div></form>`;
 }
 
@@ -328,14 +328,16 @@ rota('/config/usuarios', async tela => {
     if (!r) return;
     try {
       const email = r.email.toLowerCase();
-      await api.convidar(email, r.nome);
+      try { await api.convidar(email, r.nome); }
+      catch (e) { console.warn('convite por e-mail falhou', e); await api.acessoUsuario('criar', null, { email, nome: r.nome }); }
       const novo = await api.um('usuarios', `email=eq.${encodeURIComponent(email)}`);
       if (!novo) throw new Error('O convite foi enviado, mas o cadastro não apareceu. Atualize a página.');
       await api.alterar('usuarios', `id=eq.${novo.id}`, { nome: r.nome, cpf: soDigitos(r.cpf), cargo: r.cargo, setor: r.setor,
         centro_custo_id: r.cc || null, telefone: soDigitos(r.telefone), chave_pix: r.chave_pix || null, ativo: true, menus: menusEscolhidos(r) });
       await salvarPerfis(novo.id, PERFIS.map(p => p[0]).filter(p => r['p_' + p]), []);
       if (r.colab_id) await api.alterar('colaboradores', `id=eq.${r.colab_id}&usuario_id=is.null`, { usuario_id: novo.id }).catch(() => null);
-      delete estado.cache.usuarios; aviso('Usuário cadastrado. Convite enviado para ' + email + '.'); navegar();
+      delete estado.cache.usuarios; aviso('Usuário cadastrado.');
+      await enviarAcesso({ ...novo, nome: r.nome, telefone: soDigitos(r.telefone), email }, true); navegar();
     } catch (err) { falha(err); }
   };
 
@@ -345,10 +347,17 @@ rota('/config/usuarios', async tela => {
       validar: d => d._acao === 'salvar' ? validarUsuario(d, us, u.id) : null });
     if (!r) return;
     try {
-      if (r._acao === 'reenviar') { await api.convidar(u.email, u.nome); aviso('Convite reenviado para ' + u.email + '.'); return; }
+      if (r._acao === 'reenviar') { await api.convidar(u.email, u.nome); aviso('Convite reenviado para ' + u.email + '. Se não chegar, use "Enviar acesso pelo WhatsApp".'); return; }
+      if (r._acao === 'whatsapp') return enviarAcesso(u, false);
       if (r._acao === 'desativar' || r._acao === 'ativar') {
         await api.alterar('usuarios', `id=eq.${u.id}`, { ativo: r._acao === 'ativar' });
       } else {
+        const novoEmail = String(r.email || '').trim().toLowerCase();
+        if (novoEmail && novoEmail !== String(u.email || '').toLowerCase()) {
+          if (us.some(x => x.id !== u.id && String(x.email).toLowerCase() === novoEmail)) throw new Error('Já existe outro usuário com esse e-mail.');
+          await api.acessoUsuario('alterar_email', u.id, { email: novoEmail });
+          aviso(`E-mail corrigido para ${novoEmail}. Envie o acesso de novo.`);
+        }
         await api.alterar('usuarios', `id=eq.${u.id}`, { nome: r.nome, cpf: soDigitos(r.cpf), cargo: r.cargo, setor: r.setor,
           centro_custo_id: r.cc || null, telefone: soDigitos(r.telefone), chave_pix: r.chave_pix || null, menus: menusEscolhidos(r) });
         const sel = PERFIS.map(p => p[0]).filter(p => r['p_' + p] || (p === 'administrador' && u.id === estado.usuario.id && atuais.includes(p)));
@@ -359,6 +368,27 @@ rota('/config/usuarios', async tela => {
     } catch (err) { falha(err); }
   }));
 });
+
+// ----- Enviar o link de acesso pelo WhatsApp (sem depender do e-mail) -----
+const foneWhats = t => { let d = String(t || '').replace(/\D/g, ''); if (d.length === 10 || d.length === 11) d = '55' + d; return d.length >= 12 ? d : ''; };
+async function enviarAcesso(u, recemCriado) {
+  let link;
+  try { const r = await api.acessoUsuario('link', u.id); link = api.linkAcessoDe(r.token); }
+  catch (err) { return falha(err); }
+  const fone = foneWhats(u.telefone), primeiro = String(u.nome || '').trim().split(/\s+/)[0] || '';
+  const msg = `Olá, ${primeiro}! Seu acesso ao sistema *Verbo Gestão* (Verbo Logística) está pronto.\n\n` +
+    `Toque no link abaixo para criar a sua senha (vale por 1 hora e só pode ser usado uma vez):\n${link}\n\n` +
+    `Depois, entre sempre por ${APP_URL} com o e-mail *${u.email}* e a senha que você criou.`;
+  const wa = `https://wa.me/${fone}?text=${encodeURIComponent(msg)}`;
+  await modal(`<form><h2>${recemCriado ? 'Usuário cadastrado — enviar o acesso' : 'Enviar acesso pelo WhatsApp'}</h2>
+    <p>Para <b>${esc(u.nome)}</b> · ${fone ? `WhatsApp <b>${esc(fmtTel(u.telefone))}</b>` : '<span style="color:var(--vermelho)">sem telefone válido no cadastro</span>'} · login <b>${esc(u.email)}</b></p>
+    ${fone ? `<p><a class="btn prim" href="${esc(wa)}" target="_blank" rel="noopener">📲 Abrir o WhatsApp com a mensagem pronta</a></p>` : ''}
+    <p class="muted">A mensagem já vai escrita: é só tocar em enviar no WhatsApp. O link vale por <b>1 hora</b> e só funciona uma vez — se expirar, gere outro aqui.
+      ${recemCriado ? 'O convite também foi enviado por e-mail, mas e-mails de fora da empresa podem não chegar.' : ''}</p>
+    <label class="campo">Ou copie a mensagem e envie por outro meio<textarea rows="6" readonly id="ac-msg">${esc(msg)}</textarea></label>
+    <div class="rodape"><button type="button" class="btn" id="ac-copiar">Copiar mensagem</button><button type="button" class="btn" data-fechar>Fechar</button></div></form>`,
+    { aoAbrir: f => { $('#ac-copiar', f).onclick = async () => { try { await navigator.clipboard.writeText(msg); aviso('Mensagem copiada.'); } catch { $('#ac-msg', f).select(); document.execCommand('copy'); aviso('Mensagem copiada.'); } }; } });
+}
 
 // ===================== Auditoria =====================
 const NOMES_TABELA = { reembolsos: 'Reembolso', titulos: 'Conta a pagar', titulo_parcelas: 'Parcela', baixas: 'Pagamento', usuarios: 'Usuário',

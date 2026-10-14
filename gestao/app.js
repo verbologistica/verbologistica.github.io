@@ -553,8 +553,8 @@ function telaNovaSenha() {
 }
 
 async function iniciar() {
-  const ret = api.lerRetornoDoEmail();
-  if (ret?.erro) return telaLogin('!O link expirou ou já foi usado. Peça um novo em "Primeiro acesso".');
+  const ret = (await api.lerAcessoWhatsApp()) || api.lerRetornoDoEmail();
+  if (ret?.erro) return telaLogin(ret.erro === 'link' ? '!Este link de acesso expirou ou já foi usado. Peça um novo ao administrador.' : '!O link expirou ou já foi usado. Peça um novo em "Primeiro acesso".');
   if (!api.sessao) return telaLogin();
   try {
     const u = await api.usuarioAtual();
