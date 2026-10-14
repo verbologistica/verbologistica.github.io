@@ -676,13 +676,22 @@ ABAS_RH_EXTRA.ferias = async (box, c) => {
 const PERGUNTAS_CLIMA = ['Sinto orgulho de trabalhar na empresa', 'Tenho clareza sobre o que se espera do meu trabalho', 'Recebo feedback do meu líder com frequência',
   'Tenho os equipamentos e veículos adequados para trabalhar com segurança', 'A empresa se preocupa com a minha segurança e saúde', 'Sou tratado com respeito pela liderança',
   'Minha remuneração é justa para a função', 'Vejo oportunidades de crescer na empresa', 'A comunicação entre setores funciona bem', 'A jornada e as escalas permitem descanso adequado'];
+const criaClima = () => tem('administrador', 'rh');   // só o RH cria, edita e encerra pesquisas
+const SIT_CLIMA = { aberta: ['Aberta', 'verde'], agendada: ['Agendada', 'azul'], encerrada: ['Encerrada', ''] };
 rota('/clima', async tela => {
-  const [ps, part] = await Promise.all([api.listar('pesquisas_clima', `status=eq.aberta&ativo=eq.true&inicio=lte.${hojeISO()}&fim=gte.${hojeISO()}&order=fim`),
-    api.listar('pesquisa_participacoes', `usuario_id=eq.${estado.usuario.id}`).catch(() => [])]);
-  const pend = ps.filter(p => !part.some(x => x.pesquisa_id === p.id));
-  tela.innerHTML = `<div class="topo"><div><h1>Pesquisa de clima</h1><p class="sub">Sua opinião é anônima e ajuda a melhorar a empresa</p></div>${ve_rh_js() ? '<a class="btn" href="#/rh/clima">Gerenciar pesquisas</a>' : ''}</div>
-    ${pend.length ? pend.map(p => `<div class="cartao"><h2>${esc(p.titulo)}</h2><p class="muted">Aberta até ${dataBR(p.fim)}</p>${p.descricao ? `<p>${esc(p.descricao)}</p>` : ''}<a class="btn prim" href="#/clima/responder/${p.id}">Responder</a></div>`).join('')
-      : '<div class="cartao vazio">Nenhuma pesquisa aberta para você agora. Obrigado!</div>'}
+  const ps = await api.rpc('clima_situacao').catch(() => []);
+  const pend = ps.filter(p => p.situacao === 'aberta' && !p.eu_respondi);
+  const prazo = p => { const d = Math.round((new Date(p.fim + 'T23:59:59') - new Date()) / 864e5); return d <= 0 ? 'último dia' : d === 1 ? 'falta 1 dia' : `faltam ${d} dias`; };
+  tela.innerHTML = `<div class="topo"><div><h1>Pesquisa de clima</h1><p class="sub">Sua opinião é anônima e ajuda a melhorar a empresa</p></div>${ve_rh_js() ? '<a class="btn" href="#/rh/clima">Gerenciar pesquisas (RH)</a>' : ''}</div>
+    ${pend.length ? pend.map(p => `<div class="cartao" style="border-left:4px solid var(--ouro)"><h2>${esc(p.titulo)}</h2><p class="muted">Aberta até ${dataBR(p.fim)} · ${prazo(p)}</p>${p.descricao ? `<p>${esc(p.descricao)}</p>` : ''}<a class="btn prim" href="#/clima/responder/${p.id}">Responder agora</a></div>`).join('')
+      : '<div class="cartao vazio">Nenhuma pesquisa aguardando a sua resposta. Obrigado!</div>'}
+    <div class="cartao"><h2>Acompanhar pesquisas</h2><p class="muted">Situação e adesão de cada pesquisa. As respostas são anônimas e só o RH vê os resultados consolidados.</p>
+      ${ps.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Pesquisa</th><th>Período</th><th>Situação</th><th>Adesão</th><th>Você</th></tr></thead><tbody>
+        ${ps.map(p => `<tr><td data-r="Pesquisa"><b>${esc(p.titulo)}</b></td><td data-r="Período">${dataBR(p.inicio)} a ${dataBR(p.fim)}${p.situacao === 'aberta' ? `<div class="muted">${prazo(p)}</div>` : ''}</td>
+          <td data-r="Situação">${tagSt(SIT_CLIMA, p.situacao)}</td>
+          <td data-r="Adesão"><div class="barra-pct"><div style="width:${Math.min(100, Number(p.adesao) || 0)}%"></div><span>${Number(p.adesao) || 0}% · ${p.respostas} de ${p.publico}</span></div></td>
+          <td data-r="Você">${p.eu_respondi ? '<span class="tag verde">Respondida ✓</span>' : p.situacao === 'aberta' ? `<a class="btn peq prim" href="#/clima/responder/${p.id}">Responder</a>` : '<span class="muted">Não respondida</span>'}</td></tr>`).join('')}</tbody></table></div>`
+        : '<div class="vazio">Nenhuma pesquisa ainda.</div>'}</div>
     ${avisoLei('clima')}`;
 });
 const ve_rh_js = () => tem('administrador', 'rh', 'dp', 'diretoria');
@@ -702,9 +711,9 @@ rota('/clima/responder/:id', async (tela, id) => {
 });
 rota('/rh/clima', async tela => {
   const ps = await api.listar('pesquisas_clima', 'ativo=eq.true&order=inicio.desc');
-  tela.innerHTML = `<div class="topo"><div><h1>Pesquisas de clima</h1><p class="sub">Crie, acompanhe e analise os resultados</p></div>${editaRH() ? '<button class="btn prim" id="nova-p">+ Nova pesquisa</button>' : ''}</div>
+  tela.innerHTML = `<div class="topo"><div><h1>Pesquisas de clima</h1><p class="sub">${criaClima() ? 'Crie, acompanhe e analise os resultados' : 'Somente o RH cria e encerra pesquisas'}</p></div>${criaClima() ? '<button class="btn prim" id="nova-p">+ Nova pesquisa</button>' : ''}</div>
     ${ps.length ? ps.map(p => `<div class="cartao"><div class="topo" style="margin:0"><div><h2 style="margin:0">${esc(p.titulo)}</h2><div class="muted">${dataBR(p.inicio)} a ${dataBR(p.fim)} · ${p.status}</div></div>
-      <div class="acoes"><a class="btn peq prim" href="#/rh/clima/resultado/${p.id}">Resultados</a>${editaRH() && p.status === 'aberta' ? `<button class="btn peq" data-enc="${p.id}">Encerrar</button>` : ''}</div></div></div>`).join('') : '<div class="cartao vazio">Nenhuma pesquisa criada.</div>'}
+      <div class="acoes"><a class="btn peq prim" href="#/rh/clima/resultado/${p.id}">Resultados</a>${criaClima() && p.status === 'aberta' ? `<button class="btn peq" data-enc="${p.id}">Encerrar</button>` : ''}</div></div></div>`).join('') : '<div class="cartao vazio">Nenhuma pesquisa criada.</div>'}
     ${avisoLei('clima')}`;
   $('#nova-p')?.addEventListener('click', async () => {
     const r = await modal(`<form><h2>Nova pesquisa de clima</h2><div class="form">
