@@ -68,7 +68,7 @@ rota('/rh/colaboradores', async tela => {
       <select name="setor"><option value="">Todos os setores</option>${ss.map(s => `<option value="${s.id}" ${s.id === setor ? 'selected' : ''}>${esc(s.nome)}</option>`).join('')}</select>
       <input name="q" value="${esc(estado.params.get('q') || '')}" placeholder="Nome, matrícula ou CPF"><button class="btn">Filtrar</button></form>
     <div class="cartao">${ls.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Matrícula</th><th>Nome</th><th>Cargo</th><th>Setor</th><th>Admissão</th><th>CNH</th><th>Situação</th></tr></thead><tbody>
-      ${ls.map(c => `<tr class="clicavel" onclick="location.hash='#/rh/colaboradores/ver/${c.id}'"><td data-r="Matrícula" class="nowrap">${esc(c.matricula || '')}</td>
+      ${ls.map(c => `<tr class="clicavel" onclick="location.hash='#/rh/colaboradores/ver/${c.id}'"><td data-r="Matrícula" class="nowrap">${c.matricula ? esc(c.matricula) : '<span class="muted">sem matrícula</span>'}</td>
         <td data-r="Nome"><b>${esc(c.nome)}</b>${c.usuario_id ? ' <span class="tag azul" title="Tem acesso ao sistema">login</span>' : ''}</td>
         <td data-r="Cargo">${esc(cgs.find(x => x.id === c.cargo_id)?.nome || '—')}</td><td data-r="Setor">${esc(ss.find(x => x.id === c.setor_id)?.nome || '—')}</td>
         <td data-r="Admissão">${dataBR(c.data_admissao) || '—'}</td>
@@ -95,6 +95,7 @@ async function formColaborador(tela, c = null) {
     <datalist id="lista-bancos">${bancos.map(b => `<option value="${String(b.code).padStart(3, '0')} · ${esc(b.name)}">`).join('')}</datalist>
     <form id="f-col">
       <div class="cartao"><h2>Situação e contrato</h2><div class="form">
+        ${campo('Matrícula', inp('matricula', 'placeholder="Informe a matrícula" autocomplete="off" maxlength="20"'))}
         ${campo('Situação *', sel('status', Object.entries(STATUS_COLAB).map(([k, x]) => [k, x[0]]), c?.status || 'candidato'))}
         ${campo('Cargo', sel('cargo_id', cgs.filter(x => x.ativo).map(x => [x.id, x.nome]), c?.cargo_id, 'Selecione…'))}
         ${campo('Setor', sel('setor_id', ss.filter(x => x.ativo).map(x => [x.id, x.nome]), c?.setor_id, 'Selecione…'))}
@@ -178,7 +179,7 @@ async function formColaborador(tela, c = null) {
     if (d.cpf && !cpfValido(d.cpf)) return aviso('CPF inválido: confira os números.', true);
     const dados = {};
     for (const [k, val] of Object.entries(d)) { if (k.startsWith('_')) continue; dados[k] = typeof val === 'boolean' ? val : (val === '' ? null : val); }
-    Object.assign(dados, { cpf: soDigitos(d.cpf) || null, telefone: soDigitos(d.telefone) || null, telefone2: soDigitos(d.telefone2) || null,
+    Object.assign(dados, { matricula: String(d.matricula || '').trim() || null, cpf: soDigitos(d.cpf) || null, telefone: soDigitos(d.telefone) || null, telefone2: soDigitos(d.telefone2) || null,
       emergencia_telefone: soDigitos(d.emergencia_telefone) || null, cep: soDigitos(d.cep) || null, salario: num(d.salario),
       banco: (d.banco || '').match(/^\d{1,3}/)?.[0] || d.banco || null });
     await ocupado(e.submitter, async () => {
@@ -186,7 +187,7 @@ async function formColaborador(tela, c = null) {
         let id = c?.id;
         if (c) await api.alterar('colaboradores', `id=eq.${id}`, dados); else [{ id }] = await api.inserir('colaboradores', dados);
         aviso('Colaborador salvo.'); location.hash = '#/rh/colaboradores/ver/' + id;
-      } catch (err) { falha(/duplicate|unique/i.test(err.message) ? new Error('Já existe um colaborador com esse CPF (ou esse usuário já está ligado a outro colaborador).') : err); }
+      } catch (err) { falha(/matricula/i.test(err.message) ? new Error(`Já existe um colaborador com a matrícula ${dados.matricula}.`) : /duplicate|unique/i.test(err.message) ? new Error('Já existe um colaborador com esse CPF (ou esse usuário já está ligado a outro colaborador).') : err); }
     });
   };
 }
