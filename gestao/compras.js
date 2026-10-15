@@ -1,10 +1,11 @@
-// Verbo Gestão — Compras: requisição → cotação → aprovação da compra → pedido → recebimento (NF) → conta a pagar
+// Verbo Gestão — Compras: requisição → cotação → aprovação da compra → pedido → documentos fiscais (NF/boleto → conta a pagar) + recebimento do produto (almoxarifado)
 'use strict';
 
 Object.assign(STATUS, {
   aguardando_cotacao: ['Aguardando cotação', 'amarelo'], em_cotacao: ['Em cotação', 'azul'], pedido_emitido: ['Pedido emitido', 'azul'],
-  recebida: ['Recebida', 'verde'], emitido: ['Emitido · a receber', 'azul'], parcialmente_recebido: ['Recebido em parte', 'amarelo'],
-  recebido: ['Recebido', 'verde'], conferido: ['Conferido', 'verde'], com_divergencia: ['Com divergência', 'vermelho'],
+  faturada: ['Faturada · aguardando entrega', 'azul'], entregue: ['Produto recebido · falta NF', 'amarelo'],
+  recebida: ['Recebida', 'verde'], emitido: ['Emitido', 'azul'], faturado: ['Faturado · aguardando entrega', 'azul'], parcialmente_recebido: ['Recebido em parte', 'amarelo'],
+  recebido: ['Faturado e recebido', 'verde'], conferido: ['Conferido', 'verde'], com_divergencia: ['Com divergência', 'vermelho'],
 });
 const URGENCIA = { baixa: 'Baixa', normal: 'Normal', alta: 'Alta (urgente)' };
 const UNIDADES = ['un', 'pç', 'cx', 'kg', 'l', 'm', 'm²', 'par', 'jogo', 'serviço', 'mês'];
@@ -33,7 +34,7 @@ function tabelaReq(linhas, comSolic = true) {
 rota('/compras/requisicoes', async tela => {
   const todas = ehComprador() || veTudo();
   const st = estado.params.get('status') || (todas ? 'abertas' : 'todas');
-  const filtro = { abertas: 'status=in.(rascunho,aguardando_cotacao,em_cotacao,aguardando_aprovacao,pedido_emitido)', a_cotar: 'status=in.(aguardando_cotacao,em_cotacao)',
+  const filtro = { abertas: 'status=in.(rascunho,aguardando_cotacao,em_cotacao,aguardando_aprovacao,aprovada,pedido_emitido,faturada,entregue)', a_cotar: 'status=in.(aguardando_cotacao,em_cotacao)',
                    concluidas: 'status=in.(recebida,reprovada,cancelada)', todas: 'status=neq.cancelada' }[st] || 'status=neq.cancelada';
   const minhas = estado.params.get('minhas') === '1' || !todas;
   const ls = await listarReq(`${filtro}${minhas ? '&solicitante_id=eq.' + estado.usuario.id : ''}&order=criado_em.desc&limit=500`);
@@ -386,19 +387,35 @@ async function cartoesCotacao(pend) {
 }
 
 // ---------- Pedidos ----------
+// Duas etapas separadas, em qualquer ordem:
+//   1) Documentos fiscais (NF, boleto…) → conta a pagar  — Comprador / Financeiro
+//   2) Recebimento do produto (conferência)              — Almoxarifado / Patrimônio
+const lancaDocFiscal = () => tem('administrador', 'comprador', 'financeiro');
+const recebeProduto = () => tem('administrador', 'almoxarifado');
+const tagDocPed = p => p.status === 'cancelado' ? '' : p.fat ? '<span class="tag verde">Lançados</span>' : '<span class="tag amarelo">Pendente</span>';
+const tagEntregaPed = p => p.status === 'cancelado' ? '' : p.ent === 'completa' ? '<span class="tag verde">Recebido</span>'
+  : p.ent === 'parcial' ? '<span class="tag amarelo">Em parte</span>' : '<span class="tag azul">Aguardando</span>';
+
 rota('/compras/pedidos', async tela => {
-  const st = estado.params.get('status') || 'receber';
-  const filtro = { receber: 'status=in.(emitido,parcialmente_recebido)', recebidos: 'status=eq.recebido', todos: 'status=neq.cancelado' }[st] || 'status=neq.cancelado';
-  const [ps, forns] = await Promise.all([api.listar('pedidos', `select=*,req:requisicoes(numero,justificativa)&${filtro}&order=criado_em.desc&limit=500`), fornecedores()]);
+  const soAlmox = tem('almoxarifado') && !tem('administrador', 'comprador', 'financeiro') && !veTudo();
+  const st = estado.params.get('status') || (soAlmox ? 'a_receber' : lancaDocFiscal() ? 'abertos' : 'todos');
+  const filtroSt = { abertos: 'status=in.(emitido,faturado,entregue,parcialmente_recebido)', a_faturar: 'status=in.(emitido,entregue,parcialmente_recebido)',
+    a_receber: 'status=in.(emitido,faturado,parcialmente_recebido)', concluidos: 'status=eq.recebido', todos: 'status=neq.cancelado' }[st] || 'status=neq.cancelado';
+  const [ps0, forns] = await Promise.all([api.listar('pedidos', `select=*,req:requisicoes(numero,justificativa),fats:pedido_faturamentos(status),recs:recebimentos(entrega_completa,cancelado_em,status)&${filtroSt}&order=criado_em.desc&limit=500`), fornecedores()]);
+  const ps = ps0.map(p => ({ ...p, fat: (p.fats || []).some(f => f.status === 'registrado'),
+    ent: (() => { const v = (p.recs || []).filter(x => !x.cancelado_em && x.status !== 'cancelado'); return v.some(x => x.entrega_completa) ? 'completa' : v.length ? 'parcial' : 'pendente'; })() }))
+    .filter(p => st === 'a_faturar' ? !p.fat : st === 'a_receber' ? p.ent !== 'completa' : true);
   const fs = porId(forns);
+  const opcoes = [['abertos', 'Em andamento'], ['a_faturar', 'Sem documentos fiscais'], ['a_receber', 'Aguardando entrega'], ['concluidos', 'Concluídos'], ['todos', 'Todos']];
   tela.innerHTML = `
     <div class="topo"><div><h1>Pedidos de compra</h1><p class="sub">${ps.length} pedido(s) · ${brl(ps.reduce((s, p) => s + Number(p.valor_total), 0))}</p></div></div>
-    <form class="filtros" id="filtros"><select name="status">${[['receber', 'A receber'], ['recebidos', 'Recebidos'], ['todos', 'Todos']].map(([v, t]) => `<option value="${v}" ${v === st ? 'selected' : ''}>${t}</option>`).join('')}</select><button class="btn">Filtrar</button></form>
-    <div class="cartao">${ps.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Nº</th><th>Emissão</th><th>Fornecedor</th><th>Para que</th><th>Previsão</th><th class="num">Valor</th><th>Situação</th></tr></thead><tbody>
+    <p class="muted" style="margin:-6px 0 12px">Cada pedido tem duas etapas independentes: <b>documentos fiscais</b> (NF, boleto — Compras/Financeiro) e <b>recebimento do produto</b> (Almoxarifado/Patrimônio).</p>
+    <form class="filtros" id="filtros"><select name="status">${opcoes.map(([v, t]) => `<option value="${v}" ${v === st ? 'selected' : ''}>${t}</option>`).join('')}</select><button class="btn">Filtrar</button></form>
+    <div class="cartao">${ps.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Nº</th><th>Emissão</th><th>Fornecedor</th><th>Para que</th><th>Previsão</th><th class="num">Valor</th><th>Documentos fiscais</th><th>Entrega</th></tr></thead><tbody>
       ${ps.map(p => `<tr class="clicavel" onclick="location.hash='#/compras/pedidos/ver/${p.id}'"><td data-r="Nº" class="nowrap">${esc(p.numero)}</td><td data-r="Emissão">${dataBR(p.criado_em)}</td>
         <td data-r="Fornecedor">${esc(nomeForn(fs[p.fornecedor_id]))}</td><td data-r="Para que">${esc(p.req?.justificativa || '')}</td>
-        <td data-r="Previsão">${p.previsao_entrega ? dataBR(p.previsao_entrega) : '—'}${p.status === 'emitido' && p.previsao_entrega && p.previsao_entrega < hojeISO() ? ' <span class="tag vermelho">atrasado</span>' : ''}</td>
-        <td data-r="Valor" class="num">${brl(p.valor_total)}</td><td data-r="Situação">${tag(p.status)}</td></tr>`).join('')}
+        <td data-r="Previsão">${p.previsao_entrega ? dataBR(p.previsao_entrega) : '—'}${p.ent !== 'completa' && p.status !== 'cancelado' && p.previsao_entrega && p.previsao_entrega < hojeISO() ? ' <span class="tag vermelho">atrasado</span>' : ''}</td>
+        <td data-r="Valor" class="num">${brl(p.valor_total)}</td><td data-r="Documentos">${p.status === 'cancelado' ? tag('cancelado') : tagDocPed(p)}</td><td data-r="Entrega">${tagEntregaPed(p)}</td></tr>`).join('')}
     </tbody></table></div>` : '<div class="vazio">Nenhum pedido.</div>'}</div>`;
   $('#filtros').onsubmit = e => { e.preventDefault(); location.hash = '#/compras/pedidos?status=' + formDados(e.target).status; };
 });
@@ -406,36 +423,64 @@ rota('/compras/pedidos', async tela => {
 rota('/compras/pedidos/ver/:id', async (tela, id) => {
   const p = await api.um('pedidos', `id=eq.${id}&select=*`);
   if (!p) { tela.innerHTML = '<div class="cartao vazio">Pedido não encontrado ou sem acesso.</div>'; return; }
-  const [itens, recs, forn, [r], cot] = await Promise.all([
+  const [itens, recs, fats, forn, [r], cot] = await Promise.all([
     api.listar('pedido_itens', `pedido_id=eq.${id}&order=id`),
-    api.listar('recebimentos', `pedido_id=eq.${id}&cancelado_em=is.null&order=data_recebimento`),
+    api.listar('recebimentos', `pedido_id=eq.${id}&cancelado_em=is.null&select=*,quem:usuarios!recebimentos_recebido_por_fkey(nome)&order=criado_em`).catch(() => api.listar('recebimentos', `pedido_id=eq.${id}&cancelado_em=is.null&order=criado_em`)),
+    api.listar('pedido_faturamentos', `pedido_id=eq.${id}&status=eq.registrado&select=*,quem:usuarios!pedido_faturamentos_registrado_por_fkey(nome)&order=criado_em`).catch(() => api.listar('pedido_faturamentos', `pedido_id=eq.${id}&status=eq.registrado&order=criado_em`).catch(() => [])),
     api.um('fornecedores', `id=eq.${p.fornecedor_id}&select=*`),
-    p.requisicao_id ? listarReq(`id=eq.${p.requisicao_id}`) : [null],
+    p.requisicao_id ? listarReq(`id=eq.${p.requisicao_id}`).catch(() => [null]) : [null],
     p.cotacao_id ? api.um('cotacoes', `id=eq.${p.cotacao_id}&select=numero`).catch(() => null) : null]);
   const conta = p.conta_id ? (await contas()).find(x => x.id === p.conta_id) : null;
-  const dono = r?.solicitante_id === estado.usuario.id;
-  const podeReceber = ['emitido', 'parcialmente_recebido'].includes(p.status) && (tem('administrador', 'comprador', 'financeiro') || dono);
-  const anx = {}; await Promise.all(recs.map(async x => (anx[x.id] = await htmlAnexos('recebimento', x.id))));
+  const ativo = p.status !== 'cancelado';
+  const fat = fats[0] || null;
+  const recsV = recs.filter(x => x.status !== 'cancelado');
+  const entregue = recsV.some(x => x.entrega_completa);
+  const podeFaturar = ativo && !fat && lancaDocFiscal();
+  const podeReceber = ativo && !entregue && recebeProduto();
+  const anxF = fat ? await htmlAnexos('faturamento', fat.id) : '';
+  const anxR = {}; await Promise.all(recsV.map(async x => (anxR[x.id] = await htmlAnexos('recebimento', x.id))));
+  const parcelas = fat?.titulo_id && veTudo() ? await api.listar('titulo_parcelas', `titulo_id=eq.${fat.titulo_id}&order=parcela`).catch(() => []) : [];
+  const situacao = !ativo ? tag('cancelado') : fat && entregue ? '<span class="tag verde">Concluído: faturado e recebido</span>'
+    : `${fat ? '<span class="tag verde">Documentos lançados</span>' : '<span class="tag amarelo">Sem documentos fiscais</span>'} ${entregue ? '<span class="tag verde">Produto recebido</span>' : recsV.length ? '<span class="tag amarelo">Recebido em parte</span>' : '<span class="tag azul">Aguardando entrega</span>'}`;
+  const etapa = (n, ok, titulo, quem) => `<div class="topo" style="margin:0 0 8px"><div><h2 style="margin:0">${ok ? '✅' : n === 1 ? '🧾' : '📦'} ${n}. ${titulo}</h2><p class="muted" style="margin:2px 0 0">${quem}</p></div>`;
   tela.innerHTML = `
-    <div class="topo"><div><h1>Pedido ${esc(p.numero)}</h1><p class="sub">${tag(p.status)} · ${esc(nomeForn(forn))} · <b>${brl(p.valor_total)}</b></p></div>
-      <div class="acoes">${podeReceber ? '<button class="btn ok" id="receber">Registrar recebimento (nota/recibo)</button>' : ''}
-        <button class="btn" id="imprimir">Imprimir pedido</button>
-        ${ehComprador() && p.status === 'emitido' ? '<button class="btn perigo" id="cancelar">Cancelar pedido</button>' : ''}
+    <div class="topo"><div><h1>Pedido ${esc(p.numero)}</h1><p class="sub">${situacao} · ${esc(nomeForn(forn))} · <b>${brl(p.valor_total)}</b></p></div>
+      <div class="acoes"><button class="btn" id="imprimir">Imprimir pedido</button>
+        ${ehComprador() && ativo && !fat && !recsV.length ? '<button class="btn perigo" id="cancelar">Cancelar pedido</button>' : ''}
         <button class="btn" onclick="history.back()">Voltar</button></div></div>
     <div class="cartao"><div class="form">
       <div><div class="muted">Fornecedor</div><b>${esc(nomeForn(forn))}</b><div class="muted">${esc([forn?.documento, forn?.telefone, forn?.email].filter(Boolean).join(' · '))}</div></div>
       <div><div class="muted">Pagamento</div><b>${esc(p.condicao_pagamento || '—')}</b></div>
-      <div><div class="muted">Previsão de entrega</div><b>${p.previsao_entrega ? dataBR(p.previsao_entrega) : '—'}</b></div>
+      <div><div class="muted">Previsão de entrega</div><b>${p.previsao_entrega ? dataBR(p.previsao_entrega) : '—'}</b>${ativo && !entregue && p.previsao_entrega && p.previsao_entrega < hojeISO() ? ' <span class="tag vermelho">atrasado</span>' : ''}</div>
       <div><div class="muted">Origem</div>${r ? `Requisição <a href="#/compras/requisicoes/ver/${r.id}">${esc(r.numero)}</a> · ${esc(r.solic?.nome || '')}` : '—'}${cot && veCompras() ? `<br>Cotação <a href="#/compras/cotacoes/ver/${p.cotacao_id}">${esc(cot.numero)}</a>` : ''}</div>
       ${conta ? `<div><div class="muted">Conta do plano</div><b>${esc(conta.codigo + ' ' + conta.nome)}</b></div>` : ''}
       <div class="largo"><div class="muted">Para que</div>${esc(r?.justificativa || '—')}</div>
       ${p.motivo_cancelamento ? `<div class="largo alerta-obs"><b>Cancelado:</b> ${esc(p.motivo_cancelamento)}</div>` : ''}
     </div></div>
     <div class="cartao"><h2>Itens</h2>${tabelaItens(itens.map(i => ({ ...i, valor: i.valor_unitario })))}</div>
-    ${recs.length ? `<div class="cartao"><h2>Recebimento</h2><ul class="lista-simples">${recs.map(x => `<li style="flex-wrap:wrap"><span>${dataBR(x.data_recebimento)} · ${esc(x.tipo_documento || 'NF')} ${esc(x.numero_nf || '')}${x.forma_pagamento ? ' · ' + esc(x.forma_pagamento) : ''} ${tag(x.status)}
-        ${x.titulo_id && veTudo() ? ` · <a href="#/financeiro/pagar/ver/${x.titulo_id}">conta a pagar</a>` : ''}</span><b>${brl(x.valor_nf)}</b>
-        ${x.divergencia ? `<div style="flex-basis:100%" class="alerta-obs">Divergência: ${esc(x.divergencia)}</div>` : ''}
-        <div style="flex-basis:100%"><span class="muted">Documento:</span> ${anx[x.id]}</div></li>`).join('')}</ul></div>` : ''}`;
+    ${ativo || fat ? `<div class="cartao" id="etapa-doc">${etapa(1, !!fat, 'Documentos fiscais (NF, boleto)', 'Compras ou Financeiro lança a nota e o boleto — gera a conta a pagar')}
+      ${podeFaturar ? '<div class="acoes"><button class="btn ok" id="faturar">Lançar documentos fiscais</button></div>' : ''}</div>
+      ${fat ? `<div class="form">
+        <div><div class="muted">Documento</div><b>${esc(fat.tipo_documento)} ${esc(fat.numero_documento)}</b><div class="muted">emitido em ${dataBR(fat.data_emissao)}</div></div>
+        <div><div class="muted">Valor</div><b>${brl(fat.valor)}</b>${Math.abs(Number(fat.valor) - Number(p.valor_total)) > 0.009 ? ` <span class="tag vermelho">pedido ${brl(p.valor_total)}</span>` : ''}</div>
+        <div><div class="muted">Forma de pagamento</div><b>${esc(fat.forma_pagamento || '—')}</b></div>
+        <div><div class="muted">Lançado por</div>${esc(fat.quem?.nome || '—')} · ${dataBR(fat.criado_em)}${fat.titulo_id && veTudo() ? `<br><a href="#/financeiro/pagar/ver/${fat.titulo_id}">ver conta a pagar</a>` : ''}</div>
+        ${parcelas.length ? `<div class="largo"><div class="muted">Vencimento(s)</div>${parcelas.map(x => `${x.parcela}ª ${dataBR(x.vencimento)} · ${brl(x.valor)}${x.status === 'paga' ? ' <span class="tag verde">paga</span>' : ''}`).join(' &nbsp;|&nbsp; ')}</div>` : ''}
+        ${fat.divergencia ? `<div class="largo alerta-obs">Divergência: ${esc(fat.divergencia)}</div>` : ''}
+        ${fat.observacao ? `<div class="largo"><div class="muted">Observação</div>${esc(fat.observacao)}</div>` : ''}
+        <div class="largo"><div class="muted">Arquivos</div>${anxF}</div>
+        ${lancaDocFiscal() ? `<div class="largo"><button class="btn peq perigo" id="cancelar-fat">Cancelar este lançamento (corrigir)</button></div>` : ''}</div>`
+      : `<div class="vazio" style="padding:10px 0">${entregue ? '⚠️ O produto já chegou e <b>ainda faltam a nota fiscal e o boleto</b>.' : 'Aguardando a nota fiscal / boleto do fornecedor.'}</div>`}</div>` : ''}
+    ${ativo || recsV.length ? `<div class="cartao" id="etapa-rec">${etapa(2, entregue, 'Recebimento do produto', 'Almoxarifado / Patrimônio confere e confirma a chegada')}
+      ${podeReceber ? `<div class="acoes"><button class="btn ok" id="receber">${recsV.length ? 'Confirmar o restante' : 'Confirmar recebimento'}</button></div>` : ''}</div>
+      ${recsV.length ? `<ul class="lista-simples">${recsV.map(x => `<li style="flex-wrap:wrap"><span><b>${x.entrega_completa ? (x.status === 'com_divergencia' ? 'Recebido com divergência' : 'Recebido e conferido') : 'Recebido em parte'}</b>
+          · chegou em ${dataBR(x.data_recebimento)}${x.quem?.nome ? ' · ' + esc(x.quem.nome) : ''}</span>
+          ${recebeProduto() ? `<button class="btn peq" data-cancelar-rec="${x.id}">Cancelar</button>` : ''}
+          ${x.divergencia ? `<div style="flex-basis:100%" class="alerta-obs">${x.entrega_completa ? 'Divergência' : 'Faltou'}: ${esc(x.divergencia)}</div>` : ''}
+          ${x.observacao ? `<div style="flex-basis:100%" class="muted">${esc(x.observacao)}</div>` : ''}
+          <div style="flex-basis:100%"><span class="muted">Fotos/arquivos:</span> ${anxR[x.id]}</div></li>`).join('')}</ul>
+          ${entregue && recebeProduto() ? `<p style="margin-top:8px"><a class="btn peq" href="#/almox/entrada?pedido=${p.id}">📥 Dar entrada no estoque</a> <span class="muted">(se for material de estoque)</span></p>` : ''}`
+      : `<div class="vazio" style="padding:10px 0">${fat ? 'Documentos já lançados — <b>aguardando o produto chegar</b>.' : 'Aguardando a entrega do fornecedor.'}${!recebeProduto() ? ' Quem confirma é o Almoxarifado/Patrimônio.' : ''}</div>`}</div>` : ''}`;
 
   $('#imprimir').onclick = () => imprimirPedido(p, forn, itens, r);
   $('#cancelar')?.addEventListener('click', async () => {
@@ -446,8 +491,19 @@ rota('/compras/pedidos/ver/:id', async (tela, id) => {
           if (r) await api.alterar('requisicoes', `id=eq.${r.id}`, { status: 'cancelada', cancelado_em: quando, cancelado_por: estado.usuario.id, motivo_cancelamento: 'Pedido cancelado: ' + motivo });
           aviso('Pedido cancelado.'); navegar(); } catch (err) { falha(err); }
   });
+  $('#cancelar-fat')?.addEventListener('click', async () => {
+    const motivo = await confirmar(`Cancelar o lançamento de ${fat.tipo_documento} ${fat.numero_documento}? A conta a pagar gerada também é cancelada (só é possível se ainda não foi paga).`, { comMotivo: true, botao: 'Cancelar lançamento' });
+    if (!motivo) return;
+    try { await api.rpc('cancelar_faturamento', { p_id: fat.id, p_motivo: motivo }); aviso('Lançamento cancelado. Lance os documentos corretos.'); navegar(); } catch (err) { falha(err); }
+  });
+  $$('[data-cancelar-rec]', tela).forEach(b => b.onclick = async () => {
+    const motivo = await confirmar('Cancelar esta confirmação de recebimento?', { comMotivo: true, botao: 'Cancelar recebimento' });
+    if (!motivo) return;
+    try { await api.rpc('cancelar_recebimento', { p_id: b.dataset.cancelarRec, p_motivo: motivo }); aviso('Recebimento cancelado.'); navegar(); } catch (err) { falha(err); }
+  });
 
-  $('#receber')?.addEventListener('click', async () => {
+  // ----- 1) Documentos fiscais → conta a pagar -----
+  $('#faturar')?.addEventListener('click', async () => {
     const parcelasDe = (total, n, primeiro, intervalo) => {
       const base = Math.floor(total / n * 100) / 100; const ps = [];
       for (let k = 0; k < n; k++) ps.push({ vencimento: somaDias(primeiro, k * intervalo), valor: k === n - 1 ? Math.round((total - base * (n - 1)) * 100) / 100 : base });
@@ -456,15 +512,15 @@ rota('/compras/pedidos/ver/:id', async (tela, id) => {
     const prazoForn = forn?.prazo_faturamento_dias;
     const prazo = prazoForn != null ? prazoForn : /(\d+)\s*d/i.test(p.condicao_pagamento || '') ? Number(p.condicao_pagamento.match(/(\d+)\s*d/i)[1]) : /vista/i.test(p.condicao_pagamento || '') ? 0 : 30;
     const venc1 = somaDias(hojeISO(), prazo);
-    const res = await modal(`<form><h2>Recebimento do pedido ${esc(p.numero)}</h2>
-      <p class="muted">Confira a mercadoria e o documento. Ao confirmar, a conta a pagar vai pronta para o Financeiro (valor, vencimento, documento e anexos).</p><div class="form">
-      <label class="campo">Data do recebimento<input type="date" name="data" value="${hojeISO()}" required></label>
+    const res = await modal(`<form><h2>Documentos fiscais do pedido ${esc(p.numero)}</h2>
+      <p class="muted">Lance a nota fiscal, o boleto e os demais documentos da compra. A conta a pagar vai pronta para o Financeiro. ${entregue ? '<b>O produto já foi recebido pelo almoxarifado.</b>' : 'O recebimento do produto é confirmado depois, pelo Almoxarifado.'}</p><div class="form">
       <label class="campo">Tipo de documento<select name="tipo">${['NF', 'NFS-e', 'Cupom fiscal', 'Recibo', 'Fatura', 'Outro'].map(t => `<option ${t === 'NF' ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
       <label class="campo">Nº do documento<input name="nf" required></label>
+      <label class="campo">Data de emissão<input type="date" name="data" value="${hojeISO()}" required></label>
       <label class="campo">Valor do documento (R$)<input name="valor" inputmode="decimal" value="${Number(p.valor_total).toFixed(2).replace('.', ',')}" required></label>
       <label class="campo">Forma de pagamento<select name="forma" required><option value="">Selecione…</option>${['Boleto', 'Pix', 'Transferência (TED/DOC)', 'Cartão', 'Débito automático', 'Dinheiro'].map(t => `<option ${/boleto/i.test(p.condicao_pagamento || '') && t === 'Boleto' || /pix/i.test(p.condicao_pagamento || '') && t === 'Pix' ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
       <label class="check"><input type="checkbox" name="avista" ${prazo === 0 ? 'checked' : ''}> Pago/pagar à vista</label>
-      <div class="largo muted">${prazoForn != null ? `Prazo de faturamento do fornecedor: <b>${prazoForn ? prazoForn + ' dias' : 'à vista'}</b> — o vencimento já vem calculado (altere só em caso extraordinário).` : `Fornecedor sem prazo no cadastro: vencimento pela condição do pedido (${esc(p.condicao_pagamento || '30 dias')}).`}</div>
+      <div class="largo muted">${prazoForn != null ? `Prazo de faturamento do fornecedor: <b>${prazoForn ? prazoForn + ' dias' : 'à vista'}</b> — o vencimento já vem calculado a partir da emissão (altere só em caso extraordinário).` : `Fornecedor sem prazo no cadastro: vencimento pela condição do pedido (${esc(p.condicao_pagamento || '30 dias')}).`}</div>
       <div class="largo conferencia" id="conf"></div>
       <label class="campo largo" id="div-campo" hidden>O que mudou em relação ao pedido? (obrigatório)<textarea name="div" rows="2"></textarea></label>
       <label class="campo">Parcelas<input name="n" inputmode="numeric" value="1"></label>
@@ -475,12 +531,12 @@ rota('/compras/pedidos/ver/:id', async (tela, id) => {
       <label class="campo largo">Observação<input name="obs"></label>
       <label class="campo largo">Nota fiscal / recibo / cupom — obrigatório (qualquer arquivo)<input type="file" name="arquivos" multiple></label>
       <label class="campo largo" id="campo-boleto">Boleto (obrigatório quando a forma é boleto)<input type="file" name="boletos" multiple></label></div>
-      <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn ok">Confirmar recebimento</button></div></form>`, {
+      <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn ok">Lançar documentos</button></div></form>`, {
       aoAbrir: raiz => {
         const f = $('form', raiz);
         const sinc = () => {
           const v = num(f.valor.value) || 0, dif = Math.round((v - Number(p.valor_total)) * 100) / 100;
-          $('#conf', raiz).innerHTML = `Pedido: <b>${brl(p.valor_total)}</b> · Nota: <b>${brl(v)}</b> ${Math.abs(dif) > 0.009 ? `<span class="tag vermelho">diferença ${brl(dif)}</span>` : '<span class="tag verde">confere</span>'}`;
+          $('#conf', raiz).innerHTML = `Pedido: <b>${brl(p.valor_total)}</b> · Documento: <b>${brl(v)}</b> ${Math.abs(dif) > 0.009 ? `<span class="tag vermelho">diferença ${brl(dif)}</span>` : '<span class="tag verde">confere</span>'}`;
           $('#div-campo', raiz).hidden = Math.abs(dif) <= 0.009;
           const n = Math.max(1, parseInt(f.n.value, 10) || 1);
           const ps = v > 0 && f.venc.value ? parcelasDe(v, n, f.venc.value, parseInt(f.int.value, 10) || 30) : [];
@@ -497,10 +553,11 @@ rota('/compras/pedidos/ver/:id', async (tela, id) => {
       validar: d => {
         const v = num(d.valor);
         if (!d.nf) return 'Informe o número do documento.';
+        if (!d.data) return 'Informe a data de emissão.';
         if (!(v > 0)) return 'Informe o valor do documento.';
         if (!d.forma) return 'Informe a forma de pagamento.';
         if (d.forma === 'Boleto' && !d.boletos.length) return 'Anexe o boleto.';
-        if (Math.abs(v - Number(p.valor_total)) > 0.009 && !d.div) return 'O valor da nota é diferente do pedido: explique a divergência.';
+        if (Math.abs(v - Number(p.valor_total)) > 0.009 && !d.div) return 'O valor do documento é diferente do pedido: explique a divergência.';
         if (!d.arquivos.length) return 'Anexe a nota fiscal, o recibo ou o cupom.';
         const ps = $$('#parcelas .pv').map((el, k) => ({ vencimento: el.value, valor: num($$('#parcelas .pval')[k].value) || 0 }));
         if (ps.some(x => !x.vencimento || !(x.valor > 0))) return 'Confira as datas e os valores das parcelas.';
@@ -509,11 +566,37 @@ rota('/compras/pedidos/ver/:id', async (tela, id) => {
       } });
     if (!res) return;
     try {
-      const out = await api.rpc('registrar_recebimento', { p_pedido: id, p_data: res.data, p_nf: res.nf, p_valor_nf: num(res.valor),
-        p_parcelas: receber._parcelas, p_divergencia: res.div || null, p_obs: res.obs || null, p_tipo_doc: res.tipo, p_forma: res.forma, p_linha_digitavel: res.forma === 'Boleto' ? res.linha || null : null });
-      await anexarEm([['recebimento', out.recebimento], ['titulo', out.titulo]], res.arquivos, res.tipo);
-      if (res.forma === 'Boleto') await anexarEm([['titulo', out.titulo]], res.boletos, 'Boleto');
-      aviso('Recebimento registrado. A conta a pagar foi criada.'); navegar();
+      const out = await api.rpc('registrar_faturamento', { p_pedido: id, p_data: res.data, p_tipo_doc: res.tipo, p_numero: res.nf, p_valor: num(res.valor),
+        p_parcelas: receber._parcelas, p_forma: res.forma, p_linha_digitavel: res.forma === 'Boleto' ? res.linha || null : null, p_divergencia: res.div || null, p_obs: res.obs || null });
+      await anexarEm([['faturamento', out.faturamento], ['titulo', out.titulo]], res.arquivos, res.tipo);
+      if (res.forma === 'Boleto') await anexarEm([['faturamento', out.faturamento], ['titulo', out.titulo]], res.boletos, 'Boleto');
+      aviso(entregue ? 'Documentos lançados. Pedido concluído: faturado e recebido.' : 'Documentos lançados e conta a pagar criada. Falta o Almoxarifado confirmar a chegada do produto.'); navegar();
+    } catch (err) { falha(err); }
+  });
+
+  // ----- 2) Recebimento do produto (Almoxarifado / Patrimônio) -----
+  $('#receber')?.addEventListener('click', async () => {
+    const res = await modal(`<form><h2>Recebimento do pedido ${esc(p.numero)}</h2>
+      <p class="muted">Confira o que chegou com o pedido (quantidade, modelo, estado da embalagem). ${fat ? `Documento já lançado: <b>${esc(fat.tipo_documento)} ${esc(fat.numero_documento)}</b>.` : 'A nota fiscal e o boleto são lançados por Compras/Financeiro — aqui é só a chegada do produto.'}</p>
+      <div class="cartao" style="margin:8px 0"><b>${esc(nomeForn(forn))}</b><ul class="lista-simples">${itens.map(i => `<li><span>${esc(i.descricao)}</span><b>${Number(i.quantidade).toLocaleString('pt-BR')} ${esc(i.unidade)}</b></li>`).join('')}</ul></div>
+      <div class="form">
+      <label class="campo">Data em que chegou<input type="date" name="data" value="${hojeISO()}" max="${hojeISO()}" required></label>
+      <label class="campo largo">Conferência<select name="conf">
+        <option value="ok">Chegou tudo, conforme o pedido</option>
+        <option value="div">Chegou tudo, mas com divergência (avaria, modelo diferente…)</option>
+        <option value="parcial">Chegou só uma parte (faltam itens)</option></select></label>
+      <label class="campo largo" id="campo-div" hidden><span id="rot-div">O que está diferente?</span><textarea name="div" rows="2"></textarea></label>
+      <label class="campo largo">Observação (opcional)<input name="obs" placeholder="Ex.: guardado na prateleira B, entregue ao setor de TI"></label>
+      <label class="campo largo">Fotos / canhoto assinado (opcional)<input type="file" name="fotos" multiple accept="image/*,application/pdf"></label></div>
+      <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn ok">Confirmar recebimento</button></div></form>`, {
+      aoAbrir: raiz => { const f = $('form', raiz); const ajusta = () => { $('#campo-div', raiz).hidden = f.conf.value === 'ok'; $('#rot-div', raiz).textContent = f.conf.value === 'parcial' ? 'O que faltou chegar?' : 'O que está diferente?'; }; f.conf.onchange = ajusta; ajusta(); },
+      validar: d => !d.data ? 'Informe a data.' : d.data > hojeISO() ? 'A data não pode ser futura.' : d.conf !== 'ok' && !d.div ? (d.conf === 'parcial' ? 'Informe o que faltou chegar.' : 'Descreva a divergência.') : null });
+    if (!res) return;
+    try {
+      const out = await api.rpc('confirmar_recebimento', { p_pedido: id, p_data: res.data, p_completa: res.conf !== 'parcial', p_divergencia: res.conf === 'ok' ? null : res.div, p_obs: res.obs || null });
+      if (res.fotos?.length) await anexarEm([['recebimento', out.recebimento]], res.fotos, 'Recebimento');
+      aviso(res.conf === 'parcial' ? 'Recebimento parcial registrado. Quando o restante chegar, confirme de novo.'
+        : fat ? 'Recebimento confirmado. Pedido concluído: faturado e recebido.' : 'Recebimento confirmado. Compras foi avisado de que faltam a nota e o boleto.'); navegar();
     } catch (err) { falha(err); }
   });
 });
@@ -555,8 +638,9 @@ function imprimirPedido(p, forn, itens, r) {
 
 
 // ----- Linha do tempo da requisição (quem pediu acompanha cada etapa) -----
-const ETAPAS_REQ = [['criada', 'Criada'], ['compras', 'Enviada a Compras'], ['cotacao', 'Em cotação'], ['aprovacao', 'Aprovação'], ['pedido', 'Pedido emitido'], ['recebida', 'Recebida'], ['paga', 'Paga']];
-const NIVEL_EV = { criada: 0, rascunho: 0, aguardando_cotacao: 1, cotacao: 2, propostas: 2, aguardando_aprovacao: 3, decisao: 3, pedido: 4, recebimento: 5, pagamento: 6 };
+// Documentos fiscais e recebimento do produto são etapas separadas e podem acontecer em qualquer ordem.
+const ETAPAS_REQ = [['criada', 'Criada'], ['compras', 'Enviada a Compras'], ['cotacao', 'Em cotação'], ['aprovacao', 'Aprovação'], ['pedido', 'Pedido emitido'],
+  ['faturada', 'Documentos fiscais (NF/boleto)'], ['recebida', 'Produto recebido (almoxarifado)'], ['paga', 'Paga']];
 async function linhaTempoReq(id, box) {
   if (!box) return;
   let d;
@@ -566,18 +650,28 @@ async function linhaTempoReq(id, box) {
   const ev = []; for (const e of d.eventos || []) { const u = ev[ev.length - 1]; if (u && u.titulo === e.titulo && Math.abs(new Date(e.quando) - new Date(u.quando)) < 120000) continue; ev.push(e); }
   const encerrada = ['cancelada', 'reprovada'].includes(d.status);
   // a situação atual da requisição manda: só conta como concluída a etapa que de fato terminou
-  const CONCLUIDO = { rascunho: 0, devolvida: 0, aguardando_cotacao: 1, em_cotacao: 1, aguardando_aprovacao: 2, aprovada: 3, pedido_emitido: 4, recebida: 5 };
-  let feito = CONCLUIDO[d.status] ?? 0;
-  if (d.status === 'recebida' && ev.some(e => e.etapa === 'pagamento')) feito = 6;
-  const atual = encerrada ? -1 : Math.min(feito + 1, ETAPAS_REQ.length - 1);
+  const CONCLUIDO = { rascunho: -1, devolvida: -1, aguardando_cotacao: 1, em_cotacao: 1, aguardando_aprovacao: 2, aprovada: 3, pedido_emitido: 4, faturada: 4, entregue: 4, recebida: 4 };
+  const linear = CONCLUIDO[d.status] ?? 0;
+  const feitos = ETAPAS_REQ.map((_, i) => i <= 4 ? i <= Math.max(linear, 0) : false);
+  if (linear >= 4) {
+    feitos[5] = !!d.faturado || ev.some(e => e.etapa === 'faturamento');
+    feitos[6] = d.entrega ? d.entrega === 'completa' : d.status === 'recebida';
+    feitos[7] = !!d.pago;
+  }
+  const concluido = feitos.every(Boolean);
+  const atual = encerrada || concluido ? -1 : feitos.findIndex(f => !f);
+  const pend = [];
+  if (linear >= 4 && !feitos[5]) pend.push('Compras/Financeiro lançar a nota fiscal e o boleto');
+  if (linear >= 4 && !feitos[6]) pend.push(d.entrega === 'parcial' ? 'o restante do produto chegar (parte já foi recebida)' : 'o Almoxarifado confirmar a chegada do produto');
+  if (linear >= 4 && feitos[5] && feitos[6] && !feitos[7]) pend.push('o pagamento ao fornecedor');
   const AGUARDANDO = { rascunho: 'aguardando envio para Compras', devolvida: 'devolvida para você corrigir', aguardando_cotacao: 'aguardando o Comprador iniciar a cotação',
-    em_cotacao: 'Compras está cotando', aguardando_aprovacao: 'aguardando a decisão do aprovador', aprovada: 'aprovada, aguardando emissão do pedido',
-    pedido_emitido: 'aguardando a entrega do fornecedor', recebida: 'aguardando o pagamento ao fornecedor' };
-  const passos = ETAPAS_REQ.map(([k, t], i) => `<li class="${i <= feito ? 'feito' : ''} ${i === atual && feito < ETAPAS_REQ.length - 1 ? 'atual' : ''}"><span class="pt"></span><span class="nm">${t}</span></li>`).join('');
+    em_cotacao: 'Compras está cotando', aguardando_aprovacao: 'aguardando a decisão do aprovador', aprovada: 'aprovada, aguardando emissão do pedido' };
+  const txtAguarda = linear >= 4 ? 'aguardando ' + pend.join(' e ') : AGUARDANDO[d.status] || '';
+  const passos = ETAPAS_REQ.map(([k, t], i) => `<li class="${feitos[i] ? 'feito' : ''} ${i === atual ? 'atual' : ''}"><span class="pt"></span><span class="nm">${t}</span></li>`).join('');
   const quando = q => new Date(q).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   box.innerHTML = `<h2>Acompanhamento</h2>
     ${encerrada ? `<div class="alerta-obs" style="margin-bottom:10px"><b>${d.status === 'cancelada' ? 'Requisição cancelada' : 'Compra reprovada'}.</b> Veja o motivo abaixo.</div>`
-      : `<ol class="etapas">${passos}</ol><p class="muted" style="margin:6px 0 12px">${feito >= ETAPAS_REQ.length - 1 ? 'Processo <b>concluído</b> ✓' : `Etapa atual: <b>${ETAPAS_REQ[atual][1]}</b> — ${AGUARDANDO[d.status] || ''}`}</p>`}
+      : `<ol class="etapas">${passos}</ol><p class="muted" style="margin:6px 0 12px">${concluido ? 'Processo <b>concluído</b> ✓' : `Etapa atual: <b>${ETAPAS_REQ[atual][1]}</b> — ${txtAguarda}`}</p>`}
     <ul class="linha-tempo">${ev.slice().reverse().map(e => `<li class="lt-${esc(e.etapa)}"><div class="lt-q">${quando(e.quando)}</div>
       <div class="lt-t"><b>${esc(e.titulo)}</b>${e.quem ? ` <span class="muted">· ${esc(e.quem)}</span>` : ''}${e.detalhe ? `<div class="muted">${esc(e.detalhe)}</div>` : ''}</div></li>`).join('')
       || '<li class="muted">Sem movimentações ainda.</li>'}</ul>`;

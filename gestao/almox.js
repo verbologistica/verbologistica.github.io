@@ -151,7 +151,7 @@ async function movimentoAvulso(i, tipo, eqs) {
 rota('/almox/entrada', async tela => {
   if (!editaAlmox()) { tela.innerHTML = '<div class="cartao vazio">Sem permissão.</div>'; return; }
   const [its, fs, peds] = await Promise.all([itensAlmox(true), cad('fornecedores', 'select=id,razao_social,ativo&order=razao_social'),
-    api.listar('pedidos', 'select=id,numero,fornecedor_id&status=in.(emitido,parcialmente_recebido,recebido)&order=criado_em.desc&limit=100').catch(() => [])]);
+    api.listar('pedidos', 'select=id,numero,fornecedor_id&status=in.(emitido,faturado,entregue,parcialmente_recebido,recebido)&order=criado_em.desc&limit=100').catch(() => [])]);
   const linha = () => `<tr><td><select name="item" required><option value="">Selecione…</option>${its.filter(i => i.ativo).map(i => `<option value="${i.id}">${esc(i.codigo + ' · ' + i.descricao)} (${esc(i.unidade)})</option>`).join('')}</select></td>
     <td><input name="qtd" inputmode="decimal" required style="width:90px"></td><td><input name="custo" inputmode="decimal" required style="width:110px"></td><td class="num tot">—</td><td><button type="button" class="btn peq" data-rem>✕</button></td></tr>`;
   tela.innerHTML = `
@@ -170,6 +170,7 @@ rota('/almox/entrada', async tela => {
   $('#mais').onclick = () => tb.insertAdjacentHTML('beforeend', linha());
   $('#novo-cad').onclick = async () => { await formItemAlmox(); };
   f.pedido_id.onchange = () => { const fo = f.pedido_id.selectedOptions[0]?.dataset.forn; if (fo) f.fornecedor_id.value = fo; };
+  const pedUrl = estado.params.get('pedido'); if (pedUrl && peds.some(x => x.id === pedUrl)) { f.pedido_id.value = pedUrl; f.pedido_id.onchange(); }
   f.onsubmit = async e => {
     e.preventDefault(); const d = formDados(f);
     const linhas = $$('tr', tb).map(tr => ({ item: tr.querySelector('[name=item]').value, qtd: num(tr.querySelector('[name=qtd]').value), custo: num(tr.querySelector('[name=custo]').value) })).filter(l => l.item && l.qtd > 0);

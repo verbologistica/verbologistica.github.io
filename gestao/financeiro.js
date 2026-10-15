@@ -156,6 +156,13 @@ async function verTitulo(tela, id, tipo) {
   const semComp = new Set(baixas.length ? (await api.listar('v_pagamentos_sem_comprovante', `select=baixa_id&titulo_id=eq.${id}`)).map(x => x.baixa_id) : []);
   const compBaixa = {}; for (const b of baixas) compBaixa[b.id] = await htmlAnexos('baixa', b.id);
   const reembs = t.origem === 'reembolso' ? await api.listar('reembolsos', `titulo_id=eq.${id}&select=id,numero,data_despesa,descricao,valor&order=data_despesa`) : [];
+  // compra: mostra se o produto já chegou no almoxarifado (documentos e recebimento são etapas separadas)
+  let receb = null;
+  if (t.origem === 'pedido' && t.origem_id) {
+    const [ped, rs] = await Promise.all([api.um('pedidos', `id=eq.${t.origem_id}&select=id,numero,status`).catch(() => null),
+      api.listar('recebimentos', `pedido_id=eq.${t.origem_id}&cancelado_em=is.null&status=neq.cancelado&order=data_recebimento`).catch(() => [])]);
+    if (ped) receb = { ped, completo: rs.some(x => x.entrega_completa), parcial: rs.length > 0, data: rs.length ? rs[rs.length - 1].data_recebimento : null, div: rs.find(x => x.entrega_completa && x.divergencia)?.divergencia };
+  }
   const pessoa = t.forn?.razao_social || t.cli?.nome || t.colab?.nome || t.favorecido_nome || '—';
   const pix = t.forn?.chave_pix || t.colab?.chave_pix;
   const origens = { reembolso: 'Reembolso', avulso: 'Lançamento avulso', legado: tipo === 'pagar' ? 'Compra anterior ao sistema' : 'Venda anterior ao sistema', pedido: 'Pedido de compra', recorrente: 'Conta fixa mensal (contrato do fornecedor)', fechamento: 'Fatura do posto (abastecimentos)', adiantamento: 'Adiantamento' };
@@ -172,6 +179,7 @@ async function verTitulo(tela, id, tipo) {
       <div><div class="muted">Conta</div><b>${esc(t.conta ? t.conta.codigo + ' ' + t.conta.nome : '—')}</b></div>
       <div><div class="muted">Centro de custo</div><b>${esc(t.cc?.nome || '—')}</b></div>
       <div><div class="muted">Origem</div><b>${esc(origens[t.origem] || t.origem)}</b>${t.id_legado?.startsWith('planilha') ? '<div class="muted">Planilha de controle anterior</div>' : ''}</div>
+      ${receb ? `<div><div class="muted">Pedido / recebimento do produto</div><a href="#/compras/pedidos/ver/${receb.ped.id}">${esc(receb.ped.numero)}</a> · ${receb.completo ? `<span class="tag ${receb.div ? 'vermelho' : 'verde'}">${receb.div ? 'Recebido com divergência' : 'Produto recebido'} em ${dataBR(receb.data)}</span>` : receb.parcial ? '<span class="tag amarelo">Recebido em parte</span>' : '<span class="tag amarelo">Produto ainda não chegou</span>'}</div>` : ''}
       ${blocoObservacao(t.observacoes, editaFin())}
       <div class="largo"><div class="muted">Anexos</div>${await htmlAnexos('titulo', id)}
         ${editaFin() ? '<label class="campo" style="margin-top:8px">Incluir anexo<input type="file" id="mais" accept="image/*,application/pdf" multiple></label>' : ''}</div>

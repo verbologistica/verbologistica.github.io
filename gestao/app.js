@@ -254,7 +254,7 @@ const MENU = [
   ['grupo', 'Compras', '🛒'],
   ['Requisições', '#/compras/requisicoes', null, '🛒', null, true],
   ['Cotações', '#/compras/cotacoes', [...P_FIN, 'comprador', 'aprovador'], '📊', 'requisicoes_a_cotar', true],
-  ['Pedidos', '#/compras/pedidos', null, '📦', 'pedidos_a_receber', true],
+  ['Pedidos', '#/compras/pedidos', null, '📦', 'pedidos_sem_documento', true],
   ['grupo', 'Financeiro', '💰'],
   ['Contas a pagar', '#/financeiro/pagar', [...P_FIN, 'comprador'], '💳', 'sem_comprovante', true],
   ['Contas a receber', '#/financeiro/receber', P_FIN, '📥', null, true],
@@ -285,6 +285,7 @@ const MENU = [
   ['Painel do almoxarifado', '#/almox', P_ALM, '🏬', null, true],
   ['Itens e estoque', '#/almox/itens', P_ALM, '📦', 'almox_abaixo_minimo', true],
   ['Requisições de material', '#/almox/requisicoes', null, '🧾', 'almox_requisicoes_abertas', true],
+  ['Compras a receber', '#/compras/pedidos?status=a_receber', ['administrador', 'almoxarifado'], '🚚', 'pedidos_a_receber_almox', true],
   ['Entrada de material', '#/almox/entrada', ['administrador', 'almoxarifado'], '📥', null, true],
   ['Inventário', '#/almox/inventario', ['administrador', 'almoxarifado'], '🔢', null, true],
   ['EPI e uniformes', '#/almox/epi', [...P_ALM, 'rh', 'dp', 'ssma'], '🦺', 'epi_troca', true],
@@ -698,12 +699,12 @@ rota('/inicio', async tela => {
   // minhas requisições de compra em andamento (com a etapa de cada uma)
   const minhasReq = await api.listar('requisicoes', `solicitante_id=eq.${estado.usuario.id}&status=not.in.(recebida,cancelada,reprovada)&select=id,numero,justificativa,status,atualizado_em&order=atualizado_em.desc&limit=20`).catch(() => []);
   const ETAPA_REQ = { rascunho: [0, 'Rascunho — falta enviar para Compras'], devolvida: [0, 'Devolvida para você corrigir'], aguardando_cotacao: [1, 'Aguardando o Comprador cotar'],
-    em_cotacao: [2, 'Em cotação'], aguardando_aprovacao: [3, 'Aguardando aprovação'], aprovada: [3, 'Aprovada — emitindo pedido'], pedido_emitido: [4, 'Pedido emitido — aguardando entrega'] };
+    em_cotacao: [2, 'Em cotação'], aguardando_aprovacao: [3, 'Aguardando aprovação'], aprovada: [3, 'Aprovada — emitindo pedido'], pedido_emitido: [5, 'Pedido emitido — aguardando nota fiscal e entrega'], faturada: [6, 'Nota lançada — aguardando o produto chegar'], entregue: [6, 'Produto chegou — falta lançar a nota fiscal'] };
   const blocoMinhasReq = minhasReq.length ? `<div class="cartao" id="minhas-req"><div class="topo" style="margin:0 0 8px"><div><h2 style="margin:0">Minhas requisições de compra</h2>
       <p class="muted" style="margin:2px 0 0">${minhasReq.length} em andamento · toque para ver a linha do tempo completa</p></div><a class="btn peq" href="#/compras/requisicoes">Ver todas</a></div>
     <ul class="mr-lista">${minhasReq.map(r => { const [n, txt] = ETAPA_REQ[r.status] || [0, r.status];
       return `<li><a href="#/compras/requisicoes/ver/${r.id}"><span class="mr-num">${esc(r.numero || '')}</span><span class="mr-txt">${esc((r.justificativa || '').slice(0, 90))}${(r.justificativa || '').length > 90 ? '…' : ''}</span>
-        <span class="mr-etapa ${r.status === 'devolvida' ? 'alerta' : ''}"><span class="mr-pontos">${[0, 1, 2, 3, 4, 5, 6].map(i => `<i class="${i < n ? 'f' : i === n ? 'a' : ''}"></i>`).join('')}</span>${txt}</span></a></li>`; }).join('')}</ul></div>` : '';
+        <span class="mr-etapa ${r.status === 'devolvida' ? 'alerta' : ''}"><span class="mr-pontos">${[0, 1, 2, 3, 4, 5, 6, 7].map(i => `<i class="${i < n ? 'f' : i === n ? 'a' : ''}"></i>`).join('')}</span>${txt}</span></a></li>`; }).join('')}</ul></div>` : '';
   const verAnt = estado.params?.get('avisos') === 'todos';
   const notifs = await api.listar('notificacoes', `usuario_id=eq.${estado.usuario.id}${verAnt ? '' : '&lida=eq.false'}&order=criado_em.desc&limit=${verAnt ? 40 : 30}`);
   const hh = new Date().getHours(), sauda = hh < 12 ? 'Bom dia' : hh < 18 ? 'Boa tarde' : 'Boa noite';
@@ -725,7 +726,8 @@ rota('/inicio', async tela => {
       ${editaFin() ? `<a class="cartao kpi" href="#/financeiro/reembolsos?status=aprovado"><div class="n">${p.reembolsos_a_pagar || 0}</div><div class="r">reembolsos aprovados a pagar</div></a>` : ''}
       ${editaFin() ? `<a class="cartao kpi ${p.sem_comprovante ? 'alerta' : ''}" href="#/financeiro/pagar?status=semcomp"><div class="n">${p.sem_comprovante || 0}</div><div class="r">pagamentos sem comprovante</div></a>` : ''}
       ${tem('administrador', 'comprador') ? `<a class="cartao kpi ${p.requisicoes_a_cotar ? 'alerta' : ''}" href="#/compras/cotacoes"><div class="n">${p.requisicoes_a_cotar || 0}</div><div class="r">requisições para cotar</div></a>` : ''}
-      ${p.pedidos_a_receber ? `<a class="cartao kpi" href="#/compras/pedidos"><div class="n">${p.pedidos_a_receber}</div><div class="r">pedido(s) de compra a receber</div></a>` : ''}
+      ${p.pedidos_sem_documento ? `<a class="cartao kpi alerta" href="#/compras/pedidos?status=a_faturar"><div class="n">${p.pedidos_sem_documento}</div><div class="r">pedido(s) de compra sem nota fiscal/boleto lançados</div></a>` : ''}
+      ${p.pedidos_a_receber_almox ? `<a class="cartao kpi alerta" href="#/compras/pedidos?status=a_receber"><div class="n">${p.pedidos_a_receber_almox}</div><div class="r">compra(s) aguardando chegada no almoxarifado</div></a>` : ''}
       ${p.calendario_crlv ? `<a class="cartao kpi alerta" href="#/config/calendario_crlv"><div class="n">${p.calendario_crlv}</div><div class="r">calendário(s) do CRLV do próximo ano para conferir</div></a>` : ''}
       ${p.docs_vencendo ? `<a class="cartao kpi alerta" href="#/frota/documentos"><div class="n">${p.docs_vencendo}</div><div class="r">documento(s) de equipamentos vencidos ou vencendo em 30 dias</div></a>` : ''}
       ${p.pesquisa_aberta ? `<a class="cartao kpi alerta" href="#/clima"><div class="n">💬</div><div class="r">Pesquisa de clima aberta: responda de forma anônima</div></a>` : ''}
