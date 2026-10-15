@@ -388,3 +388,17 @@ a.org-no span { font-size: 12px; opacity: .7; }
 .capa-v svg { width: 36px; }
 .capa-chevron { width: min(70vw, 980px); right: -6vw; bottom: -8vh; }
 .ih-chevron { width: 380px; right: -40px; top: -30px; }
+/* Minhas requisições no início */
+.mr-lista { list-style: none; margin: 0; padding: 0; }
+.mr-lista li + li { border-top: 1px solid #eef2f1; }
+.mr-lista a { display: grid; grid-template-columns: 90px 1fr auto; gap: 12px; align-items: center; padding: 11px 4px; text-decoration: none; color: inherit; border-radius: 8px; }
+.mr-lista a:hover { background: #f6f9f8; }
+.mr-num { font: 700 13px var(--f-body); color: var(--azul); }
+.mr-txt { font-size: 14px; color: var(--texto); min-width: 0; }
+.mr-etapa { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; font-size: 12px; font-weight: 600; color: var(--cinza); white-space: nowrap; }
+.mr-etapa.alerta { color: var(--vermelho); }
+.mr-pontos { display: inline-flex; gap: 4px; }
+.mr-pontos i { width: 14px; height: 6px; border-radius: 3px; background: #e3e9ec; }
+.mr-pontos i.f { background: var(--azul); }
+.mr-pontos i.a { background: var(--ouro); }
+@media (max-width: 700px) { .mr-lista a { grid-template-columns: 1fr; gap: 4px; } .mr-etapa { align-items: flex-start; } }

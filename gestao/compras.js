@@ -565,15 +565,19 @@ async function linhaTempoReq(id, box) {
   // junta repetidos (mesma etapa em sequência, poucos segundos de diferença)
   const ev = []; for (const e of d.eventos || []) { const u = ev[ev.length - 1]; if (u && u.titulo === e.titulo && Math.abs(new Date(e.quando) - new Date(u.quando)) < 120000) continue; ev.push(e); }
   const encerrada = ['cancelada', 'reprovada'].includes(d.status);
-  let feito = ev.reduce((m, e) => Math.max(m, NIVEL_EV[e.etapa] ?? -1), 0);
-  if (ev.some(e => e.etapa === 'decisao' && /^Aprovada/.test(e.titulo))) feito = Math.max(feito, 3);
-  if (d.status === 'devolvida' || d.status === 'rascunho') feito = 0;
+  // a situação atual da requisição manda: só conta como concluída a etapa que de fato terminou
+  const CONCLUIDO = { rascunho: 0, devolvida: 0, aguardando_cotacao: 1, em_cotacao: 1, aguardando_aprovacao: 2, aprovada: 3, pedido_emitido: 4, recebida: 5 };
+  let feito = CONCLUIDO[d.status] ?? 0;
+  if (d.status === 'recebida' && ev.some(e => e.etapa === 'pagamento')) feito = 6;
   const atual = encerrada ? -1 : Math.min(feito + 1, ETAPAS_REQ.length - 1);
+  const AGUARDANDO = { rascunho: 'aguardando envio para Compras', devolvida: 'devolvida para você corrigir', aguardando_cotacao: 'aguardando o Comprador iniciar a cotação',
+    em_cotacao: 'Compras está cotando', aguardando_aprovacao: 'aguardando a decisão do aprovador', aprovada: 'aprovada, aguardando emissão do pedido',
+    pedido_emitido: 'aguardando a entrega do fornecedor', recebida: 'aguardando o pagamento ao fornecedor' };
   const passos = ETAPAS_REQ.map(([k, t], i) => `<li class="${i <= feito ? 'feito' : ''} ${i === atual && feito < ETAPAS_REQ.length - 1 ? 'atual' : ''}"><span class="pt"></span><span class="nm">${t}</span></li>`).join('');
   const quando = q => new Date(q).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   box.innerHTML = `<h2>Acompanhamento</h2>
     ${encerrada ? `<div class="alerta-obs" style="margin-bottom:10px"><b>${d.status === 'cancelada' ? 'Requisição cancelada' : 'Compra reprovada'}.</b> Veja o motivo abaixo.</div>`
-      : `<ol class="etapas">${passos}</ol><p class="muted" style="margin:6px 0 12px">${feito >= ETAPAS_REQ.length - 1 ? 'Processo <b>concluído</b>' : `Concluído até: <b>${ETAPAS_REQ[feito][1]}</b> · próxima etapa: <b>${ETAPAS_REQ[atual][1]}</b>`}${d.status === 'devolvida' ? ' — <b>devolvida para você corrigir</b>' : ''}</p>`}
+      : `<ol class="etapas">${passos}</ol><p class="muted" style="margin:6px 0 12px">${feito >= ETAPAS_REQ.length - 1 ? 'Processo <b>concluído</b> ✓' : `Etapa atual: <b>${ETAPAS_REQ[atual][1]}</b> — ${AGUARDANDO[d.status] || ''}`}</p>`}
     <ul class="linha-tempo">${ev.slice().reverse().map(e => `<li class="lt-${esc(e.etapa)}"><div class="lt-q">${quando(e.quando)}</div>
       <div class="lt-t"><b>${esc(e.titulo)}</b>${e.quem ? ` <span class="muted">· ${esc(e.quem)}</span>` : ''}${e.detalhe ? `<div class="muted">${esc(e.detalhe)}</div>` : ''}</div></li>`).join('')
       || '<li class="muted">Sem movimentações ainda.</li>'}</ul>`;

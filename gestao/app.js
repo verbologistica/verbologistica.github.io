@@ -695,6 +695,15 @@ rota('/inicio', async tela => {
       : '<div class="vazio">Nada em aberto.</div>'}</div>`; };
     agenda = `<div class="grade" style="grid-template-columns:repeat(auto-fit,minmax(320px,1fr))">${bloco('pagar', 'A pagar')}${bloco('receber', 'A receber')}</div>`;
   }
+  // minhas requisições de compra em andamento (com a etapa de cada uma)
+  const minhasReq = await api.listar('requisicoes', `solicitante_id=eq.${estado.usuario.id}&status=not.in.(recebida,cancelada,reprovada)&select=id,numero,justificativa,status,atualizado_em&order=atualizado_em.desc&limit=20`).catch(() => []);
+  const ETAPA_REQ = { rascunho: [0, 'Rascunho — falta enviar para Compras'], devolvida: [0, 'Devolvida para você corrigir'], aguardando_cotacao: [1, 'Aguardando o Comprador cotar'],
+    em_cotacao: [2, 'Em cotação'], aguardando_aprovacao: [3, 'Aguardando aprovação'], aprovada: [3, 'Aprovada — emitindo pedido'], pedido_emitido: [4, 'Pedido emitido — aguardando entrega'] };
+  const blocoMinhasReq = minhasReq.length ? `<div class="cartao" id="minhas-req"><div class="topo" style="margin:0 0 8px"><div><h2 style="margin:0">Minhas requisições de compra</h2>
+      <p class="muted" style="margin:2px 0 0">${minhasReq.length} em andamento · toque para ver a linha do tempo completa</p></div><a class="btn peq" href="#/compras/requisicoes">Ver todas</a></div>
+    <ul class="mr-lista">${minhasReq.map(r => { const [n, txt] = ETAPA_REQ[r.status] || [0, r.status];
+      return `<li><a href="#/compras/requisicoes/ver/${r.id}"><span class="mr-num">${esc(r.numero || '')}</span><span class="mr-txt">${esc((r.justificativa || '').slice(0, 90))}${(r.justificativa || '').length > 90 ? '…' : ''}</span>
+        <span class="mr-etapa ${r.status === 'devolvida' ? 'alerta' : ''}"><span class="mr-pontos">${[0, 1, 2, 3, 4, 5, 6].map(i => `<i class="${i < n ? 'f' : i === n ? 'a' : ''}"></i>`).join('')}</span>${txt}</span></a></li>`; }).join('')}</ul></div>` : '';
   const verAnt = estado.params?.get('avisos') === 'todos';
   const notifs = await api.listar('notificacoes', `usuario_id=eq.${estado.usuario.id}${verAnt ? '' : '&lida=eq.false'}&order=criado_em.desc&limit=${verAnt ? 40 : 30}`);
   const hh = new Date().getHours(), sauda = hh < 12 ? 'Bom dia' : hh < 18 ? 'Boa tarde' : 'Boa noite';
@@ -710,6 +719,7 @@ rota('/inicio', async tela => {
       </div>
     </section>
     <div class="grade inicio-kpis">
+      <a class="cartao kpi ${minhasReq.some(r => r.status === 'devolvida') ? 'alerta' : ''}" href="#${minhasReq.length ? '/inicio' : '/compras/requisicoes'}" ${minhasReq.length ? 'onclick="event.preventDefault();document.getElementById(\'minhas-req\').scrollIntoView({behavior:\'smooth\'})"' : ''}><div class="n">${minhasReq.length}</div><div class="r">minha(s) requisição(ões) de compra em andamento</div></a>
       ${p.aprovar || veTudo() || tem('aprovador', 'financeiro') ? `<a class="cartao kpi ${p.aprovar ? 'alerta' : ''}" href="#/aprovacoes"><div class="n">${p.aprovar || 0}</div><div class="r">para você aprovar</div></a>` : ''}
       <a class="cartao kpi ${p.devolvidos ? 'alerta' : ''}" href="#/reembolsos"><div class="n">${p.devolvidos || 0}</div><div class="r">reembolsos devolvidos para correção</div></a>
       ${editaFin() ? `<a class="cartao kpi" href="#/financeiro/reembolsos?status=aprovado"><div class="n">${p.reembolsos_a_pagar || 0}</div><div class="r">reembolsos aprovados a pagar</div></a>` : ''}
@@ -745,6 +755,7 @@ rota('/inicio', async tela => {
       ${veTudo() && p.prestacao_vencida ? `<a class="cartao kpi alerta" href="#/financeiro/adiantamentos"><div class="n">${p.prestacao_vencida}</div><div class="r">prestação(ões) de contas vencida(s)</div></a>` : ''}
       ${veTudo() ? `<a class="cartao kpi ${p.a_verificar ? 'alerta' : ''}" href="#/financeiro/verificar"><div class="n">${p.a_verificar || 0}</div><div class="r">lançamentos a verificar</div></a>` : ''}
     </div>
+    ${blocoMinhasReq}
     ${agenda}
     <div class="cartao"><div class="topo" style="margin:0 0 6px"><div><h2 style="margin:0">${verAnt ? 'Avisos (todos)' : 'Avisos pendentes'}</h2>
         <p class="muted" style="margin:2px 0 0">Só você vê os seus avisos. Os de aprovação, pagamento e cotação somem sozinhos quando o assunto é resolvido.</p></div>
@@ -757,7 +768,7 @@ rota('/inicio', async tela => {
     const href = k.getAttribute('href') || '', base = href.split('?')[0];
     if (base && !telaPermitida(base.slice(1))) { k.remove(); return; }   // não mostra indicador de tela que a pessoa não pode abrir
     const item = MENU.filter(m => m[0] !== 'grupo' && m[0] !== 'sub' && (base === m[1] || base.startsWith(m[1] + '/'))).sort((x, y) => y[1].length - x[1].length)[0];
-    k.insertAdjacentHTML('afterbegin', `<span class="k-ic">${item?.[3] || '📌'}</span>`);
+    k.insertAdjacentHTML('afterbegin', `<span class="k-ic">${/requisi/.test(k.innerText) ? '🛒' : item?.[3] || '📌'}</span>`);
     if (k.querySelector('.n')?.textContent.trim() === '0') k.classList.add('zero');
   });
   { const al = $$('.inicio-kpis .kpi.alerta', tela).length, ap = Number(p.aprovar || 0);
