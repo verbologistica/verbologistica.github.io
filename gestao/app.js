@@ -310,6 +310,31 @@ const STATUS = {
 const tag = (s, vencida) => vencida ? '<span class="tag vermelho">Vencida</span>'
   : `<span class="tag ${STATUS[s]?.[1] || ''}">${esc(STATUS[s]?.[0] || s)}</span>`;
 
+
+// Frase do dia (segurança e produção) — muda todo dia, igual para todos
+const FRASES_DIA = [
+  ['Um grama de prevenção vale mais que um quilo de cura.', 'Benjamin Franklin', 'Pennsylvania Gazette, 1735'],
+  ['Não podemos mudar a condição humana, mas podemos mudar as condições em que as pessoas trabalham.', 'James Reason', 'Human error: models and management, BMJ, 2000'],
+  ['Pretendo fazer desta a empresa mais segura do país. Pretendo chegar a zero acidentes.', 'Paul O’Neill', 'ao assumir a presidência da Alcoa, 1987'],
+  ['O que você não tem não pode vazar.', 'Trevor Kletz', 'pioneiro da segurança de processos, 1978'],
+  ['Elimine o medo, para que todos possam trabalhar com eficácia pela empresa.', 'W. Edwards Deming', 'Out of the Crisis, 1982'],
+  ['Melhore constantemente e para sempre o sistema de produção e de serviços.', 'W. Edwards Deming', 'Out of the Crisis, 1982'],
+  ['Um sistema ruim vence uma boa pessoa todas as vezes.', 'W. Edwards Deming', ''],
+  ['Eficiência é fazer as coisas direito; eficácia é fazer as coisas certas.', 'Peter Drucker', 'O Gerente Eficaz, 1966'],
+  ['Não há nada tão inútil quanto fazer com grande eficiência aquilo que não deveria ser feito.', 'Peter Drucker', 'Harvard Business Review, 1963'],
+  ['Os custos não existem para ser calculados. Os custos existem para ser reduzidos.', 'Taiichi Ohno', 'O Sistema Toyota de Produção, 1978'],
+  ['Onde não há padrão, não pode haver melhoria.', 'Taiichi Ohno', 'criador do Sistema Toyota de Produção'],
+  ['A qualidade começa e termina com educação.', 'Kaoru Ishikawa', ''],
+  ['Somos aquilo que fazemos repetidamente. A excelência, portanto, não é um ato, mas um hábito.', 'Will Durant', 'A História da Filosofia, 1926'],
+  ['A perfeição é alcançada não quando não há mais nada a acrescentar, mas quando não há mais nada a retirar.', 'Antoine de Saint-Exupéry', 'Terra dos Homens, 1939'],
+  ['O fracasso é apenas a oportunidade de começar de novo, desta vez de forma mais inteligente.', 'Henry Ford', 'Minha Vida e Minha Obra, 1922'],
+  ['Uma jornada de mil léguas começa com um único passo.', 'Lao-Tsé', 'Tao Te Ching, cap. 64'],
+  ['Enquanto adiamos, a vida passa.', 'Sêneca', 'Cartas a Lucílio, I'],
+  ['O tempo perdido nunca é encontrado novamente.', 'Benjamin Franklin', 'Almanaque do Pobre Ricardo, 1748'],
+  ['Gênio é um por cento inspiração e noventa e nove por cento transpiração.', 'Thomas Edison', ''],
+];
+function fraseDoDia() { const d = new Date(), i = Math.floor((Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) - Date.UTC(d.getFullYear(), 0, 0)) / 864e5); return FRASES_DIA[(i + d.getFullYear()) % FRASES_DIA.length]; }
+
 // ===================== Roteamento e casca =====================
 const ROTAS = {};
 const rota = (padrao, fn) => (ROTAS[padrao] = fn);
@@ -454,15 +479,15 @@ function htmlMenu(pend, melhor, celular = false) {
   grupos.push(atual);
   const abertos = menuAbertos();
   const link = i => i[0] === 'sub' ? `<div class="mg-sub">${esc(i[1])}</div>`
-    : `<a href="${i[1]}" class="${i[1] === melhor ? 'ativo' : ''} ${i[5] ? 'sub-item' : ''}" data-busca="${esc(i[0].toLowerCase())}"><span class="mi"><span class="ic">${ico(i[3])}</span>${esc(i[0])}</span>${i[4] && pend[i[4]] ? `<span class="tag amarelo">${pend[i[4]]}</span>` : ''}</a>`;
-  const busca = `<div class="menu-busca">${ico('busca', 'mb-ic')}<input type="search" placeholder="Buscar no menu…" aria-label="Buscar no menu" autocomplete="off"></div>`;
+    : `<a href="${i[1]}" class="${i[1] === melhor ? 'ativo' : ''} ${i[5] ? 'sub-item' : ''}" data-busca="${esc(i[0].toLowerCase())}"><span class="mi">${esc(i[0])}</span>${i[4] && pend[i[4]] ? `<span class="tag amarelo">${pend[i[4]]}</span>` : ''}</a>`;
+  const busca = `<div class="menu-busca"><input type="search" placeholder="Buscar no menu…" aria-label="Buscar no menu" autocomplete="off"></div>`;
   return busca + grupos.filter(g => g.itens.some(i => i[0] !== 'sub')).map(g => {
     if (!g.nome) return `<div class="menu-topo">${g.itens.map(link).join('')}</div>`;
     const temAtivo = g.itens.some(i => i[1] === melhor);
     const aberto = temAtivo || abertos.includes(g.nome);
     const soma = g.itens.reduce((x, i) => x + (i[4] && pend[i[4]] ? pend[i[4]] : 0), 0);
     return `<div class="mg ${aberto ? 'aberto' : ''}" data-g="${esc(g.nome)}">
-      <button type="button" class="mg-tit" aria-expanded="${aberto}"><span class="mi"><span class="ic">${ico(g.ic)}</span>${esc(g.nome)}</span><span class="mg-dir">${soma && !aberto ? `<span class="tag amarelo">${soma}</span>` : ''}<span class="mg-seta"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></span></span></button>
+      <button type="button" class="mg-tit" aria-expanded="${aberto}"><span class="mi">${esc(g.nome)}</span><span class="mg-dir">${soma && !aberto ? `<span class="tag amarelo">${soma}</span>` : ''}<span class="mg-seta"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></span></span></button>
       <div class="mg-itens">${g.itens.map(link).join('')}</div></div>`;
   }).join('');
 }
@@ -802,7 +827,7 @@ rota('/inicio', async tela => {
         <div class="ih-data">${esc(dataLonga)}</div>
         <h1>${sauda}, ${esc(estado.usuario.nome.split(' ')[0])}!</h1>
         <p class="ih-resumo" id="ih-resumo">Mais que transporte, movemos conquistas.</p>
-        <div class="ih-acoes"><a class="ih-btn prim" href="#/reembolsos/novo">${ico('mais')}Lançar reembolso</a><a class="ih-btn" href="#/compras/requisicoes/nova">${ico('carrinho')}Requisição de compra</a>${editaFin() ? `<a class="ih-btn" href="#/financeiro/pagar/novo">${ico('cartao')}Conta a pagar</a><a class="ih-btn" href="#/financeiro/receber/novo">${ico('receber')}Conta a receber</a>` : ''}</div>
+        ${(() => { const [f, a, o] = fraseDoDia(); return `<figure class="ih-frase"><blockquote>“${esc(f)}”</blockquote><figcaption>— <b>${esc(a)}</b>${o ? `, <cite>${esc(o)}</cite>` : ''}</figcaption></figure>`; })()}
       </div>
     </section>
     <div class="inicio-kpis">

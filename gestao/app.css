@@ -446,7 +446,7 @@ svg.i { width: 1.15em; height: 1.15em; vertical-align: -.2em; flex: 0 0 auto; }
 .menu a.ativo .ic { color: var(--ouro); }
 .menu-busca { position: relative; }
 .menu-busca .mb-ic { position: absolute; left: 12px; top: 9px; width: 15px; height: 15px; color: rgba(255,255,255,.5); pointer-events: none; }
-.menu-busca input { padding-left: 32px; }
+
 .mg-seta { display: inline-grid; place-items: center; transition: transform .2s; }
 .mg-seta svg { width: 14px; height: 14px; opacity: .6; }
 .mg.aberto .mg-seta { transform: rotate(180deg); }
@@ -508,3 +508,13 @@ svg.i { width: 1.15em; height: 1.15em; vertical-align: -.2em; flex: 0 0 auto; }
   .ik-cont { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { .ik-sec { animation: none; } }
+
+/* Faixa do início: frase do dia */
+.ih-resumo { margin-bottom: 16px; }
+.ih-frase { margin: 0; max-width: 640px; padding: 12px 0 2px 16px; border-left: 3px solid var(--ouro); }
+.ih-frase blockquote { margin: 0; font: italic 500 16px/1.45 var(--f-body); color: rgba(255,255,255,.92); }
+.ih-frase figcaption { margin-top: 6px; font-size: 12.5px; color: rgba(255,255,255,.62); letter-spacing: .01em; }
+.ih-frase figcaption b { color: var(--ouro); font-weight: 600; }
+.ih-frase cite { font-style: normal; }
+.menu .mi { gap: 0; }
+@media (max-width: 700px) { .ih-frase blockquote { font-size: 14.5px; } }
