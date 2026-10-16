@@ -15,6 +15,90 @@ const num = v => { if (v === '' || v == null) return null; let t = String(v).rep
 const lista = ids => 'in.(' + ids.map(encodeURIComponent).join(',') + ')';
 const nomeArquivo = n => n.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\w.-]+/g, '_').slice(-80);
 
+// ===================== Ícones (traço único, cor do texto) =====================
+const ICONES = {
+  inicio: '<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M10 21v-6h4v6"/>',
+  aprovar: '<rect x="3" y="3" width="18" height="18" rx="4"/><path d="m8 12 3 3 5-6"/>',
+  usuario: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/>',
+  recibo: '<path d="M6 2.5h12v19l-3-2-3 2-3-2-3 2z"/><path d="M9 7h6M9 11h6M9 15h4"/>',
+  dinheiro: '<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 10v4M18 10v4"/>',
+  mochila: '<path d="M5 10a7 7 0 0 1 14 0v10a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1z"/><path d="M9 5V3h6v2"/><path d="M8.5 14h7v4h-7z"/>',
+  relogio: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  conversa: '<path d="M21 12a8 8 0 0 1-11.6 7.1L4 21l1.9-5.4A8 8 0 1 1 21 12z"/>',
+  documento: '<path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/>',
+  livro: '<path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H20v15H5.5A1.5 1.5 0 0 0 4 19.5z"/><path d="M4 19.5A1.5 1.5 0 0 0 5.5 21H20v-3"/>',
+  livro_ok: '<path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H20v15H5.5A1.5 1.5 0 0 0 4 19.5z"/><path d="M4 19.5A1.5 1.5 0 0 0 5.5 21H20v-3"/><path d="m9 10 2 2 4-4"/>',
+  carrinho: '<circle cx="9" cy="20" r="1.4"/><circle cx="18" cy="20" r="1.4"/><path d="M2 3h3l2.6 12.2a1 1 0 0 0 1 .8h9.7a1 1 0 0 0 1-.8L21 7H6"/>',
+  grafico: '<path d="M3 21h18"/><path d="M7 17v-5M12 17V6M17 17v-8"/>',
+  caixa: '<path d="m12 3 8 4.5v9L12 21l-8-4.5v-9z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/>',
+  carteira: '<path d="M19 7V5a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H5a2 2 0 0 1-2-2V6"/><circle cx="16.5" cy="13.5" r="1.2"/>',
+  cartao: '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20M6 15h4"/>',
+  receber: '<path d="M12 3v12m0 0-4-4m4 4 4-4"/><path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/>',
+  moedas: '<ellipse cx="9" cy="6.5" rx="6" ry="3"/><path d="M3 6.5v5c0 1.7 2.7 3 6 3s6-1.3 6-3v-5"/><path d="M9 14.5v2.5c0 1.7 2.7 3 6 3s6-1.3 6-3v-5c0-1.7-2.7-3-6-3"/>',
+  alerta: '<path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/>',
+  tendencia: '<path d="m3 17 6-6 4 4 8-8"/><path d="M15 7h6v6"/>',
+  pizza: '<path d="M21 12A9 9 0 1 1 12 3v9z"/><path d="M15 3.5A9 9 0 0 1 20.5 9H15z"/>',
+  caminhao: '<path d="M2 6h11v10H2zM13 9h4l4 4v3h-8"/><circle cx="6" cy="18" r="2"/><circle cx="17" cy="18" r="2"/>',
+  monitor: '<rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/><path d="m6 13 3-3 3 2 5-5"/>',
+  rota: '<circle cx="6" cy="19" r="2"/><circle cx="18" cy="5" r="2"/><path d="M8 19h8a3.5 3.5 0 0 0 0-7H8a3.5 3.5 0 0 1 0-7h8"/>',
+  prancheta: '<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1"/><path d="M9 10h6M9 14h6M9 18h3"/>',
+  cone: '<path d="M9.5 4h5l4 15h-13z"/><path d="M7.5 11h9M6 15.5h12M3 21h18"/>',
+  doc_prazo: '<path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h5"/><path d="M14 3v5h5v2"/><circle cx="17" cy="17" r="4"/><path d="M17 15v2l1.3 1"/>',
+  combustivel: '<path d="M4 21V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v16"/><path d="M3 21h12M4 10h10"/><path d="M14 8h2a2 2 0 0 1 2 2v6a1.5 1.5 0 0 0 3 0V8l-3-3"/>',
+  chave: '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9z"/>',
+  maleta: '<rect x="2" y="8" width="20" height="12" rx="2"/><path d="M8 8V5h8v3M2 13h20M10 13v2h4v-2"/>',
+  calendario: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+  calendario_ok: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/><path d="m9 15 2 2 4-4"/>',
+  pneu: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5"/><path d="M12 3v5.5M12 15.5V21M3 12h5.5M15.5 12H21"/>',
+  checklist: '<path d="m3 6 2 2 3-3M3 13l2 2 3-3"/><path d="M11 7h10M11 14h10M11 20h10"/>',
+  velocimetro: '<path d="M12 14l4-4"/><path d="M3.3 17a9 9 0 1 1 17.4 0"/><circle cx="12" cy="14" r="1.2"/>',
+  queda: '<path d="m3 7 6 6 4-4 8 8"/><path d="M15 17h6v-6"/>',
+  armazem: '<path d="M3 21V8l9-5 9 5v13"/><path d="M7 21v-8h10v8M7 17h10"/>',
+  hash: '<path d="M4 9h16M4 15h16M10 3 8 21M16 3l-2 18"/>',
+  capacete: '<path d="M2 18h20v2.5H2z"/><path d="M4 18v-3a8 8 0 0 1 16 0v3"/><path d="M10 7V5h4v2"/>',
+  etiqueta: '<path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9z"/><circle cx="7.5" cy="7.5" r="1.3"/>',
+  escudo_alerta: '<path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/><path d="M12 8v5M12 16h.01"/>',
+  pessoas: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14.2c2.2.6 3.5 2.7 3.5 5.8"/>',
+  painel: '<rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>',
+  cracha: '<rect x="2" y="5" width="20" height="14" rx="2"/><circle cx="8" cy="11" r="2"/><path d="M5 16c.5-1.5 1.7-2.3 3-2.3s2.5.8 3 2.3M14 10h5M14 14h4"/>',
+  admissao: '<circle cx="10" cy="8" r="4"/><path d="M3 21c0-4 3.1-7 7-7s7 3 7 7"/><path d="M19 7v6M16 10h6"/>',
+  sair: '<path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h8"/><path d="M10 12h11m0 0-3-3m3 3-3 3"/>',
+  sol: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+  balanca: '<path d="M12 3v18M7 21h10M5 7h14"/><path d="M5 7 2 14a3 3 0 0 0 6 0zM19 7l-3 7a3 3 0 0 0 6 0z"/>',
+  organograma: '<rect x="9" y="3" width="6" height="5" rx="1"/><rect x="2" y="16" width="6" height="5" rx="1"/><rect x="16" y="16" width="6" height="5" rx="1"/><path d="M12 8v4M5 16v-4h14v4"/>',
+  formatura: '<path d="m2 9 10-5 10 5-10 5z"/><path d="M6 11v5c0 1.7 2.7 3 6 3s6-1.3 6-3v-5M22 9v6"/>',
+  estrela: '<path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3l-5.6 2.9 1.1-6.2L3 9.6l6.2-.9z"/>',
+  medalha: '<circle cx="12" cy="9" r="6"/><path d="m8.5 14-1.5 7 5-3 5 3-1.5-7"/>',
+  termometro: '<path d="M14 14.8V4a2 2 0 0 0-4 0v10.8a4 4 0 1 0 4 0z"/>',
+  busca: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
+  arquivo: '<rect x="2" y="4" width="20" height="5" rx="1"/><path d="M4 9v10a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V9M10 13h4"/>',
+  calculadora: '<rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 6h8v4H8zM8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01M16 18h.01"/>',
+  pasta_trabalho: '<rect x="2" y="7" width="20" height="14" rx="2"/><path d="M9 7V4h6v3M2 13h20"/>',
+  presente: '<rect x="3" y="8" width="18" height="4" rx="1"/><path d="M5 12v9h14v-9M12 8v13"/><path d="M12 8c-2-4-6-4-6-1.5S9 8 12 8c3 0 6-.5 6-1.5S14 4 12 8z"/>',
+  caderno: '<rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 2v20M12 7h4M12 11h4"/>',
+  saude: '<path d="M20.8 6.6a5 5 0 0 0-8.8-2.4 5 5 0 0 0-8.8 2.4C2.6 11 12 20 12 20s9.4-9 8.8-13.4z"/><path d="M3.5 12h4l2-3 3 6 2-3h6"/>',
+  estetoscopio: '<path d="M5 3v6a5 5 0 0 0 10 0V3"/><path d="M10 14v2a5 5 0 0 0 10 0v-3"/><circle cx="20" cy="11" r="2"/>',
+  alvo: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>',
+  megafone: '<path d="M3 11v3a1 1 0 0 0 1 1h3l6 4V6L7 10H4a1 1 0 0 0-1 1z"/><path d="M17 9a4 4 0 0 1 0 6"/>',
+  extintor: '<rect x="8" y="8" width="7" height="13" rx="2"/><path d="M11.5 8V5M11.5 5h4l2-2M9.5 5h2M8 12h7"/>',
+  selo: '<path d="M12 2.5l2.4 1.7 2.9-.1.9 2.8 2.4 1.7-.9 2.8.9 2.8-2.4 1.7-.9 2.8-2.9-.1L12 21.5l-2.4-1.7-2.9.1-.9-2.8-2.4-1.7.9-2.8-.9-2.8 2.4-1.7.9-2.8 2.9.1z"/><path d="m8.5 12 2.5 2.5 4.5-5"/>',
+  exclamacao: '<circle cx="12" cy="12" r="9"/><path d="M12 7v6M12 16.5h.01"/>',
+  ajustes: '<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>',
+  predio: '<rect x="4" y="2" width="16" height="20" rx="1"/><path d="M9 22v-4h6v4M8 6h.01M12 6h.01M16 6h.01M8 10h.01M12 10h.01M16 10h.01M8 14h.01M12 14h.01M16 14h.01"/>',
+  lista: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
+  banco: '<path d="M3 21h18M5 21V10M10 21V10M14 21V10M19 21V10"/><path d="m2 10 10-6 10 6z"/>',
+  grade: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
+  pasta: '<path d="M3 6a1 1 0 0 1 1-1h5l2 2h9a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/>',
+  escudo_usuario: '<path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/><circle cx="12" cy="10" r="2.5"/><path d="M8 16c.8-1.6 2.3-2.5 4-2.5s3.2.9 4 2.5"/>',
+  historico: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/>',
+  enviar: '<path d="M12 15V3m0 0-4 4m4-4 4 4"/><path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/>',
+  mais: '<path d="M12 5v14M5 12h14"/>',
+  menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
+  seta: '<path d="M5 12h14m0 0-5-5m5 5-5 5"/>',
+  ok: '<circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/>',
+};
+const ico = (nome, cls = '') => ICONES[nome] ? `<svg class="i ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONES[nome]}</svg>` : '';
+
 function aviso(msg, erro = false) {
   const el = $('#aviso');
   el.textContent = msg; el.className = 'aviso' + (erro ? ' erro' : ''); el.hidden = false;
@@ -239,113 +323,113 @@ const P_OP = ['administrador', 'operacao', 'diretoria'];
 const P_SSMA = ['administrador', 'ssma', 'rh', 'dp', 'diretoria'];
 const MENU = [
   // [nome, rota, perfis (null = todos), ícone, pendência, sub-item]  ·  ['grupo', nome, ícone]  ·  ['sub', título da seção]
-  ['Início', '#/inicio', null, '🏠'],
-  ['Aprovações', '#/aprovacoes', null, '✅', 'aprovar'],
-  ['grupo', 'Meu espaço', '👤'],
-  ['Meus reembolsos', '#/reembolsos', null, '🧾', 'devolvidos', true],
-  ['Meus adiantamentos', '#/adiantamentos', null, '💵', null, true],
-  ['Meus itens', '#/meus-itens', null, '🎒', null, true],
-  ['Minha jornada', '#/operacao/jornada', [...P_OP, 'motorista'], '⏱️', null, true],
-  ['Pesquisa de clima', '#/clima', null, '💬', 'pesquisa_aberta', true],
-  ['Registrar não conformidade', '#/qualidade/nc/nova', null, '📝', null, true],
-  ['grupo', 'Biblioteca', '📚'],
-  ['Modelos de documentos', '#/modelos', null, '📄', null, true],
-  ['Documentos da qualidade', '#/qualidade/documentos', null, '📘', 'qual_docs_ler', true],
-  ['grupo', 'Compras', '🛒'],
-  ['Requisições', '#/compras/requisicoes', null, '🛒', null, true],
-  ['Cotações', '#/compras/cotacoes', [...P_FIN, 'comprador', 'aprovador'], '📊', 'requisicoes_a_cotar', true],
-  ['Pedidos', '#/compras/pedidos', null, '📦', 'pedidos_sem_documento', true],
-  ['grupo', 'Financeiro', '💰'],
-  ['Contas a pagar', '#/financeiro/pagar', [...P_FIN, 'comprador'], '💳', 'sem_comprovante', true],
-  ['Contas a receber', '#/financeiro/receber', P_FIN, '📥', null, true],
-  ['Reembolsos', '#/financeiro/reembolsos', [...P_FIN, 'aprovador'], '💰', 'reembolsos_a_pagar', true],
-  ['Adiantamentos', '#/financeiro/adiantamentos', P_FIN, '💵', 'prestacao_vencida', true],
-  ['Fundo Fixo', '#/financeiro/fundo', P_FIN, '🪙', null, true],
-  ['A verificar', '#/financeiro/verificar', P_FIN, '⚠️', 'a_verificar', true],
-  ['grupo', 'Orçamento e Contratos', '📊'],
-  ['Orçado × Realizado', '#/orcamento', ['administrador', 'diretoria', 'financeiro', 'aprovador'], '📈', 'orcamento_alerta', true],
-  ['grupo', 'Operação', '🚚'],
+  ['Início', '#/inicio', null, 'inicio'],
+  ['Aprovações', '#/aprovacoes', null, 'aprovar', 'aprovar'],
+  ['grupo', 'Meu espaço', 'usuario'],
+  ['Meus reembolsos', '#/reembolsos', null, 'recibo', 'devolvidos', true],
+  ['Meus adiantamentos', '#/adiantamentos', null, 'dinheiro', null, true],
+  ['Meus itens', '#/meus-itens', null, 'mochila', null, true],
+  ['Minha jornada', '#/operacao/jornada', [...P_OP, 'motorista'], 'relogio', null, true],
+  ['Pesquisa de clima', '#/clima', null, 'conversa', 'pesquisa_aberta', true],
+  ['Registrar não conformidade', '#/qualidade/nc/nova', null, 'documento', null, true],
+  ['grupo', 'Biblioteca', 'livro'],
+  ['Modelos de documentos', '#/modelos', null, 'documento', null, true],
+  ['Documentos da qualidade', '#/qualidade/documentos', null, 'livro_ok', 'qual_docs_ler', true],
+  ['grupo', 'Compras', 'carrinho'],
+  ['Requisições', '#/compras/requisicoes', null, 'carrinho', null, true],
+  ['Cotações', '#/compras/cotacoes', [...P_FIN, 'comprador', 'aprovador'], 'grafico', 'requisicoes_a_cotar', true],
+  ['Pedidos', '#/compras/pedidos', null, 'caixa', 'pedidos_sem_documento', true],
+  ['grupo', 'Financeiro', 'carteira'],
+  ['Contas a pagar', '#/financeiro/pagar', [...P_FIN, 'comprador'], 'cartao', 'sem_comprovante', true],
+  ['Contas a receber', '#/financeiro/receber', P_FIN, 'receber', null, true],
+  ['Reembolsos', '#/financeiro/reembolsos', [...P_FIN, 'aprovador'], 'recibo', 'reembolsos_a_pagar', true],
+  ['Adiantamentos', '#/financeiro/adiantamentos', P_FIN, 'dinheiro', 'prestacao_vencida', true],
+  ['Fundo Fixo', '#/financeiro/fundo', P_FIN, 'moedas', null, true],
+  ['A verificar', '#/financeiro/verificar', P_FIN, 'alerta', 'a_verificar', true],
+  ['grupo', 'Orçamento e Contratos', 'pizza'],
+  ['Orçado × Realizado', '#/orcamento', ['administrador', 'diretoria', 'financeiro', 'aprovador'], 'tendencia', 'orcamento_alerta', true],
+  ['grupo', 'Operação', 'caminhao'],
   ['sub', 'Transporte'],
-  ['Painel do CCO', '#/operacao', [...P_OP, 'manutencao'], '📡', 'viagens_atrasadas', true],
-  ['Viagens', '#/operacao/viagens', [...P_OP, 'financeiro', 'manutencao'], '🛣️', 'viagens_em_transito', true],
-  ['Controle de jornada', '#/operacao/jornadas', [...P_OP, 'rh', 'dp'], '📋', 'jornada_alertas', true],
-  ['Ocorrências e multas', '#/operacao/ocorrencias', [...P_OP, 'rh', 'dp', 'financeiro'], '🚧', 'multas_indicar', true],
+  ['Painel do CCO', '#/operacao', [...P_OP, 'manutencao'], 'monitor', 'viagens_atrasadas', true],
+  ['Viagens', '#/operacao/viagens', [...P_OP, 'financeiro', 'manutencao'], 'rota', 'viagens_em_transito', true],
+  ['Controle de jornada', '#/operacao/jornadas', [...P_OP, 'rh', 'dp'], 'prancheta', 'jornada_alertas', true],
+  ['Ocorrências e multas', '#/operacao/ocorrencias', [...P_OP, 'rh', 'dp', 'financeiro'], 'cone', 'multas_indicar', true],
   ['sub', 'Frota'],
-  ['Equipamentos', '#/cadastros/equipamentos', [...P_FIN, 'operacao', 'manutencao'], '🚚', null, true],
-  ['Documentos a vencer', '#/frota/documentos', [...P_FIN, 'operacao', 'manutencao'], '📑', 'docs_vencendo', true],
-  ['Abastecimentos', '#/operacao/abastecimentos', [...P_OP, 'financeiro', 'comprador', 'manutencao'], '⛽', 'abast_alertas', true],
-  ['grupo', 'Manutenção', '🛠️'],
-  ['Painel da manutenção', '#/manut', P_MAN, '🛠️', 'manut_preventivas_vencidas', true],
-  ['Ordens de serviço', '#/manut/os', [...P_MAN, 'almoxarifado', 'financeiro'], '🧰', 'manut_os_abertas', true],
-  ['Planos preventivos', '#/manut/preventivas', P_MAN, '🗓️', 'manut_preventivas_proximas', true],
-  ['Pneus', '#/manut/pneus', P_MAN, '🛞', 'pneus_sulco_baixo', true],
-  ['Checklist do veículo', '#/manut/checklist', [...P_MAN, 'motorista'], '✔️', null, true],
-  ['Km / horímetro', '#/manut/hodometro', [...P_MAN, 'motorista'], '🧭', null, true],
-  ['Custos da frota', '#/manut/custos', [...P_MAN, 'financeiro'], '📉', null, true],
-  ['grupo', 'Almoxarifado e Patrimônio', '📦'],
+  ['Equipamentos', '#/cadastros/equipamentos', [...P_FIN, 'operacao', 'manutencao'], 'caminhao', null, true],
+  ['Documentos a vencer', '#/frota/documentos', [...P_FIN, 'operacao', 'manutencao'], 'doc_prazo', 'docs_vencendo', true],
+  ['Abastecimentos', '#/operacao/abastecimentos', [...P_OP, 'financeiro', 'comprador', 'manutencao'], 'combustivel', 'abast_alertas', true],
+  ['grupo', 'Manutenção', 'chave'],
+  ['Painel da manutenção', '#/manut', P_MAN, 'painel', 'manut_preventivas_vencidas', true],
+  ['Ordens de serviço', '#/manut/os', [...P_MAN, 'almoxarifado', 'financeiro'], 'maleta', 'manut_os_abertas', true],
+  ['Planos preventivos', '#/manut/preventivas', P_MAN, 'calendario_ok', 'manut_preventivas_proximas', true],
+  ['Pneus', '#/manut/pneus', P_MAN, 'pneu', 'pneus_sulco_baixo', true],
+  ['Checklist do veículo', '#/manut/checklist', [...P_MAN, 'motorista'], 'checklist', null, true],
+  ['Km / horímetro', '#/manut/hodometro', [...P_MAN, 'motorista'], 'velocimetro', null, true],
+  ['Custos da frota', '#/manut/custos', [...P_MAN, 'financeiro'], 'queda', null, true],
+  ['grupo', 'Almoxarifado e Patrimônio', 'armazem'],
   ['sub', 'Almoxarifado'],
-  ['Painel do almoxarifado', '#/almox', P_ALM, '🏬', null, true],
-  ['Itens e estoque', '#/almox/itens', P_ALM, '📦', 'almox_abaixo_minimo', true],
-  ['Requisições de material', '#/almox/requisicoes', null, '🧾', 'almox_requisicoes_abertas', true],
-  ['Compras a receber', '#/compras/pedidos?status=a_receber', ['administrador', 'almoxarifado'], '🚚', 'pedidos_a_receber_almox', true],
-  ['Entrada de material', '#/almox/entrada', ['administrador', 'almoxarifado'], '📥', null, true],
-  ['Inventário', '#/almox/inventario', ['administrador', 'almoxarifado'], '🔢', null, true],
-  ['EPI e uniformes', '#/almox/epi', [...P_ALM, 'rh', 'dp', 'ssma'], '🦺', 'epi_troca', true],
+  ['Painel do almoxarifado', '#/almox', P_ALM, 'painel', null, true],
+  ['Itens e estoque', '#/almox/itens', P_ALM, 'caixa', 'almox_abaixo_minimo', true],
+  ['Requisições de material', '#/almox/requisicoes', null, 'prancheta', 'almox_requisicoes_abertas', true],
+  ['Compras a receber', '#/compras/pedidos?status=a_receber', ['administrador', 'almoxarifado'], 'caminhao', 'pedidos_a_receber_almox', true],
+  ['Entrada de material', '#/almox/entrada', ['administrador', 'almoxarifado'], 'receber', null, true],
+  ['Inventário', '#/almox/inventario', ['administrador', 'almoxarifado'], 'hash', null, true],
+  ['EPI e uniformes', '#/almox/epi', [...P_ALM, 'rh', 'dp', 'ssma'], 'capacete', 'epi_troca', true],
   ['sub', 'Patrimônio'],
-  ['Patrimônio', '#/patrimonio', [...P_ALM, 'rh', 'financeiro'], '🏷️', 'patrimonio_sem_termo', true],
-  ['Avarias e responsabilização', '#/patrimonio/avarias', ['administrador', 'almoxarifado', 'rh', 'dp', 'diretoria'], '⚠️', 'patrimonio_avarias', true],
-  ['grupo', 'RH', '👥'],
+  ['Patrimônio', '#/patrimonio', [...P_ALM, 'rh', 'financeiro'], 'etiqueta', 'patrimonio_sem_termo', true],
+  ['Avarias e responsabilização', '#/patrimonio/avarias', ['administrador', 'almoxarifado', 'rh', 'dp', 'diretoria'], 'escudo_alerta', 'patrimonio_avarias', true],
+  ['grupo', 'RH', 'pessoas'],
   ['sub', 'Pessoas'],
-  ['Painel do RH', '#/rh', P_RH, '🧑‍💼', null, true],
-  ['Colaboradores', '#/rh/colaboradores', P_RH, '👷', null, true],
-  ['Admissões', '#/rh/admissoes', P_RH, '📝', 'admissoes_andamento', true],
-  ['Documentos dos colaboradores', '#/rh/documentos', P_RH, '🪪', 'rh_docs_vencendo', true],
-  ['Férias', '#/rh/ferias', P_RH, '🏖️', 'ferias_vencendo', true],
-  ['Ocorrências disciplinares', '#/rh/disciplinar', P_RH, '⚖️', null, true],
-  ['Desligamentos', '#/rh/desligamentos', P_RH, '🚪', 'desligamentos_andamento', true],
-  ['Organograma', '#/rh/organograma', P_RH, '🏛️', null, true],
+  ['Painel do RH', '#/rh', P_RH, 'painel', null, true],
+  ['Colaboradores', '#/rh/colaboradores', P_RH, 'pessoas', null, true],
+  ['Admissões', '#/rh/admissoes', P_RH, 'admissao', 'admissoes_andamento', true],
+  ['Documentos dos colaboradores', '#/rh/documentos', P_RH, 'cracha', 'rh_docs_vencendo', true],
+  ['Férias', '#/rh/ferias', P_RH, 'sol', 'ferias_vencendo', true],
+  ['Ocorrências disciplinares', '#/rh/disciplinar', P_RH, 'balanca', null, true],
+  ['Desligamentos', '#/rh/desligamentos', P_RH, 'sair', 'desligamentos_andamento', true],
+  ['Organograma', '#/rh/organograma', P_RH, 'organograma', null, true],
   ['sub', 'Desenvolvimento'],
-  ['Treinamentos', '#/rh/treinamentos', P_RH, '🎓', 'treinamentos_pendentes', true],
-  ['Avaliações', '#/rh/avaliacoes', [...P_RH, 'aprovador'], '📈', null, true],
-  ['Promoções e cursos', '#/rh/desenvolvimento', P_RH, '🚀', null, true],
-  ['Pesquisas de clima', '#/rh/clima', P_RH, '🌡️', null, true],
+  ['Treinamentos', '#/rh/treinamentos', P_RH, 'formatura', 'treinamentos_pendentes', true],
+  ['Avaliações', '#/rh/avaliacoes', [...P_RH, 'aprovador'], 'estrela', null, true],
+  ['Promoções e cursos', '#/rh/desenvolvimento', P_RH, 'medalha', null, true],
+  ['Pesquisas de clima', '#/rh/clima', P_RH, 'termometro', null, true],
   ['sub', 'Recrutamento'],
-  ['Vagas e seleção', '#/rh/recrutamento', P_RH, '🔍', 'vagas_abertas', true],
-  ['Banco de talentos', '#/rh/talentos', P_RH, '🗃️', null, true],
-  ['grupo', 'Departamento Pessoal', '🧮'],
-  ['Painel do DP', '#/dp', ['administrador', 'dp', 'diretoria'], '🧮', 'dp_a_importar', true],
-  ['Folha do mês', '#/dp/folha', ['administrador', 'dp', 'rh', 'diretoria'], '💼', 'dp_lancamentos_pendentes', true],
-  ['Benefícios', '#/dp/beneficios', ['administrador', 'dp', 'rh'], '🎁', null, true],
-  ['Rubricas da folha', '#/dp/rubricas', ['administrador', 'dp'], '📒', null, true],
-  ['grupo', 'SSMA', '⛑️'],
-  ['Painel do SSMA', '#/ssma', P_SSMA, '⛑️', 'cat_pendente', true],
-  ['Acidentes e CAT', '#/ssma/acidentes', [...P_SSMA, 'operacao', 'manutencao'], '🚑', 'acidentes_abertos', true],
-  ['ASO e exames', '#/ssma/aso', P_SSMA, '🩺', 'aso_vencendo', true],
-  ['Plano de ação', '#/ssma/acoes', [...P_SSMA, 'operacao', 'manutencao', 'almoxarifado'], '🎯', 'ssma_acoes_atrasadas', true],
-  ['Inspeções', '#/ssma/inspecoes', [...P_SSMA, 'operacao', 'manutencao'], '🔍', null, true],
-  ['DDS', '#/ssma/dds', [...P_SSMA, 'operacao', 'manutencao'], '🗣️', null, true],
-  ['Extintores', '#/ssma/extintores', [...P_SSMA, 'operacao', 'manutencao'], '🧯', 'extintores_vencendo', true],
-  ['grupo', 'Qualidade', '🏅'],
-  ['Painel da qualidade', '#/qualidade', ['administrador', 'qualidade', 'diretoria'], '🏅', 'qual_auditorias_proximas', true],
-  ['Não conformidades', '#/qualidade/nc', ['administrador', 'qualidade', 'diretoria'], '❗', 'qual_nc_abertas', true],
-  ['Auditorias', '#/qualidade/auditorias', ['administrador', 'qualidade', 'diretoria'], '🔎', null, true],
-  ['Indicadores', '#/qualidade/indicadores', ['administrador', 'qualidade', 'diretoria'], '📊', null, true],
-  ['grupo', 'Configurações', '⚙️'],
+  ['Vagas e seleção', '#/rh/recrutamento', P_RH, 'busca', 'vagas_abertas', true],
+  ['Banco de talentos', '#/rh/talentos', P_RH, 'arquivo', null, true],
+  ['grupo', 'Departamento Pessoal', 'calculadora'],
+  ['Painel do DP', '#/dp', ['administrador', 'dp', 'diretoria'], 'painel', 'dp_a_importar', true],
+  ['Folha do mês', '#/dp/folha', ['administrador', 'dp', 'rh', 'diretoria'], 'pasta_trabalho', 'dp_lancamentos_pendentes', true],
+  ['Benefícios', '#/dp/beneficios', ['administrador', 'dp', 'rh'], 'presente', null, true],
+  ['Rubricas da folha', '#/dp/rubricas', ['administrador', 'dp'], 'caderno', null, true],
+  ['grupo', 'SSMA', 'capacete'],
+  ['Painel do SSMA', '#/ssma', P_SSMA, 'painel', 'cat_pendente', true],
+  ['Acidentes e CAT', '#/ssma/acidentes', [...P_SSMA, 'operacao', 'manutencao'], 'saude', 'acidentes_abertos', true],
+  ['ASO e exames', '#/ssma/aso', P_SSMA, 'estetoscopio', 'aso_vencendo', true],
+  ['Plano de ação', '#/ssma/acoes', [...P_SSMA, 'operacao', 'manutencao', 'almoxarifado'], 'alvo', 'ssma_acoes_atrasadas', true],
+  ['Inspeções', '#/ssma/inspecoes', [...P_SSMA, 'operacao', 'manutencao'], 'busca', null, true],
+  ['DDS', '#/ssma/dds', [...P_SSMA, 'operacao', 'manutencao'], 'megafone', null, true],
+  ['Extintores', '#/ssma/extintores', [...P_SSMA, 'operacao', 'manutencao'], 'extintor', 'extintores_vencendo', true],
+  ['grupo', 'Qualidade', 'selo'],
+  ['Painel da qualidade', '#/qualidade', ['administrador', 'qualidade', 'diretoria'], 'painel', 'qual_auditorias_proximas', true],
+  ['Não conformidades', '#/qualidade/nc', ['administrador', 'qualidade', 'diretoria'], 'exclamacao', 'qual_nc_abertas', true],
+  ['Auditorias', '#/qualidade/auditorias', ['administrador', 'qualidade', 'diretoria'], 'busca', null, true],
+  ['Indicadores', '#/qualidade/indicadores', ['administrador', 'qualidade', 'diretoria'], 'grafico', null, true],
+  ['grupo', 'Configurações', 'ajustes'],
   ['sub', 'Cadastros'],
-  ['Fornecedores', '#/cadastros/fornecedores', [...P_FIN, 'comprador'], '🏢', null, true],
-  ['Clientes', '#/cadastros/clientes', [...P_FIN, 'operacao'], '🤝', null, true],
-  ['Plano de contas', '#/cadastros/plano_contas', P_FIN, '📚', null, true],
-  ['Centros de custo', '#/cadastros/centros_custo', P_FIN, '🎯', null, true],
-  ['Bancos e caixa', '#/cadastros/contas_bancarias', P_FIN, '🏦', null, true],
-  ['Setores', '#/cadastros/setores', ['administrador', 'rh'], '🧩', null, true],
-  ['Cargos e funções', '#/cadastros/cargos', P_RH, '🏷️', null, true],
-  ['Tipos de documento do RH', '#/cadastros/rh_tipos_documento', ['administrador', 'rh'], '🗂️', null, true],
+  ['Fornecedores', '#/cadastros/fornecedores', [...P_FIN, 'comprador'], 'predio', null, true],
+  ['Clientes', '#/cadastros/clientes', [...P_FIN, 'operacao'], 'pasta_trabalho', null, true],
+  ['Plano de contas', '#/cadastros/plano_contas', P_FIN, 'lista', null, true],
+  ['Centros de custo', '#/cadastros/centros_custo', P_FIN, 'alvo', null, true],
+  ['Bancos e caixa', '#/cadastros/contas_bancarias', P_FIN, 'banco', null, true],
+  ['Setores', '#/cadastros/setores', ['administrador', 'rh'], 'grade', null, true],
+  ['Cargos e funções', '#/cadastros/cargos', P_RH, 'etiqueta', null, true],
+  ['Tipos de documento do RH', '#/cadastros/rh_tipos_documento', ['administrador', 'rh'], 'pasta', null, true],
   ['sub', 'Sistema'],
-  ['Dados da empresa', '#/cadastros/empresa', ['administrador'], '🏢', null, true],
-  ['Usuários e perfis', '#/config/usuarios', ['administrador'], '👥', null, true],
-  ['Auditoria', '#/config/auditoria', P_FIN, '🔎', null, true],
-  ['Calendário do CRLV', '#/config/calendario_crlv', ['administrador'], '📅', 'calendario_crlv', true],
-  ['Importar sistema anterior', '#/config/importar', ['administrador'], '📦', null, true],
+  ['Dados da empresa', '#/cadastros/empresa', ['administrador'], 'predio', null, true],
+  ['Usuários e perfis', '#/config/usuarios', ['administrador'], 'escudo_usuario', null, true],
+  ['Auditoria', '#/config/auditoria', P_FIN, 'historico', null, true],
+  ['Calendário do CRLV', '#/config/calendario_crlv', ['administrador'], 'calendario', 'calendario_crlv', true],
+  ['Importar sistema anterior', '#/config/importar', ['administrador'], 'enviar', null, true],
 ];
 // Telas permitidas: o perfil libera; a lista do cadastro (se houver) restringe. Administrador vê tudo.
 function menuPara(perfis, menus) {
@@ -370,15 +454,15 @@ function htmlMenu(pend, melhor, celular = false) {
   grupos.push(atual);
   const abertos = menuAbertos();
   const link = i => i[0] === 'sub' ? `<div class="mg-sub">${esc(i[1])}</div>`
-    : `<a href="${i[1]}" class="${i[1] === melhor ? 'ativo' : ''} ${i[5] ? 'sub-item' : ''}" data-busca="${esc(i[0].toLowerCase())}"><span class="mi"><span class="ic">${i[3] || ''}</span>${esc(i[0])}</span>${i[4] && pend[i[4]] ? `<span class="tag amarelo">${pend[i[4]]}</span>` : ''}</a>`;
-  const busca = `<div class="menu-busca"><input type="search" placeholder="🔎 Buscar no menu…" aria-label="Buscar no menu" autocomplete="off"></div>`;
+    : `<a href="${i[1]}" class="${i[1] === melhor ? 'ativo' : ''} ${i[5] ? 'sub-item' : ''}" data-busca="${esc(i[0].toLowerCase())}"><span class="mi"><span class="ic">${ico(i[3])}</span>${esc(i[0])}</span>${i[4] && pend[i[4]] ? `<span class="tag amarelo">${pend[i[4]]}</span>` : ''}</a>`;
+  const busca = `<div class="menu-busca">${ico('busca', 'mb-ic')}<input type="search" placeholder="Buscar no menu…" aria-label="Buscar no menu" autocomplete="off"></div>`;
   return busca + grupos.filter(g => g.itens.some(i => i[0] !== 'sub')).map(g => {
     if (!g.nome) return `<div class="menu-topo">${g.itens.map(link).join('')}</div>`;
     const temAtivo = g.itens.some(i => i[1] === melhor);
     const aberto = temAtivo || abertos.includes(g.nome);
     const soma = g.itens.reduce((x, i) => x + (i[4] && pend[i[4]] ? pend[i[4]] : 0), 0);
     return `<div class="mg ${aberto ? 'aberto' : ''}" data-g="${esc(g.nome)}">
-      <button type="button" class="mg-tit" aria-expanded="${aberto}"><span class="mi"><span class="ic">${g.ic}</span>${esc(g.nome)}</span><span class="mg-dir">${soma && !aberto ? `<span class="tag amarelo">${soma}</span>` : ''}<span class="mg-seta">▾</span></span></button>
+      <button type="button" class="mg-tit" aria-expanded="${aberto}"><span class="mi"><span class="ic">${ico(g.ic)}</span>${esc(g.nome)}</span><span class="mg-dir">${soma && !aberto ? `<span class="tag amarelo">${soma}</span>` : ''}<span class="mg-seta"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></span></span></button>
       <div class="mg-itens">${g.itens.map(link).join('')}</div></div>`;
   }).join('');
 }
@@ -411,11 +495,11 @@ async function desenharCasca() {
     const lat = $('.lateral', casca), y = lat.scrollTop;
     $('.menu', lat).innerHTML = htmlMenu(pend, melhor); ligarMenu(lat); lat.scrollTop = y;
     const bb = $('#app .barra-baixo'); if (bb) bb.outerHTML = `<nav class="barra-baixo" aria-label="Menu rápido">
-      <a href="#/inicio" class="${atual.startsWith('#/inicio') ? 'ativo' : ''}"><span class="ic">🏠</span>Início</a>
-      <a href="#/reembolsos/novo" class="${atual.startsWith('#/reembolsos/novo') ? 'ativo' : ''}"><span class="ic">➕</span>Lançar</a>
-      ${ehMot ? '' : `<a href="#/aprovacoes" class="${atual.startsWith('#/aprovacoes') ? 'ativo' : ''}"><span class="ic">✅</span>Aprovar${pend.aprovar ? ` (${pend.aprovar})` : ''}</a>`}
-      <a href="#/reembolsos" class="${atual === '#/reembolsos' ? 'ativo' : ''}"><span class="ic">🧾</span>Meus</a>
-      <a href="#/menu"><span class="ic">☰</span>Menu</a>
+      <a href="#/inicio" class="${atual.startsWith('#/inicio') ? 'ativo' : ''}"><span class="ic">${ico('inicio')}</span>Início</a>
+      <a href="#/reembolsos/novo" class="${atual.startsWith('#/reembolsos/novo') ? 'ativo' : ''}"><span class="ic">${ico('mais')}</span>Lançar</a>
+      ${ehMot ? '' : `<a href="#/aprovacoes" class="${atual.startsWith('#/aprovacoes') ? 'ativo' : ''}"><span class="ic">${ico('aprovar')}</span>Aprovar${pend.aprovar ? ` (${pend.aprovar})` : ''}</a>`}
+      <a href="#/reembolsos" class="${atual === '#/reembolsos' ? 'ativo' : ''}"><span class="ic">${ico('recibo')}</span>Meus</a>
+      <a href="#/menu"><span class="ic">${ico('menu')}</span>Menu</a>
     </nav>`;
     if (!$('#tela').children.length) $('#tela').innerHTML = '<div class="carregando">Carregando…</div>';
     return;
@@ -432,11 +516,11 @@ async function desenharCasca() {
       <main class="conteudo" id="tela"><div class="carregando">Carregando…</div></main>
     </div>
 <nav class="barra-baixo" aria-label="Menu rápido">
-      <a href="#/inicio" class="${atual.startsWith('#/inicio') ? 'ativo' : ''}"><span class="ic">🏠</span>Início</a>
-      <a href="#/reembolsos/novo" class="${atual.startsWith('#/reembolsos/novo') ? 'ativo' : ''}"><span class="ic">➕</span>Lançar</a>
-      ${ehMot ? '' : `<a href="#/aprovacoes" class="${atual.startsWith('#/aprovacoes') ? 'ativo' : ''}"><span class="ic">✅</span>Aprovar${pend.aprovar ? ` (${pend.aprovar})` : ''}</a>`}
-      <a href="#/reembolsos" class="${atual === '#/reembolsos' ? 'ativo' : ''}"><span class="ic">🧾</span>Meus</a>
-      <a href="#/menu"><span class="ic">☰</span>Menu</a>
+      <a href="#/inicio" class="${atual.startsWith('#/inicio') ? 'ativo' : ''}"><span class="ic">${ico('inicio')}</span>Início</a>
+      <a href="#/reembolsos/novo" class="${atual.startsWith('#/reembolsos/novo') ? 'ativo' : ''}"><span class="ic">${ico('mais')}</span>Lançar</a>
+      ${ehMot ? '' : `<a href="#/aprovacoes" class="${atual.startsWith('#/aprovacoes') ? 'ativo' : ''}"><span class="ic">${ico('aprovar')}</span>Aprovar${pend.aprovar ? ` (${pend.aprovar})` : ''}</a>`}
+      <a href="#/reembolsos" class="${atual === '#/reembolsos' ? 'ativo' : ''}"><span class="ic">${ico('recibo')}</span>Meus</a>
+      <a href="#/menu"><span class="ic">${ico('menu')}</span>Menu</a>
     </nav>`;
   ligarMenu($('.lateral'));
   // deixa o item da tela atual visível no menu na primeira vez
@@ -718,10 +802,10 @@ rota('/inicio', async tela => {
         <div class="ih-data">${esc(dataLonga)}</div>
         <h1>${sauda}, ${esc(estado.usuario.nome.split(' ')[0])}!</h1>
         <p class="ih-resumo" id="ih-resumo">Mais que transporte, movemos conquistas.</p>
-        <div class="ih-acoes"><a class="ih-btn prim" href="#/reembolsos/novo">＋ Lançar reembolso</a><a class="ih-btn" href="#/compras/requisicoes/nova">🛒 Requisição de compra</a>${editaFin() ? '<a class="ih-btn" href="#/financeiro/pagar/novo">💳 Conta a pagar</a><a class="ih-btn" href="#/financeiro/receber/novo">📥 Conta a receber</a>' : ''}</div>
+        <div class="ih-acoes"><a class="ih-btn prim" href="#/reembolsos/novo">${ico('mais')}Lançar reembolso</a><a class="ih-btn" href="#/compras/requisicoes/nova">${ico('carrinho')}Requisição de compra</a>${editaFin() ? `<a class="ih-btn" href="#/financeiro/pagar/novo">${ico('cartao')}Conta a pagar</a><a class="ih-btn" href="#/financeiro/receber/novo">${ico('receber')}Conta a receber</a>` : ''}</div>
       </div>
     </section>
-    <div class="grade inicio-kpis">
+    <div class="inicio-kpis">
       <a class="cartao kpi ${minhasReq.some(r => r.status === 'devolvida') ? 'alerta' : ''}" href="#${minhasReq.length ? '/inicio' : '/compras/requisicoes'}" ${minhasReq.length ? 'onclick="event.preventDefault();document.getElementById(\'minhas-req\').scrollIntoView({behavior:\'smooth\'})"' : ''}><div class="n">${minhasReq.length}</div><div class="r">minha(s) requisição(ões) de compra em andamento</div></a>
       ${p.aprovar || veTudo() || tem('aprovador', 'financeiro') ? `<a class="cartao kpi ${p.aprovar ? 'alerta' : ''}" href="#/aprovacoes"><div class="n">${p.aprovar || 0}</div><div class="r">para você aprovar</div></a>` : ''}
       <a class="cartao kpi ${p.devolvidos ? 'alerta' : ''}" href="#/reembolsos"><div class="n">${p.devolvidos || 0}</div><div class="r">reembolsos devolvidos para correção</div></a>
@@ -767,18 +851,38 @@ rota('/inicio', async tela => {
         <div class="acoes">${notifs.some(n => !n.lida) ? '<button class="btn peq" id="lidas">Marcar todos como lidos</button>' : ''}<a class="btn peq" href="#/inicio${verAnt ? '' : '?avisos=todos'}">${verAnt ? 'Só pendentes' : 'Ver anteriores'}</a></div></div>
       ${notifs.length ? `<ul class="lista-simples">${notifs.map(n => `<li class="${n.lida ? '' : 'nao-lida'}"><span>${n.link ? `<a href="${esc(n.link)}">${esc(n.titulo)}</a>` : esc(n.titulo)}${n.corpo ? `<br><span class="muted">${esc(n.corpo)}</span>` : ''}${n.resolvida_em ? ` <span class="tag verde">resolvido</span>` : ''}</span>
         <span class="muted nowrap">${dataHoraBR(n.criado_em)}${!n.lida ? ` <button class="btn peq" data-lida="${n.id}" title="Marcar como lido">✓</button>` : ''}</span></li>`).join('')}</ul>`
-        : `<div class="vazio">${verAnt ? 'Nenhum aviso.' : 'Nenhum aviso pendente. 🎉'}</div>`}</div>`;
-  // ícone de cada indicador (o mesmo do menu) e resumo do dia no topo
-  $$('.inicio-kpis .kpi', tela).forEach(k => {
+        : `<div class="vazio">${verAnt ? 'Nenhum aviso.' : 'Nenhum aviso pendente.'}</div>`}</div>`;
+  // painel do dia: indicadores agrupados por área, com ícone de traço e situação (ação necessária / em dia)
+  const SECOES = [['fin', 'Financeiro e aprovações', 'carteira'], ['com', 'Compras', 'carrinho'], ['ope', 'Operação e frota', 'caminhao'], ['alm', 'Almoxarifado e patrimônio', 'armazem'],
+    ['pes', 'Pessoas', 'pessoas'], ['seg', 'Segurança do trabalho', 'capacete'], ['qua', 'Qualidade', 'selo']];
+  const secaoDe = h => /^#\/(compras|inicio)/.test(h) ? 'com' : /^#\/(almox|patrimonio)/.test(h) ? 'alm' : /^#\/(rh|dp|clima)/.test(h) ? 'pes'
+    : /^#\/ssma/.test(h) ? 'seg' : /^#\/qualidade/.test(h) ? 'qua' : /^#\/(operacao|frota|manut|config)/.test(h) ? 'ope' : 'fin';
+  const caixa = $('.inicio-kpis', tela), grupos = {};
+  $$('.kpi', caixa).forEach(k => {
     const href = k.getAttribute('href') || '', base = href.split('?')[0];
     if (base && !telaPermitida(base.slice(1))) { k.remove(); return; }   // não mostra indicador de tela que a pessoa não pode abrir
-    const item = MENU.filter(m => m[0] !== 'grupo' && m[0] !== 'sub' && (base === m[1] || base.startsWith(m[1] + '/'))).sort((x, y) => y[1].length - x[1].length)[0];
-    k.insertAdjacentHTML('afterbegin', `<span class="k-ic">${/requisi/.test(k.innerText) ? '🛒' : item?.[3] || '📌'}</span>`);
-    if (k.querySelector('.n')?.textContent.trim() === '0') k.classList.add('zero');
+    const item = MENU.filter(m => m[0] !== 'grupo' && m[0] !== 'sub' && (href === m[1] || base === m[1] || base.startsWith(m[1] + '/'))).sort((x, y) => y[1].length - x[1].length)[0];
+    const nEl = k.querySelector('.n'), zero = nEl?.textContent.trim() === '0', alerta = k.classList.contains('alerta');
+    const icone = /requisi[çc][ãa]o\(ões\) de compra/.test(k.innerText) ? 'carrinho' : /pesquisa de clima/i.test(k.innerText) ? 'conversa' : item?.[3] || 'painel';
+    if (nEl && !/^\d+$/.test(nEl.textContent.trim())) nEl.innerHTML = ico('conversa');
+    k.classList.toggle('zero', zero);
+    k.insertAdjacentHTML('afterbegin', `<div class="k-topo"><span class="k-ic">${ico(icone)}</span><span class="k-st ${alerta ? 'acao' : zero ? 'ok' : 'neutro'}">${alerta ? 'Ação necessária' : zero ? 'Em dia' : 'Acompanhar'}</span></div>`);
+    k.insertAdjacentHTML('beforeend', `<span class="k-ver">Ver detalhes ${ico('seta')}</span>`);
+    (grupos[secaoDe(href)] ||= []).push(k);
   });
+  // a aprovação em destaque (cartão escuro, como a faixa do topo)
+  const kAprovar = $$('.kpi', caixa).find(k => k.getAttribute('href') === '#/aprovacoes');
+  if (kAprovar && Number(p.aprovar)) kAprovar.classList.add('destaque');
+  caixa.innerHTML = SECOES.filter(([c]) => grupos[c]?.length).map(([c, nome, ic]) => {
+    const ks = grupos[c].sort((x, y) => (y.classList.contains('destaque') - x.classList.contains('destaque')) || (y.classList.contains('alerta') - x.classList.contains('alerta')) || (x.classList.contains('zero') - y.classList.contains('zero')));
+    const nAcao = ks.filter(k => k.classList.contains('alerta')).length;
+    return `<section class="ik-sec" data-sec="${c}"><header class="ik-tit"><span class="ik-ic">${ico(ic)}</span><h2>${nome}</h2>
+      <span class="ik-cont ${nAcao ? 'acao' : ''}">${nAcao ? `${nAcao} ${nAcao > 1 ? 'pontos' : 'ponto'} de atenção` : 'em dia'}</span></header>
+      <div class="ik-grade"></div></section>`; }).join('');
+  for (const [c] of SECOES) if (grupos[c]?.length) { const g = $(`.ik-sec[data-sec="${c}"] .ik-grade`, caixa); grupos[c].forEach(k => g.append(k)); }
   { const al = $$('.inicio-kpis .kpi.alerta', tela).length, ap = Number(p.aprovar || 0);
     const partes = [ap ? `<b>${ap}</b> item(ns) para aprovar` : '', al ? `<b>${al}</b> ponto(s) de atenção` : ''].filter(Boolean);
-    $('#ih-resumo', tela).innerHTML = partes.length ? `Hoje você tem ${partes.join(' e ')}.` : 'Tudo em dia por aqui. ✓'; }
+    $('#ih-resumo', tela).innerHTML = partes.length ? `Hoje você tem ${partes.join(' e ')}.` : 'Tudo em dia por aqui.'; }
   $$('[data-lida]', tela).forEach(b => b.onclick = async e => { e.preventDefault(); await api.alterar('notificacoes', `id=eq.${b.dataset.lida}`, { lida: true }); navegar(); });
   $('#lidas')?.addEventListener('click', async () => {
     await api.alterar('notificacoes', `usuario_id=eq.${estado.usuario.id}&lida=eq.false`, { lida: true }); navegar();
