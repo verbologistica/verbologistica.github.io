@@ -518,3 +518,13 @@ svg.i { width: 1.15em; height: 1.15em; vertical-align: -.2em; flex: 0 0 auto; }
 .ih-frase cite { font-style: normal; }
 .menu .mi { gap: 0; }
 @media (max-width: 700px) { .ih-frase blockquote { font-size: 14.5px; } }
+
+/* Orçamentos no acompanhamento da requisição */
+.lt-orc-tit { margin: 18px 0 8px; }
+.lt-orcs { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
+.lt-orc { border: 1px solid var(--borda); border-radius: 12px; padding: 12px 14px; background: #fff; }
+.lt-orc.escolhido { border-color: var(--verde); box-shadow: 0 0 0 1px var(--verde) inset; background: #f6fbf8; }
+.lt-orc-top { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+.lt-orc-v { font: 800 20px var(--f-display); color: var(--azul); margin: 4px 0 2px; }
+.lt-orc-arq { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; }
+.lt-orc-arq .anexo { cursor: pointer; }

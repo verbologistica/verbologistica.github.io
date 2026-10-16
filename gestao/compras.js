@@ -646,7 +646,8 @@ const ETAPAS_REQ = [['criada', 'Criada'], ['compras', 'Enviada a Compras'], ['co
 async function linhaTempoReq(id, box) {
   if (!box) return;
   let d;
-  try { d = await api.rpc('requisicao_linha_tempo', { p_id: id }); }
+  let orcs = [];
+  try { [d, orcs] = await Promise.all([api.rpc('requisicao_linha_tempo', { p_id: id }), api.rpc('requisicao_orcamentos', { p_id: id }).catch(() => [])]); }
   catch (err) { box.innerHTML = `<h2>Acompanhamento</h2><div class="muted">${esc(err.message)}</div>`; return; }
   // junta repetidos (mesma etapa em sequência, poucos segundos de diferença)
   const ev = []; for (const e of d.eventos || []) { const u = ev[ev.length - 1]; if (u && u.titulo === e.titulo && Math.abs(new Date(e.quando) - new Date(u.quando)) < 120000) continue; ev.push(e); }
@@ -676,5 +677,13 @@ async function linhaTempoReq(id, box) {
       : `<ol class="etapas">${passos}</ol><p class="muted" style="margin:6px 0 12px">${concluido ? 'Processo <b>concluído</b> ✓' : `Etapa atual: <b>${ETAPAS_REQ[atual][1]}</b> — ${txtAguarda}`}</p>`}
     <ul class="linha-tempo">${ev.slice().reverse().map(e => `<li class="lt-${esc(e.etapa)}"><div class="lt-q">${quando(e.quando)}</div>
       <div class="lt-t"><b>${esc(e.titulo)}</b>${e.quem ? ` <span class="muted">· ${esc(e.quem)}</span>` : ''}${e.detalhe ? `<div class="muted">${esc(e.detalhe)}</div>` : ''}</div></li>`).join('')
-      || '<li class="muted">Sem movimentações ainda.</li>'}</ul>`;
+      || '<li class="muted">Sem movimentações ainda.</li>'}</ul>
+    ${orcs.length ? `<h3 class="lt-orc-tit">Orçamentos recebidos (${orcs.length})</h3>
+      <div class="lt-orcs">${orcs.map(o => `<div class="lt-orc ${o.escolhida ? 'escolhido' : ''}">
+        <div class="lt-orc-top"><b>${esc(o.fornecedor)}</b>${o.escolhida ? '<span class="tag verde">escolhido</span>' : o.proposta_vencedora && o.cotacao_status === 'aguardando_aprovacao' ? '<span class="tag amarelo">indicado por Compras</span>' : ''}</div>
+        <div class="lt-orc-v">${brl(o.valor)}</div>
+        <div class="muted">${esc([o.cotacao, o.prazo_dias != null ? `entrega em ${o.prazo_dias} dia(s)` : '', o.condicao, o.validade ? 'válido até ' + dataBR(o.validade) : ''].filter(Boolean).join(' · '))}</div>
+        ${o.itens ? `<div class="muted" style="margin-top:4px">${esc(o.itens)}</div>` : ''}
+        <div class="lt-orc-arq">${(o.anexos || []).length ? o.anexos.map(a => `<span class="anexo" data-arquivo="${esc(a.caminho)}" title="Baixar / abrir">${a.tipo?.includes('pdf') ? '📄' : a.tipo?.startsWith('image/') ? '🖼️' : '📎'} ${esc(a.nome || 'orçamento')}</span>`).join('') : '<span class="muted">sem arquivo anexado</span>'}</div>
+      </div>`).join('')}</div>` : ''}`;
 }
