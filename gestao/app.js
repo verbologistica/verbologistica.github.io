@@ -262,6 +262,8 @@ const MENU = [
   ['Adiantamentos', '#/financeiro/adiantamentos', P_FIN, '💵', 'prestacao_vencida', true],
   ['Fundo Fixo', '#/financeiro/fundo', P_FIN, '🪙', null, true],
   ['A verificar', '#/financeiro/verificar', P_FIN, '⚠️', 'a_verificar', true],
+  ['grupo', 'Orçamento e Contratos', '📊'],
+  ['Orçado × Realizado', '#/orcamento', ['administrador', 'diretoria', 'financeiro', 'aprovador'], '📈', 'orcamento_alerta', true],
   ['grupo', 'Operação', '🚚'],
   ['sub', 'Transporte'],
   ['Painel do CCO', '#/operacao', [...P_OP, 'manutencao'], '📡', 'viagens_atrasadas', true],
@@ -728,6 +730,7 @@ rota('/inicio', async tela => {
       ${tem('administrador', 'comprador') ? `<a class="cartao kpi ${p.requisicoes_a_cotar ? 'alerta' : ''}" href="#/compras/cotacoes"><div class="n">${p.requisicoes_a_cotar || 0}</div><div class="r">requisições para cotar</div></a>` : ''}
       ${p.pedidos_sem_documento ? `<a class="cartao kpi alerta" href="#/compras/pedidos?status=a_faturar"><div class="n">${p.pedidos_sem_documento}</div><div class="r">pedido(s) de compra sem nota fiscal/boleto lançados</div></a>` : ''}
       ${p.pedidos_a_receber_almox ? `<a class="cartao kpi alerta" href="#/compras/pedidos?status=a_receber"><div class="n">${p.pedidos_a_receber_almox}</div><div class="r">compra(s) aguardando chegada no almoxarifado</div></a>` : ''}
+      ${p.orcamento_alerta ? `<a class="cartao kpi alerta" href="#/orcamento"><div class="n">${p.orcamento_alerta}</div><div class="r">conta(s) do orçamento estourada(s) ou perto do limite neste mês</div></a>` : ''}
       ${p.calendario_crlv ? `<a class="cartao kpi alerta" href="#/config/calendario_crlv"><div class="n">${p.calendario_crlv}</div><div class="r">calendário(s) do CRLV do próximo ano para conferir</div></a>` : ''}
       ${p.docs_vencendo ? `<a class="cartao kpi alerta" href="#/frota/documentos"><div class="n">${p.docs_vencendo}</div><div class="r">documento(s) de equipamentos vencidos ou vencendo em 30 dias</div></a>` : ''}
       ${p.pesquisa_aberta ? `<a class="cartao kpi alerta" href="#/clima"><div class="n">💬</div><div class="r">Pesquisa de clima aberta: responda de forma anônima</div></a>` : ''}
