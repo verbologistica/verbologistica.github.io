@@ -32,11 +32,12 @@ function tabelaReq(linhas, comSolic = true) {
 
 // ---------- Requisições ----------
 rota('/compras/requisicoes', async tela => {
-  const todas = ehComprador() || veTudo();
-  const st = estado.params.get('status') || (todas ? 'abertas' : 'todas');
+  // todos consultam as requisições e o andamento; só quem abriu edita
+  const todas = true;
+  const st = estado.params.get('status') || 'abertas';
   const filtro = { abertas: 'status=in.(rascunho,aguardando_cotacao,em_cotacao,aguardando_aprovacao,aprovada,pedido_emitido,faturada,entregue)', a_cotar: 'status=in.(aguardando_cotacao,em_cotacao)',
                    concluidas: 'status=in.(recebida,reprovada,cancelada)', todas: 'status=neq.cancelada' }[st] || 'status=neq.cancelada';
-  const minhas = estado.params.get('minhas') === '1' || !todas;
+  const minhas = estado.params.get('minhas') === '1';
   const ls = await listarReq(`${filtro}${minhas ? '&solicitante_id=eq.' + estado.usuario.id : ''}&order=criado_em.desc&limit=500`);
   tela.innerHTML = `
     <div class="topo"><div><h1>${minhas ? 'Minhas requisições' : 'Requisições de compra'}</h1><p class="sub">Peça aqui o que precisa comprar. Compras cota, a compra é aprovada e o pedido é emitido.</p></div>
@@ -54,7 +55,8 @@ rota('/compras/requisicoes/nova', tela => formRequisicao(tela));
 rota('/compras/requisicoes/editar/:id', async (tela, id) => formRequisicao(tela, await api.um('requisicoes', `id=eq.${id}`)));
 
 async function formRequisicao(tela, r = null) {
-  if (r && !(['rascunho', 'devolvida'].includes(r.status) || (ehComprador() && ['aguardando_cotacao', 'em_cotacao'].includes(r.status)))) {
+  if (r && r.solicitante_id !== estado.usuario.id) { tela.innerHTML = '<div class="cartao vazio">Só quem abriu a requisição pode editá-la.</div>'; return; }
+  if (r && !['rascunho', 'devolvida'].includes(r.status)) {
     tela.innerHTML = '<div class="cartao vazio">Esta requisição não pode mais ser alterada.</div>'; return;
   }
   const [ccs, itens] = await Promise.all([centros(), r ? api.listar('requisicao_itens', `requisicao_id=eq.${r.id}&order=id`) : []]);
@@ -149,7 +151,7 @@ rota('/compras/requisicoes/ver/:id', async (tela, id) => {
   const dono = r.solicitante_id === estado.usuario.id;
   const cot = cots.find(c => c.status !== 'cancelada');
   if (cots.length) { const nps = await api.listar('cotacao_propostas', `cotacao_id=${lista(cots.map(c => c.id))}&select=cotacao_id`).catch(() => []); cots.forEach(c => (c._props = nps.some(p => p.cotacao_id === c.id))); }
-  const podeEditar = (dono && ['rascunho', 'devolvida'].includes(r.status)) || (ehComprador() && ['aguardando_cotacao', 'em_cotacao'].includes(r.status));
+  const podeEditar = dono && ['rascunho', 'devolvida'].includes(r.status);   // só quem abriu edita
   tela.innerHTML = `
     <div class="topo"><div><h1>Requisição ${esc(r.numero)}</h1><p class="sub">${tag(r.status)} · ${esc(r.justificativa || '')}</p></div>
       <div class="acoes">
