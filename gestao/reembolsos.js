@@ -193,9 +193,10 @@ rota('/reembolsos/ver/:id', async (tela, id) => {
 
 // ---------- Gestão (Financeiro) ----------
 rota('/financeiro/reembolsos', async tela => {
-  const st = estado.params.get('status') || 'todos';
-  const filtroSt = { abertos: 'status=in.(aguardando_aprovacao,aprovado,em_pagamento,devolvido)', aprovado: 'status=eq.aprovado&forma_custeio=eq.reembolso',
-                     pago: 'status=eq.pago', todos: 'status=neq.cancelado', cancelados: 'status=eq.cancelado' }[st] || 'status=neq.cancelado';
+  const sts = pLista('status', 'todos'), st = sts.length === 1 ? sts[0] : 'varios';
+  const mapaF = { abertos: 'status=in.(aguardando_aprovacao,aprovado,em_pagamento,devolvido)', aprovado: 'status=eq.aprovado&forma_custeio=eq.reembolso',
+                     pago: 'status=eq.pago', todos: 'status=neq.cancelado', cancelados: 'status=eq.cancelado' };
+  const filtroSt = filtroOu(sts.map(s => mapaF[s] ?? mapaF.todos)) || mapaF.todos;
   const ini = estado.params.get('de') || '', fim = estado.params.get('ate') || '';
   const linhas = await api.listar('reembolsos', `${SELECT_REEMB}&${filtroSt}${ini ? '&data_despesa=gte.' + ini : ''}${fim ? '&data_despesa=lte.' + fim : ''}&order=data_despesa.desc,numero.desc&limit=1000`);
   tela.innerHTML = `

@@ -66,10 +66,10 @@ rota('/manut', async tela => {
 
 // ===================== Ordens de serviço =====================
 rota('/manut/os', async tela => {
-  const st = estado.params.get('status') || 'abertas', eq = estado.params.get('eq') || '', tipo = estado.params.get('tipo') || '', resp = estado.params.get('resp') === '1', prior = estado.params.get('prioridade') || '';
+  const sts = pLista('status', 'todas'), st = sts[0], eqs_ = pLista('eq'), eq = eqs_.length === 1 ? eqs_[0] : '', tipos = pLista('tipo'), tipo = tipos[0] || '', resp = estado.params.get('resp') === '1', priors = pLista('prioridade'), prior = priors[0] || '';
   let filtro = 'ativo=eq.true';
-  if (st === 'abertas') filtro += '&status=not.in.(concluida,cancelada)'; else if (st !== 'todas') filtro += '&status=eq.' + st;
-  if (eq) filtro += '&equipamento_id=eq.' + eq; if (tipo) filtro += '&tipo=eq.' + encodeURIComponent(tipo); if (resp) filtro += '&responsabilizacao=not.is.null'; if (prior) filtro += '&prioridade=eq.' + prior;
+  if (!temTodos(sts)) filtro += '&' + filtroOu(sts.map(s => s === 'abertas' ? 'status=not.in.(concluida,cancelada)' : 'status=eq.' + s));
+  if (eqs_.length) filtro += '&equipamento_id=in.(' + eqs_.join(',') + ')'; if (tipos.length) filtro += '&tipo=in.(' + tipos.map(encodeURIComponent).join(',') + ')'; if (resp) filtro += '&responsabilizacao=not.is.null'; if (priors.length) filtro += '&prioridade=in.(' + priors.join(',') + ')';
   const [os, eqs] = await Promise.all([api.listar('manut_os', `${filtro}&select=*,eq:equipamentos(codigo_frota,tipo,tipo_outro,marca,modelo),forn:fornecedores(razao_social)&order=criado_em.desc&limit=300`), eqsAtivos()]);
   const total = os.reduce((a, o) => a + Number(o.custo_total || 0), 0);
   tela.innerHTML = `
@@ -327,8 +327,8 @@ rota('/manut/checklist', async tela => {
 
 // ===================== Hodômetro =====================
 rota('/manut/hodometro', async tela => {
-  const eq = estado.params.get('eq') || '';
-  const [eqs, ls] = await Promise.all([eqsAtivos(), api.listar('hodometro_leituras', `ativo=eq.true${eq ? '&equipamento_id=eq.' + eq : ''}&select=*,e:equipamentos(codigo_frota)&order=data_hora.desc&limit=200`)]);
+  const eqs_ = pLista('eq'), eq = eqs_.length === 1 ? eqs_[0] : '';
+  const [eqs, ls] = await Promise.all([eqsAtivos(), api.listar('hodometro_leituras', `ativo=eq.true${eqs_.length ? '&equipamento_id=in.(' + eqs_.join(',') + ')' : ''}&select=*,e:equipamentos(codigo_frota)&order=data_hora.desc&limit=200`)]);
   tela.innerHTML = `<div class="topo"><div><h1>Km e horímetro</h1><p class="sub">A leitura alimenta as preventivas e o custo por km</p></div></div>
     <form id="f-hod" class="cartao"><div class="form">
       <label class="campo largo">Equipamento *<select name="equipamento_id" required><option value="">Selecione…</option>${optEq(eqs, eq)}</select></label>
@@ -351,8 +351,8 @@ rota('/manut/hodometro', async tela => {
 
 // ===================== Pneus =====================
 rota('/manut/pneus', async tela => {
-  const st = estado.params.get('status') || '', eq = estado.params.get('eq') || '';
-  const [ps, eqs] = await Promise.all([api.listar('pneus', `ativo=eq.true${st ? '&status=eq.' + st : '&status=neq.sucata'}${eq ? '&equipamento_id=eq.' + eq : ''}&select=*,e:equipamentos(codigo_frota),v:veiculos(placa)&order=numero_fogo`), eqsAtivos()]);
+  const sts = pLista('status'), st = sts[0] || '', eqs_ = pLista('eq'), eq = eqs_.length === 1 ? eqs_[0] : '';
+  const [ps, eqs] = await Promise.all([api.listar('pneus', `ativo=eq.true${sts.length ? '&status=in.(' + sts.join(',') + ')' : '&status=neq.sucata'}${eqs_.length ? '&equipamento_id=in.(' + eqs_.join(',') + ')' : ''}&select=*,e:equipamentos(codigo_frota),v:veiculos(placa)&order=numero_fogo`), eqsAtivos()]);
   const cpk = p => p.km_acumulado > 0 && p.custo ? (Number(p.custo) / p.km_acumulado * 1000) : null;
   tela.innerHTML = `
     <div class="topo"><div><h1>Pneus</h1><p class="sub">${ps.length} pneu(s) · controle por número de fogo</p></div>${editaManut() ? '<button class="btn prim" id="novo-pneu">+ Cadastrar pneu</button>' : ''}</div>

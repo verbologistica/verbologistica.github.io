@@ -63,9 +63,9 @@ rota('/almox', async tela => {
 
 // ===================== Itens =====================
 rota('/almox/itens', async tela => {
-  const cat = estado.params.get('cat') || '', q = (estado.params.get('q') || '').toLowerCase(), abaixo = estado.params.get('abaixo') === '1';
+  const cats_ = pLista('cat'), cat = cats_[0] || '', q = (estado.params.get('q') || '').toLowerCase(), abaixo = estado.params.get('abaixo') === '1';
   let its = (await itensAlmox(true)).filter(i => i.ativo);
-  if (cat) its = its.filter(i => i.categoria === cat);
+  if (cats_.length) its = its.filter(i => cats_.includes(i.categoria));
   if (q) its = its.filter(i => [i.codigo, i.descricao, i.marca, i.referencia, i.localizacao].join(' ').toLowerCase().includes(q));
   if (abaixo) its = its.filter(i => Number(i.estoque_minimo) > 0 && Number(i.saldo) <= Number(i.estoque_minimo));
   const cats = [...new Set([...CATEG_ALMOX.filter(c => c !== 'Outro'), ...(await itensAlmox()).map(i => i.categoria)])];
@@ -185,7 +185,7 @@ rota('/almox/entrada', async tela => {
 // ===================== Requisições internas =====================
 const ST_RMA = { aberta: ['Aberta', 'amarelo'], parcial: ['Atendida em parte', 'azul'], atendida: ['Atendida', 'verde'], cancelada: ['Cancelada', ''] };
 rota('/almox/requisicoes', async tela => {
-  const st = estado.params.get('status') || (editaAlmox() ? 'abertas' : 'todas');
+  const st = temTodos(pLista('status', 'todas')) ? 'todas' : 'abertas';
   const rs = await api.listar('almox_requisicoes', `select=*,solic:usuarios(nome),colab:colaboradores(nome),itens:almox_requisicao_itens(quantidade,atendido,item:almox_itens(descricao,unidade))&${st === 'abertas' ? 'status=in.(aberta,parcial)' : 'status=neq.x'}&order=criado_em.desc&limit=200`);
   tela.innerHTML = `
     <div class="topo"><div><h1>Requisições de material</h1><p class="sub">${rs.length} requisição(ões)</p></div><a class="btn prim" href="#/almox/requisicoes/nova">+ Nova requisição</a></div>
@@ -238,8 +238,8 @@ rota('/almox/requisicoes/nova', async tela => {
 // ===================== Inventário =====================
 rota('/almox/inventario', async tela => {
   if (!editaAlmox()) { tela.innerHTML = '<div class="cartao vazio">Sem permissão.</div>'; return; }
-  const cat = estado.params.get('cat') || '';
-  let its = (await itensAlmox(true)).filter(i => i.ativo); if (cat) its = its.filter(i => i.categoria === cat);
+  const cats_ = pLista('cat'), cat = cats_[0] || '';
+  let its = (await itensAlmox(true)).filter(i => i.ativo); if (cats_.length) its = its.filter(i => cats_.includes(i.categoria));
   tela.innerHTML = `<div class="topo"><div><h1>Inventário</h1><p class="sub">Conte o estoque físico. Só os itens com diferença geram ajuste.</p></div></div>
     <form class="filtros" id="filtros"><select name="cat"><option value="">Todas as categorias</option>${[...new Set(its.map(i => i.categoria))].map(c => `<option ${c === cat ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select><button class="btn">Filtrar</button></form>
     <form id="f-inv" class="cartao"><div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Código</th><th>Item</th><th>Local</th><th class="num">No sistema</th><th>Contado</th><th class="num">Diferença</th></tr></thead><tbody>
@@ -259,9 +259,9 @@ rota('/almox/inventario', async tela => {
 
 // ===================== EPI =====================
 rota('/almox/epi', async tela => {
-  const colab = estado.params.get('colab') || '';
+  const colabs = pLista('colab'), colab = colabs[0] || '';
   const [its, cs, ents] = await Promise.all([itensAlmox(true), api.listar('v_colaboradores_basico', 'select=id,nome,cargo&order=nome').catch(() => []),
-    api.listar('epi_entregas', `ativo=eq.true&devolvido_em=is.null&select=*,colab:colaboradores(id,nome),item:almox_itens(descricao,unidade,ca_validade)&order=troca_prevista${colab ? '&colaborador_id=eq.' + colab : ''}&limit=500`)]);
+    api.listar('epi_entregas', `ativo=eq.true&devolvido_em=is.null&select=*,colab:colaboradores(id,nome),item:almox_itens(descricao,unidade,ca_validade)&order=troca_prevista${colabs.length ? '&colaborador_id=in.(' + colabs.join(',') + ')' : ''}&limit=500`)]);
   const epis = its.filter(i => i.ativo && ['EPI', 'Uniforme'].includes(i.categoria));
   const trocar = ents.filter(e => e.troca_prevista && e.troca_prevista <= somaDias(hojeISO(), 7));
   tela.innerHTML = `
@@ -299,9 +299,9 @@ rota('/almox/epi', async tela => {
 
 // ===================== Patrimônio =====================
 rota('/patrimonio', async tela => {
-  const cat = estado.params.get('cat') || '', sit = estado.params.get('sit') || '', q = (estado.params.get('q') || '').toLowerCase(), semTermo = estado.params.get('sem_termo') === '1';
+  const cats_ = pLista('cat'), cat = cats_[0] || '', sits = pLista('sit'), sit = sits[0] || '', q = (estado.params.get('q') || '').toLowerCase(), semTermo = estado.params.get('sem_termo') === '1';
   let ps = await api.listar('v_patrimonio_responsaveis', 'order=tag');
-  if (cat) ps = ps.filter(p => p.categoria === cat); if (sit) ps = ps.filter(p => p.situacao === sit);
+  if (cats_.length) ps = ps.filter(p => cats_.includes(p.categoria)); if (sits.length) ps = ps.filter(p => sits.includes(p.situacao));
   if (semTermo) ps = ps.filter(p => p.situacao === 'em_uso' && !p.termo_assinado);
   if (q) ps = ps.filter(p => [p.tag, p.descricao, p.marca, p.modelo, p.numero_serie, p.imei, p.linha, p.responsavel_nome].join(' ').toLowerCase().includes(q));
   const cats = [...new Set([...CATEG_PAT.filter(c => c !== 'Outro'), ...ps.map(p => p.categoria)])];

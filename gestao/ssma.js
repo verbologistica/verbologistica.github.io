@@ -75,9 +75,9 @@ rota('/ssma', async tela => {
 
 // ===================== ASO e toxicológico =====================
 rota('/ssma/aso', async tela => {
-  const sit = estado.params.get('sit') || '';
+  const sits = pLista('sit'), sit = sits[0] || '';
   let ls = await api.listar('v_aso_situacao', 'order=nome');
-  if (sit === 'pendentes') ls = ls.filter(l => l.situacao !== 'em_dia'); else if (sit === 'tox') ls = ls.filter(l => l.motorista && (!l.tox_proximo || l.tox_proximo <= somaDias(hojeISO(), 30))); else if (sit) ls = ls.filter(l => l.situacao === sit);
+  if (sits.length) ls = ls.filter(l => sits.some(s => s === 'pendentes' ? l.situacao !== 'em_dia' : s === 'tox' ? l.motorista && (!l.tox_proximo || l.tox_proximo <= somaDias(hojeISO(), 30)) : l.situacao === s));
   tela.innerHTML = `
     <div class="topo"><div><h1>ASO e exames</h1><p class="sub">${ls.length} colaborador(es)</p></div>${editaSSMA() || tem('rh') ? '<button class="btn prim" id="novo-ex">+ Registrar exame</button>' : ''}</div>
     <form class="filtros" id="filtros"><select name="sit"><option value="">Todos</option><option value="pendentes" ${sit === 'pendentes' ? 'selected' : ''}>Com pendência</option>${Object.entries(SIT_ASO).map(([k, [t]]) => `<option value="${k}" ${k === sit ? 'selected' : ''}>${t}</option>`).join('')}<option value="tox" ${sit === 'tox' ? 'selected' : ''}>Motoristas: toxicológico a fazer</option></select><button class="btn">Filtrar</button></form>
@@ -133,8 +133,8 @@ async function historicoExames(colabId) {
 
 // ===================== Acidentes =====================
 rota('/ssma/acidentes', async tela => {
-  const st = estado.params.get('status') || '';
-  const as = await api.listar('acidentes', `ativo=eq.true${st ? '&status=eq.' + st : ''}&select=*,c:colaboradores(nome)&order=data_hora.desc&limit=300`);
+  const sts = pLista('status'), st = sts[0] || '';
+  const as = await api.listar('acidentes', `ativo=eq.true${sts.length ? '&status=in.(' + sts.join(',') + ')' : ''}&select=*,c:colaboradores(nome)&order=data_hora.desc&limit=300`);
   tela.innerHTML = `
     <div class="topo"><div><h1>Acidentes e incidentes</h1><p class="sub">${as.length} registro(s)</p></div><a class="btn prim" href="#/ssma/acidentes/novo">Comunicar acidente</a></div>
     <form class="filtros" id="filtros"><select name="status"><option value="">Todos</option>${Object.entries(ST_ACI).map(([k, [t]]) => `<option value="${k}" ${k === st ? 'selected' : ''}>${t}</option>`).join('')}</select><button class="btn">Filtrar</button></form>
@@ -236,7 +236,7 @@ async function formAcao(origem, origemId, us, x = null) {
     aviso('Ação salva.'); navegar(); } catch (err) { falha(err); }
 }
 rota('/ssma/acoes', async tela => {
-  const st = estado.params.get('status') || 'todas';
+  const sts = pLista('status', 'todas'), st = temTodos(sts) ? 'todas' : 'abertas';
   const [as, us] = await Promise.all([api.listar('ssma_acoes', `ativo=eq.true${st === 'abertas' ? '&status=in.(aberta,em_andamento)' : ''}&select=*,u:usuarios(nome)&order=prazo.nullslast`), usuarios()]);
   const ORIG = { acidente: ['Acidente', '#/ssma/acidentes/ver/'], inspecao: ['Inspeção', '#/ssma/inspecoes/ver/'], dds: ['DDS', '#/ssma/dds'], avulsa: ['Avulsa', null] };
   tela.innerHTML = `<div class="topo"><div><h1>Plano de ação</h1><p class="sub">${as.length} ação(ões)</p></div>${editaSSMA() ? '<button class="btn prim" id="nova">+ Ação</button>' : ''}</div>

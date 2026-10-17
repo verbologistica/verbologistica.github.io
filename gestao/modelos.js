@@ -116,8 +116,9 @@ async function gerarDocumento(modelo, colaboradorId = null, extra = {}) {
 
 // ---------- Biblioteca ----------
 rota('/modelos', async tela => {
-  const setor = estado.params.get('setor') || '', q = (estado.params.get('q') || '').toLowerCase();
-  let ms = await api.listar('modelos_documentos', `select=*&ativo=eq.true&vigente=eq.true${setor ? '&setor=eq.' + encodeURIComponent(setor) : ''}&order=setor,categoria,titulo`);
+  const setores_ = pLista('setor'), setor = setores_.length === 1 ? setores_[0] : '', q = (estado.params.get('q') || '').toLowerCase();
+  let ms = await api.listar('modelos_documentos', `select=*&ativo=eq.true&vigente=eq.true&order=setor,categoria,titulo`);
+  if (setores_.length) ms = ms.filter(m => setores_.includes(m.setor));
   if (q) ms = ms.filter(m => [m.titulo, m.codigo, m.descricao, m.categoria].join(' ').toLowerCase().includes(q));
   const grupos = {}; ms.forEach(m => (grupos[m.setor] ||= []).push(m));
   tela.innerHTML = `

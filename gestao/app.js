@@ -992,7 +992,7 @@ rota('/planos', async tela => {
   const gestor = tem('administrador', 'diretoria');
   const esc_ = estado.params.get('ver') || 'minhas';
   const escopo = esc_ === 'todas' && !gestor ? 'minhas' : esc_;
-  const abertas = estado.params.get('sit') === 'abertas';
+  const abertas = !temTodos(pLista('sit', 'todas'));
   const acs = await api.rpc('planos_acao', { p_escopo: escopo, p_abertas: abertas }).catch(err => { falha(err); return []; });
   const ABAS = [['minhas', 'No meu nome'], ['criadas', 'Que eu abri'], ...(gestor ? [['todas', 'Todas']] : [])];
   const atr = acs.filter(a => a.prazo && a.prazo < hojeISO() && ['aberta', 'em_andamento'].includes(a.status)).length;
@@ -1062,6 +1062,17 @@ function htmlResumoGestao(r) {
   return h;
 }
 
+// Filtros com vários valores: "a,b" na URL
+const pLista = (k, padrao = '') => { const v = estado.params.get(k); return String(v == null || v === '' ? padrao : v).split(',').map(x => x.trim()).filter(Boolean); };
+const temTodos = l => !l.length || l.some(v => /^(todos|todas)$/.test(v));
+// junta filtros do banco de cada opção com "ou" ('' = sem filtro)
+function filtroOu(partes) {
+  partes = [...new Set(partes.map(p => String(p ?? '').replace(/^&+/, '')))];
+  if (!partes.length || partes.includes('')) return '';
+  if (partes.length === 1) return partes[0];
+  const conv = p => { const cs = p.split('&').filter(Boolean).map(c => c.replace('=', '.')); return cs.length > 1 ? `and(${cs.join(',')})` : cs[0]; };
+  return 'or=(' + partes.map(conv).join(',') + ')';
+}
 const semAcento = t => String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
 
 // ===================== Listas suspensas com busca digitando (todas as do sistema) =====================
@@ -1119,7 +1130,51 @@ function comboSelect(sel) {
   inp.addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== inp && _cbAberto === api_) fechar(); }, 120));
   sync();
 }
-function combosEm(raiz) { (raiz.matches?.('select') ? [raiz] : $$('select', raiz)).forEach(comboSelect); }
+// Filtros de cima das telas (formulário .filtros): viram lista de marcar vários itens.
+// O valor vai para a URL separado por vírgula (ex.: status=abertos,pago) e cada tela junta os itens com "ou".
+const _FORM_UNICO = ['f-alvo', 'f-mes', 'f-data', 'f-proj', 'f-pl'];
+function podeMulti(sel) {
+  const f = sel.closest('form.filtros'); if (!f || f.classList.contains('filtro-local') || !sel.name) return false;
+  return !sel.hasAttribute('data-unico') && !_FORM_UNICO.includes(f.id) && sel.options.length > 2 && !sel.multiple;
+}
+const ehOpTodos = o => o.value === '' || /^(todos|todas)$/.test(o.value) || /^tod[oa]s\b/i.test(o.text.trim());
+function multiFiltro(sel) {
+  if (sel._cb) return; sel._cb = true;
+  const nome = sel.name, ops = [...sel.options].map(o => ({ v: o.value, t: o.text.trim(), todos: ehOpTodos(o) }));
+  const opTodos = ops.find(o => o.todos);
+  const doUrl = estado.params?.get(nome);
+  let marcados = doUrl != null && doUrl !== '' ? doUrl.split(',').filter(v => ops.some(o => o.v === v)) : [...sel.selectedOptions].map(o => o.value);
+  if (!marcados.length && opTodos) marcados = [opTodos.v];
+  const box = document.createElement('div'); box.className = 'flm flm-srv';
+  box.innerHTML = `<input type="hidden" name="${esc(nome)}"><button type="button" class="flm-btn" aria-haspopup="true"><span class="flm-txt"></span></button>
+    <div class="flm-pan" hidden>${ops.length > 7 ? '<input type="text" class="flm-q" placeholder="Digite para buscar…" autocomplete="off">' : ''}
+      <div class="flm-ops">${ops.map(o => `<label class="flm-op ${o.todos ? 'flm-todos' : ''}"><input type="checkbox" value="${esc(o.v)}" ${marcados.includes(o.v) ? 'checked' : ''}><span>${esc(o.t)}</span></label>`).join('')}</div>
+      <div class="flm-rod"><button type="button" class="btn peq" data-limpar>Limpar</button><button type="button" class="btn prim peq" data-aplicar>Aplicar</button></div></div>`;
+  sel.replaceWith(box);
+  const hid = $('input[type=hidden]', box), pan = $('.flm-pan', box), q = $('.flm-q', box);
+  let inicial = '';
+  const ler = () => $$('.flm-ops input:checked', box).map(c => c.value);
+  const mostrar = () => { const v = ler(); const reais = v.filter(x => !ops.find(o => o.v === x)?.todos);
+    hid.value = reais.length ? reais.join(',') : (opTodos ? opTodos.v : '');
+    const txt = !reais.length ? (opTodos?.t || 'Todos') : reais.length === 1 ? ops.find(o => o.v === reais[0]).t : `${reais.length} selecionados: ` + reais.map(x => ops.find(o => o.v === x).t).join(', ');
+    $('.flm-txt', box).textContent = txt; box.title = txt; box.classList.toggle('ativo', reais.length > 0); };
+  mostrar(); inicial = hid.value;
+  const enviar = () => { pan.hidden = true; if (hid.value !== inicial) { inicial = hid.value; const f = box.closest('form'); f.requestSubmit ? f.requestSubmit() : f.dispatchEvent(new Event('submit', { cancelable: true })); } };
+  $('.flm-btn', box).onclick = e => { e.stopPropagation(); const abrir = pan.hidden; $$('.flm-pan').forEach(p => { if (p !== pan) p.hidden = true; }); pan.hidden = !abrir; if (abrir && q) { q.value = ''; $$('.flm-op', box).forEach(o => (o.hidden = false)); q.focus(); } };
+  pan.addEventListener('click', e => e.stopPropagation());
+  pan.addEventListener('change', e => { e.stopPropagation(); const c = e.target; if (c.type !== 'checkbox') return;
+    const ehT = ops.find(o => o.v === c.value)?.todos;
+    if (ehT && c.checked) $$('.flm-ops input', box).forEach(x => { if (x !== c) x.checked = false; });
+    else if (!ehT && c.checked) $$('.flm-ops input', box).forEach(x => { if (ops.find(o => o.v === x.value)?.todos) x.checked = false; });
+    if (!ler().length && opTodos) $$('.flm-ops input', box).find(x => x.value === opTodos.v).checked = true;
+    mostrar(); });
+  q?.addEventListener('input', e => { e.stopPropagation(); const t = semAcento(q.value); $$('.flm-op', box).forEach(o => (o.hidden = !!t && !semAcento(o.textContent).includes(t))); });
+  q?.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); enviar(); } if (e.key === 'Escape') pan.hidden = true; });
+  $('[data-limpar]', box).onclick = () => { $$('.flm-ops input', box).forEach(x => (x.checked = opTodos ? x.value === opTodos.v : false)); mostrar(); };
+  $('[data-aplicar]', box).onclick = enviar;
+  document.addEventListener('click', () => { if (!pan.hidden && box.isConnected) enviar(); });
+}
+function combosEm(raiz) { (raiz.matches?.('select') ? [raiz] : $$('select', raiz)).forEach(sel => (podeMulti(sel) ? multiFiltro(sel) : comboSelect(sel))); }
 new MutationObserver(ms => { for (const m of ms) for (const n of m.addedNodes) if (n.nodeType === 1 && !n.classList?.contains('cb-lista')) combosEm(n);
   if (_cbAberto && !_cbAberto.box.isConnected) _cbAberto.fechar(); }).observe(document.documentElement, { childList: true, subtree: true });
 addEventListener('scroll', e => { if (_cbAberto && !_cbAberto.lista?.contains(e.target)) _cbAberto.posicionar(); }, true);

@@ -29,8 +29,8 @@ async function listaTitulos(tela, tipo) {
   const aba = tipo === 'pagar' ? (estado.params.get('aba') || 'variaveis') : 'todas';
   if (tipo === 'pagar') await api.rpc('gerar_contas_fixas').catch(() => 0);   // lança os meses das contas fixas (não duplica)
   if (aba === 'fixas') return listaFixas(tela);
-  const st = estado.params.get('status') || 'todas';
-  const faixa = estado.params.get('faixa') || '';
+  const sts = pLista('status', 'todas'), st = sts.length === 1 ? sts[0] : 'varios';
+  const faixas = pLista('faixa'), faixa = faixas[0] || '';
   // período (vencimento): padrão = mês atual; "tudo" = sem período; links de faixa (Início) abrem sem período
   const mesIni = hojeISO().slice(0, 8) + '01', mesFim = somaDias(somaMeses(mesIni, 1), -1);
   // padrão: todas as datas (nada some da lista); o período só vale quando escolhido
@@ -40,8 +40,9 @@ async function listaTitulos(tela, tipo) {
   const busca = (estado.params.get('q') || '').toLowerCase();
   const semComp = await api.listar('v_pagamentos_sem_comprovante', `select=parcela_id&tipo=eq.${tipo}`).catch(() => []);
   const semCompIds = new Set(semComp.map(x => x.parcela_id));
-  const filtroSt = { abertas: 'status=in.(aberta,aprovada,prevista)', previsoes: 'status=eq.prevista', pagas: 'status=eq.paga', todas: 'status=neq.cancelada',
-                     semcomp: semCompIds.size ? 'id=' + lista([...semCompIds]) : 'id=is.null' }[st] || 'status=neq.cancelada';
+  const mapaSt = { abertas: 'status=in.(aberta,aprovada,prevista)', previsoes: 'status=eq.prevista', pagas: 'status=eq.paga', todas: 'status=neq.cancelada',
+                     semcomp: semCompIds.size ? 'id=' + lista([...semCompIds]) : 'id=is.null' };
+  const filtroSt = filtroOu(sts.map(s => mapaSt[s] ?? mapaSt.todas)) || mapaSt.todas;
   let ps = await api.listar('v_parcelas', `tipo=eq.${tipo}&${filtroSt}${fAba}${fPer}&order=vencimento,titulo_numero&limit=3000`);
   // resumo do período (todas as situações)
   const [rs, atrasAnt] = await Promise.all([
@@ -58,7 +59,7 @@ async function listaTitulos(tela, tipo) {
   const ORIG_T = { reembolso: 'Reembolso', adiantamento: 'Adiantamento', pedido: 'Pedido de compra', fechamento: 'Fechamento de fornecedor', fatura_cartao: 'Fatura de cartão', recorrente: 'Conta fixa', avulso: 'Lançamento avulso', legado: 'Anterior ao sistema' };
   const pessoas = porId(tipo === 'pagar' ? await fornecedores() : await clientes());
   const nome = p => (tipo === 'pagar' ? pessoas[p.fornecedor_id]?.razao_social : pessoas[p.cliente_id]?.nome) || p.favorecido_nome || '—';
-  if (faixa && FAIXAS[faixa]) ps = ps.filter(FAIXAS[faixa][1]);
+  if (faixas.some(f => FAIXAS[f])) ps = ps.filter(p => faixas.some(f => FAIXAS[f]?.[1](p)));
   if (busca) ps = ps.filter(p => (nome(p) + ' ' + (p.descricao || '') + ' ' + p.titulo_numero).toLowerCase().includes(busca));
   const pagas = st === 'pagas' || st === 'semcomp';
   const podeSel = editaFin() && (st === 'abertas' || st === 'previsoes');

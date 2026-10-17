@@ -240,8 +240,9 @@ rota('/cadastros/equipamentos/ver/:id', async (tela, id) => {
 
 // ---------- Documentos a vencer ----------
 rota('/frota/documentos', async tela => {
-  const faixa = estado.params.get('faixa') || 'todos';
-  const filtro = { vencidos: '&faixa=eq.vencido', proximos: '&faixa=in.(vencido,vence_30,vence_60)', todos: '' }[faixa] ?? '';
+  const faixas = pLista('faixa', 'todos'), faixa = faixas[0];
+  const fx = filtroOu(faixas.map(f => ({ vencidos: 'faixa=eq.vencido', proximos: 'faixa=in.(vencido,vence_30,vence_60)' })[f] ?? ''));
+  const filtro = fx ? '&' + fx : '';
   const ds = await api.listar('v_documentos_vencimento', `select=*${filtro}&order=vencimento`);
   const n = f => ds.filter(d => d.faixa === f).length;
   tela.innerHTML = `

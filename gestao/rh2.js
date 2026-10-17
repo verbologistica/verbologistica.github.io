@@ -88,8 +88,8 @@ async function modeloPorCodigo(codigo) { return api.um('modelos_documentos', `co
 
 // ===================== Ocorrências disciplinares =====================
 rota('/rh/disciplinar', async tela => {
-  const st = estado.params.get('status') || 'todas';
-  const [os, cs] = await Promise.all([api.listar('ocorrencias_disciplinares', `select=*,colab:colaboradores(id,nome)${st === 'todas' ? '' : '&status=eq.' + st}&order=data_aplicacao.desc`), cargosL()]);
+  const sts = pLista('status', 'todas'), st = sts[0];
+  const [os, cs] = await Promise.all([api.listar('ocorrencias_disciplinares', `select=*,colab:colaboradores(id,nome)${temTodos(sts) ? '' : '&status=in.(' + sts.join(',') + ')'}&order=data_aplicacao.desc`), cargosL()]);
   tela.innerHTML = `
     <div class="topo"><div><h1>Ocorrências disciplinares</h1><p class="sub">${os.length} registro(s)</p></div>${editaRH() ? '<a class="btn prim" href="#/rh/disciplinar/nova">+ Registrar ocorrência</a>' : ''}</div>
     ${avisoLei('gradacao')}
@@ -193,8 +193,8 @@ ABAS_RH_EXTRA.disciplinar = async (box, c) => {
 
 // ===================== Desligamento =====================
 rota('/rh/desligamentos', async tela => {
-  const st = estado.params.get('status') || 'todos';
-  const ds = await api.listar('desligamentos', `select=*,colab:colaboradores(id,nome),etapas:desligamento_etapas(status)&${st === 'todos' ? 'status=neq.x' : 'status=eq.' + st}&order=data_desligamento`);
+  const sts = pLista('status', 'todos'), st = sts[0];
+  const ds = await api.listar('desligamentos', `select=*,colab:colaboradores(id,nome),etapas:desligamento_etapas(status)&${temTodos(sts) ? 'status=neq.x' : 'status=in.(' + sts.join(',') + ')'}&order=data_desligamento`);
   tela.innerHTML = `
     <div class="topo"><div><h1>Desligamentos</h1><p class="sub">${ds.length} processo(s)</p></div></div>
     <form class="filtros" id="filtros"><select name="status">${[['em_andamento', 'Em andamento'], ['concluido', 'Concluídos'], ['cancelado', 'Cancelados'], ['todos', 'Todos']].map(([v, t]) => `<option value="${v}" ${v === st ? 'selected' : ''}>${t}</option>`).join('')}</select><button class="btn">Filtrar</button></form>
@@ -466,7 +466,7 @@ ABAS_RH_EXTRA.avaliacoes = async (box, c) => {
 const ST_VAGA = { aberta: ['Aberta', 'azul'], em_selecao: ['Em seleção', 'amarelo'], suspensa: ['Suspensa', ''], preenchida: ['Preenchida', 'verde'], cancelada: ['Cancelada', ''] };
 const ETAPAS_SEL = { triagem: 'Triagem de currículo', entrevista_rh: 'Entrevista RH', entrevista_gestor: 'Entrevista com gestor', teste_pratico: 'Teste prático (direção / técnico)', aprovado: 'Aprovado', reprovado: 'Reprovado', desistiu: 'Desistiu', contratado: 'Contratado' };
 rota('/rh/recrutamento', async tela => {
-  const st = estado.params.get('status') || 'todas';
+  const sts = pLista('status', 'todas'), st = temTodos(sts) ? 'todas' : 'abertas';
   const [vs, cgs, ss] = await Promise.all([api.listar('vagas', `select=*,cands:vaga_candidatos(etapa)&${st === 'abertas' ? 'status=in.(aberta,em_selecao,suspensa)' : 'status=neq.x'}&order=criado_em.desc`), cargosL(), setoresL()]);
   tela.innerHTML = `
     <div class="topo"><div><h1>Recrutamento e seleção</h1><p class="sub">${vs.length} vaga(s)</p></div><div class="acoes"><a class="btn" href="#/rh/talentos">Banco de talentos</a>${editaRH() ? '<button class="btn prim" id="nova-vaga">+ Abrir vaga</button>' : ''}</div></div>

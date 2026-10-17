@@ -60,8 +60,9 @@ rota('/operacao', async tela => {
 
 // ===================== Viagens =====================
 rota('/operacao/viagens', async tela => {
-  const st = estado.params.get('status') || 'todas', q = (estado.params.get('q') || '').toLowerCase();
-  let vs = await api.listar('viagens', `ativo=eq.true${st === 'abertas' ? '&status=in.(planejada,em_transito)' : st === 'todas' ? '' : '&status=eq.' + st}&select=*,cl:clientes(nome),eq:equipamentos(codigo_frota),m:colaboradores(nome)&order=saida_prevista.desc.nullslast,criado_em.desc&limit=400`);
+  const sts = pLista('status', 'todas'), st = sts[0], q = (estado.params.get('q') || '').toLowerCase();
+  const fV = temTodos(sts) ? '' : filtroOu(sts.map(s => s === 'abertas' ? 'status=in.(planejada,em_transito)' : 'status=eq.' + s));
+  let vs = await api.listar('viagens', `ativo=eq.true${fV ? '&' + fV : ''}&select=*,cl:clientes(nome),eq:equipamentos(codigo_frota),m:colaboradores(nome)&order=saida_prevista.desc.nullslast,criado_em.desc&limit=400`);
   if (q) vs = vs.filter(v => [v.numero, v.origem, v.destino, v.cl?.nome, v.m?.nome, v.eq?.codigo_frota, v.documentos].join(' ').toLowerCase().includes(q));
   tela.innerHTML = `
     <div class="topo"><div><h1>Viagens</h1><p class="sub">${vs.length} viagem(ns) · frete ${brl(vs.reduce((a, v) => a + Number(v.valor_frete || 0), 0))}</p></div>${editaOp() ? '<a class="btn prim" href="#/operacao/viagens/nova">+ Nova viagem</a>' : ''}</div>
@@ -181,8 +182,8 @@ rota('/operacao/jornada', async tela => {
 
 // ===================== Jornadas: relatório =====================
 rota('/operacao/jornadas', async tela => {
-  const ini = estado.params.get('ini') || somaDias(hojeISO(), -30), fim = estado.params.get('fim') || hojeISO(), colab = estado.params.get('colab') || '', soAl = estado.params.get('alertas') === '1';
-  const [js, ms] = await Promise.all([api.listar('v_jornadas', `inicio=gte.${ini}&inicio=lte.${fim}T23:59:59${colab ? '&colaborador_id=eq.' + colab : ''}&order=nome,inicio`), motoristas()]);
+  const ini = estado.params.get('ini') || somaDias(hojeISO(), -30), fim = estado.params.get('fim') || hojeISO(), colabs = pLista('colab'), colab = colabs[0] || '', soAl = estado.params.get('alertas') === '1';
+  const [js, ms] = await Promise.all([api.listar('v_jornadas', `inicio=gte.${ini}&inicio=lte.${fim}T23:59:59${colabs.length ? '&colaborador_id=in.(' + colabs.join(',') + ')' : ''}&order=nome,inicio`), motoristas()]);
   const ls = js.map(j => ({ ...j, al: alertasJornada(j) })).filter(j => !soAl || j.al.length);
   const tot = k => ls.reduce((a, j) => a + Number(j[k] || 0), 0);
   tela.innerHTML = `<div class="topo"><div><h1>Controle de jornada</h1><p class="sub">${ls.length} jornada(s) · ${ls.filter(j => j.al.length).length} com alerta</p></div></div>
@@ -202,8 +203,8 @@ rota('/operacao/jornadas', async tela => {
 
 // ===================== Ocorrências e multas =====================
 rota('/operacao/ocorrencias', async tela => {
-  const tipo = estado.params.get('tipo') || '', st = estado.params.get('status') || 'abertas';
-  const os = await api.listar('ocorrencias_operacionais', `ativo=eq.true${tipo ? '&tipo=eq.' + tipo : ''}${st === 'abertas' ? '&status=neq.encerrada' : ''}&select=*,m:colaboradores(nome),v:viagens(numero),eq:equipamentos(codigo_frota)&order=data_hora.desc&limit=300`);
+  const tipos = pLista('tipo'), tipo = tipos[0] || '', sts = pLista('status', 'todas'), st = temTodos(sts) ? 'todas' : 'abertas';
+  const os = await api.listar('ocorrencias_operacionais', `ativo=eq.true${tipos.length ? '&tipo=in.(' + tipos.join(',') + ')' : ''}${st === 'abertas' ? '&status=neq.encerrada' : ''}&select=*,m:colaboradores(nome),v:viagens(numero),eq:equipamentos(codigo_frota)&order=data_hora.desc&limit=300`);
   tela.innerHTML = `<div class="topo"><div><h1>Ocorrências e multas</h1><p class="sub">${os.length} registro(s) · ${brl(os.reduce((a, o) => a + Number(o.custo || o.valor_multa || 0), 0))}</p></div><a class="btn prim" href="#/operacao/ocorrencias/nova">+ Ocorrência</a></div>
     <form class="filtros" id="filtros"><select name="tipo"><option value="">Todos os tipos</option>${Object.entries(TIPO_OCO).map(([k, t]) => `<option value="${k}" ${k === tipo ? 'selected' : ''}>${t}</option>`).join('')}</select>
       <select name="status"><option value="abertas">Em aberto</option><option value="todas" ${st === 'todas' ? 'selected' : ''}>Todas</option></select><button class="btn">Filtrar</button></form>

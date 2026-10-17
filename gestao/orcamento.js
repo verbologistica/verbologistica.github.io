@@ -212,10 +212,10 @@ rota('/orcamento/ver/:id', async (tela, id) => {
         ${editaOrc() ? '<button class="btn perigo" id="excluir">Excluir</button>' : ''}
         <a class="btn" href="#/orcamento">Voltar</a></div></div>
     <form class="filtros" id="filtros">
-      <select name="tipo" aria-label="Tipo de período"><option value="acum" ${!soMes ? 'selected' : ''}>Período (acumulado)</option><option value="mes" ${soMes ? 'selected' : ''}>Um mês só</option></select>
-      <select name="de" aria-label="De" ${soMes ? 'hidden' : ''}>${MESES_NOME.map((m, i) => `<option value="${i + 1}" ${i + 1 === pIni ? 'selected' : ''}>de ${m}</option>`).join('')}</select>
-      <select name="ate" aria-label="Até" ${soMes ? 'hidden' : ''}>${MESES_NOME.map((m, i) => `<option value="${i + 1}" ${i + 1 === pFim ? 'selected' : ''}>até ${m}</option>`).join('')}</select>
-      <select name="mes" aria-label="Mês" ${soMes ? '' : 'hidden'}>${MESES_NOME.map((m, i) => `<option value="${i + 1}" ${i + 1 === (Number(soMes) || (o.ano === anoAtual ? mesAtual : 1)) ? 'selected' : ''}>${m}</option>`).join('')}</select>
+      <select data-unico name="tipo" aria-label="Tipo de período"><option value="acum" ${!soMes ? 'selected' : ''}>Período (acumulado)</option><option value="mes" ${soMes ? 'selected' : ''}>Um mês só</option></select>
+      <select data-unico name="de" aria-label="De" ${soMes ? 'hidden' : ''}>${MESES_NOME.map((m, i) => `<option value="${i + 1}" ${i + 1 === pIni ? 'selected' : ''}>de ${m}</option>`).join('')}</select>
+      <select data-unico name="ate" aria-label="Até" ${soMes ? 'hidden' : ''}>${MESES_NOME.map((m, i) => `<option value="${i + 1}" ${i + 1 === pFim ? 'selected' : ''}>até ${m}</option>`).join('')}</select>
+      <select data-unico name="mes" aria-label="Mês" ${soMes ? '' : 'hidden'}>${MESES_NOME.map((m, i) => `<option value="${i + 1}" ${i + 1 === (Number(soMes) || (o.ano === anoAtual ? mesAtual : 1)) ? 'selected' : ''}>${m}</option>`).join('')}</select>
       <label class="check"><input type="checkbox" name="todas" ${estado.params.get('todas') ? 'checked' : ''}> Mostrar contas sem valores</label>
       <button class="btn">Filtrar</button></form>
     <div class="orc-kpis">
