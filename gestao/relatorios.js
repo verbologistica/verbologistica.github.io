@@ -45,6 +45,7 @@ function coletarRelatorio(tela, table) {
 
   // filtros aplicados (da barra de filtros da tela e do formulário de busca)
   const filtros = [];
+  $$('.filtro-local .flm', tela).forEach(m => { const v = $$('.flm-ops input:checked', m).map(c => c.value); if (v.length) filtros.push(`${m.dataset.rot}: ${v.join(', ')}`); });
   $$('.filtro-local [data-fl]', tela).forEach(i => {
     if (!i.value) return;
     if (i.tagName === 'SELECT') filtros.push(i.selectedOptions[0].text);

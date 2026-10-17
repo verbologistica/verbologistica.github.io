@@ -1062,6 +1062,70 @@ function htmlResumoGestao(r) {
   return h;
 }
 
+const semAcento = t => String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+
+// ===================== Listas suspensas com busca digitando (todas as do sistema) =====================
+// Cada <select> ganha um campo onde se digita parte do texto; a lista mostra só o que combina.
+// O <select> original continua no formulário (valor, required, eventos change) — só fica invisível.
+const _selDesc = { value: Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value'), selectedIndex: Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'selectedIndex') };
+let _cbAberto = null;
+function comboSelect(sel) {
+  if (sel._cb || sel.multiple || sel.size > 1 || sel.hasAttribute('data-nativo') || sel.closest('.flm, .orc-grade')) return;
+  sel._cb = true;
+  const box = document.createElement('div'); box.className = 'cb';
+  sel.before(box); box.append(sel); sel.classList.add('cb-sel'); sel.tabIndex = -1; sel.setAttribute('aria-hidden', 'true');
+  const inp = document.createElement('input'); inp.type = 'text'; inp.className = 'cb-in'; inp.autocomplete = 'off'; inp.spellcheck = false;
+  inp.setAttribute('role', 'combobox'); inp.setAttribute('aria-expanded', 'false'); if (sel.getAttribute('aria-label')) inp.setAttribute('aria-label', sel.getAttribute('aria-label'));
+  if (sel.id) { inp.id = sel.id + '__cb'; const lb = document.querySelector(`label[for="${sel.id}"]`); if (lb) lb.htmlFor = inp.id; }
+  let lista = null;   // criada só quando abre (e removida ao fechar)
+  box.append(inp);
+  let ativo = -1, vis = [];
+  const textoSel = () => sel.selectedIndex >= 0 ? sel.options[sel.selectedIndex].text : '';
+  const sync = () => { if (_cbAberto !== api_) inp.value = textoSel(); inp.disabled = sel.disabled; box.classList.toggle('cb-semvalor', !sel.value);
+    inp.placeholder = sel.options[0] && !sel.options[0].value ? sel.options[0].text : ''; box.hidden = sel.hidden; };
+  for (const p of ['value', 'selectedIndex']) Object.defineProperty(sel, p, { configurable: true, get() { return _selDesc[p].get.call(this); }, set(v) { _selDesc[p].set.call(this, v); sync(); } });
+  new MutationObserver(sync).observe(sel, { childList: true, subtree: true, attributes: true, attributeFilter: ['disabled', 'hidden'] });
+  sel.addEventListener('change', sync);
+  sel.addEventListener('focus', () => inp.focus());
+  const posicionar = () => { if (!lista) return; const r = inp.getBoundingClientRect(); const baixo = innerHeight - r.bottom, alto = Math.min(280, Math.max(baixo, r.top) - 12);
+    lista.style.left = r.left + 'px'; lista.style.width = Math.max(r.width, 200) + 'px'; lista.style.maxHeight = alto + 'px';
+    if (baixo < 200 && r.top > baixo) { lista.style.top = ''; lista.style.bottom = (innerHeight - r.top + 4) + 'px'; } else { lista.style.bottom = ''; lista.style.top = (r.bottom + 4) + 'px'; } };
+  const desenhar = filtro => {
+    const t = semAcento(filtro);
+    vis = [...sel.options].map((o, i) => ({ o, i })).filter(({ o }) => !o.disabled || o.value === '' ).filter(({ o }) => !t || semAcento(o.text).includes(t));
+    lista.innerHTML = vis.length ? vis.map(({ o, i }, k) => `<div class="cb-op ${i === sel.selectedIndex ? 'sel' : ''} ${o.value === '' ? 'cb-vazio' : ''}" data-k="${k}" role="option">${esc(o.text)}</div>`).join('')
+      : '<div class="cb-nada">Nada encontrado</div>';
+    ativo = t ? 0 : Math.max(0, vis.findIndex(v => v.i === sel.selectedIndex)); marcar(); };
+  const marcar = () => { if (!lista) return; $$('.cb-op', lista).forEach((d, k) => d.classList.toggle('ativo', k === ativo)); lista.querySelector('.cb-op.ativo')?.scrollIntoView({ block: 'nearest' }); };
+  const abrir = () => { if (sel.disabled) return; if (_cbAberto && _cbAberto !== api_) _cbAberto.fechar(); _cbAberto = api_;
+    if (!lista) { lista = document.createElement('div'); lista.className = 'cb-lista'; lista.setAttribute('role', 'listbox'); document.body.append(lista);
+      lista.addEventListener('mousedown', e => { e.preventDefault(); const d = e.target.closest('.cb-op'); if (d) escolher(Number(d.dataset.k)); }); }
+    desenhar(''); posicionar(); inp.setAttribute('aria-expanded', 'true'); inp.select(); };
+  const fechar = () => { lista?.remove(); lista = null; inp.setAttribute('aria-expanded', 'false'); if (_cbAberto === api_) _cbAberto = null; inp.value = textoSel(); };
+  const escolher = k => { const v = vis[k]; if (!v) return; const mudou = sel.selectedIndex !== v.i; _selDesc.selectedIndex.set.call(sel, v.i); fechar(); sync();
+    if (mudou) { sel.dispatchEvent(new Event('input', { bubbles: true })); sel.dispatchEvent(new Event('change', { bubbles: true })); } };
+  const api_ = { fechar, posicionar, get lista() { return lista; }, box };
+  inp.addEventListener('focus', abrir);
+  inp.addEventListener('mousedown', () => { if (!lista && document.activeElement === inp) abrir(); });
+  inp.addEventListener('input', e => { e.stopPropagation(); if (!lista) abrir(); desenhar(inp.value); posicionar(); });
+  inp.addEventListener('change', e => e.stopPropagation());
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); if (!lista) abrir(); else { ativo = Math.min(vis.length - 1, ativo + 1); marcar(); } }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); ativo = Math.max(0, ativo - 1); marcar(); }
+    else if (e.key === 'Enter') { if (lista) { e.preventDefault(); escolher(ativo); } }
+    else if (e.key === 'Escape') { if (lista) { e.stopPropagation(); fechar(); } }
+    else if (e.key === 'Tab') { if (lista && inp.value !== textoSel() && vis.length) escolher(ativo); else fechar(); }
+  });
+  inp.addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== inp && _cbAberto === api_) fechar(); }, 120));
+  sync();
+}
+function combosEm(raiz) { (raiz.matches?.('select') ? [raiz] : $$('select', raiz)).forEach(comboSelect); }
+new MutationObserver(ms => { for (const m of ms) for (const n of m.addedNodes) if (n.nodeType === 1 && !n.classList?.contains('cb-lista')) combosEm(n);
+  if (_cbAberto && !_cbAberto.box.isConnected) _cbAberto.fechar(); }).observe(document.documentElement, { childList: true, subtree: true });
+addEventListener('scroll', e => { if (_cbAberto && !_cbAberto.lista?.contains(e.target)) _cbAberto.posicionar(); }, true);
+addEventListener('resize', () => _cbAberto?.posicionar());
+addEventListener('hashchange', () => _cbAberto?.fechar());
+
 // ===================== Filtros na própria tela =====================
 // Filtra cartões ou linhas já carregados, sem ir ao servidor. Cada item filtrável traz atributos
 // data-f-<campo> (texto exibido), data-f-data (AAAA-MM-DD), data-f-valor (número) e data-f-busca (texto livre).
@@ -1080,19 +1144,25 @@ function filtroLocal(tela, { itens, antes, campos = [], busca = true, periodo = 
   barra.className = 'filtros filtro-local' + (Object.keys(salvo).some(k => k !== 'q' && salvo[k]) ? '' : ' fl-fechado');
   barra.innerHTML = `<button type="button" class="btn peq fl-toggle" data-fl-toggle>Filtros</button>
     ${busca ? `<input type="search" data-fl="q" placeholder="Buscar…" value="${esc(salvo.q || '')}" aria-label="Buscar">` : ''}
-    ${usados.map(c => `<select data-fl="${c.k}" aria-label="${esc(c.rotulo)}"><option value="">${esc(c.rotulo)}: todos</option>${c.valores.map(v => `<option value="${esc(v)}" ${salvo[c.k] === v ? 'selected' : ''}>${esc(c.rotulo)}: ${esc(v)}</option>`).join('')}</select>`).join('')}
+    ${usados.map(c => `<div class="flm" data-flm="${c.k}" data-rot="${esc(c.rotulo)}"><button type="button" class="flm-btn" aria-haspopup="true"><span class="flm-txt">${esc(c.rotulo)}: todos</span></button>
+      <div class="flm-pan" hidden><input type="text" class="flm-q" placeholder="Digite para buscar…" autocomplete="off" aria-label="Buscar ${esc(c.rotulo)}">
+        <div class="flm-ops">${c.valores.map(v => `<label class="flm-op"><input type="checkbox" value="${esc(v)}"><span>${esc(v)}</span></label>`).join('')}</div>
+        <div class="flm-rod"><button type="button" class="btn peq" data-flm-todos>Marcar visíveis</button><button type="button" class="btn peq" data-flm-limpar>Limpar</button></div></div></div>`).join('')}
     ${periodo ? `<label class="fl-data">${esc(rotuloPeriodo)} de<input type="date" data-fl="de" value="${esc(salvo.de || '')}"></label><label class="fl-data">até<input type="date" data-fl="ate" value="${esc(salvo.ate || '')}"></label>` : ''}
     <button type="button" class="btn peq" data-fl-limpar>Limpar</button>
     <span class="muted filtro-resumo"></span>`;
   (typeof antes === 'string' ? $(antes, tela) : antes || todos[0].closest('.cartao') || todos[0]).before(barra);
   const aplicar = () => {
     const f = {}; $$('[data-fl]', barra).forEach(i => { if (i.value) f[i.dataset.fl] = i.value; });
+    $$('.flm', barra).forEach(m => { const v = $$('.flm-ops input:checked', m).map(c => c.value); if (v.length) f[m.dataset.flm] = v;
+      const rot = m.dataset.rot; $('.flm-txt', m).textContent = !v.length ? rot + ': todos' : v.length === 1 ? rot + ': ' + v[0] : `${rot}: ${v.length} selecionados`;
+      m.classList.toggle('ativo', v.length > 0); });
     try { sessionStorage.setItem(chave, JSON.stringify(f)); } catch { /* ok */ }
     const q = (f.q || '').toLowerCase();
     let n = 0, total = 0; const lista = els();
     for (const e of lista) {
       const d = e.dataset;
-      const ok = usados.every(c => !f[c.k] || d['f' + c.k[0].toUpperCase() + c.k.slice(1)] === f[c.k])
+      const ok = usados.every(c => !f[c.k] || f[c.k].includes(d['f' + c.k[0].toUpperCase() + c.k.slice(1)]))
         && (!f.de || (d.fData || '') >= f.de) && (!f.ate || (d.fData || '9999') <= f.ate)
         && (!q || (d.fBusca || e.innerText).toLowerCase().includes(q));
       e.hidden = !ok;
@@ -1107,7 +1177,18 @@ function filtroLocal(tela, { itens, antes, campos = [], busca = true, periodo = 
   };
   barra.addEventListener('input', aplicar); barra.addEventListener('change', aplicar);
   $('[data-fl-toggle]', barra).onclick = () => barra.classList.toggle('fl-fechado');
-  $('[data-fl-limpar]', barra).onclick = () => { $$('[data-fl]', barra).forEach(i => { i.value = ''; }); aplicar(); };
+  $('[data-fl-limpar]', barra).onclick = () => { $$('[data-fl]', barra).forEach(i => { i.value = ''; }); $$('.flm input', barra).forEach(i => { i.checked = false; i.value = i.type === 'text' ? '' : i.value; }); $$('.flm-op', barra).forEach(o => (o.hidden = false)); aplicar(); };
+  // listas de seleção múltipla: abre/fecha, busca digitando, marcar visíveis / limpar
+  $$('.flm', barra).forEach(m => {
+    const pan = $('.flm-pan', m), q = $('.flm-q', m);
+    $('.flm-btn', m).onclick = e => { e.stopPropagation(); const abrir = pan.hidden; $$('.flm-pan', barra).forEach(p => (p.hidden = true)); pan.hidden = !abrir; if (abrir) { q.value = ''; $$('.flm-op', m).forEach(o => (o.hidden = false)); q.focus(); } };
+    q.addEventListener('input', e => { e.stopPropagation(); const t = semAcento(q.value); $$('.flm-op', m).forEach(o => (o.hidden = !!t && !semAcento(o.textContent).includes(t))); });
+    q.addEventListener('keydown', e => { if (e.key === 'Escape') pan.hidden = true; if (e.key === 'Enter') { e.preventDefault(); const vis = $$('.flm-op', m).filter(o => !o.hidden); if (vis.length === 1) { const c = $('input', vis[0]); c.checked = !c.checked; aplicar(); } } });
+    $('[data-flm-todos]', m).onclick = () => { $$('.flm-op', m).filter(o => !o.hidden).forEach(o => ($('input', o).checked = true)); aplicar(); };
+    $('[data-flm-limpar]', m).onclick = () => { $$('.flm-op input', m).forEach(c => (c.checked = false)); aplicar(); };
+    pan.addEventListener('click', e => e.stopPropagation());
+  });
+  if ($('.flm', barra)) document.addEventListener('click', () => $$('.flm-pan', barra).forEach(p => (p.hidden = true)));
   aplicar();
   return { aplicar, visiveis: () => els().filter(e => !e.hidden) };
 }
