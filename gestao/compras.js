@@ -161,6 +161,7 @@ rota('/compras/requisicoes/ver/:id', async (tela, id) => {
         ${podeEditar ? `<a class="btn" href="#/compras/requisicoes/editar/${id}">Editar</a>` : ''}
         ${(dono || ehComprador()) && ['rascunho', 'devolvida', 'aguardando_cotacao', 'em_cotacao', 'aguardando_aprovacao'].includes(r.status) ? '<button class="btn perigo" id="cancelar">Cancelar</button>' : ''}
         ${(dono || ehComprador()) && ['rascunho', 'devolvida', 'aguardando_cotacao', 'cancelada'].includes(r.status) && !cots.some(c => c.status !== 'cancelada' && c._props) ? '<button class="btn perigo" id="excluir">Excluir</button>' : ''}
+        ${itens.length && r.status !== 'cancelada' ? '<button class="btn" id="pdf-cot">⬇ PDF para cotação</button>' : ''}
         <button class="btn" onclick="history.back()">Voltar</button></div></div>
     <div class="cartao"><div class="form">
       <div><div class="muted">Solicitante</div><b>${esc(r.solic?.nome || '')}</b><div class="muted">${dataHoraBR(r.criado_em)}</div></div>
@@ -175,6 +176,7 @@ rota('/compras/requisicoes/ver/:id', async (tela, id) => {
     ${cots.length ? `<div class="cartao"><h2>Cotação</h2><ul class="lista-simples">${cots.map(c => `<li>${veCompras() ? `<a href="#/compras/cotacoes/ver/${c.id}">${esc(c.numero)}</a>` : esc(c.numero)} ${tag(c.status)}${c.comentario_aprovacao ? `<br><span class="muted">${esc(c.comentario_aprovacao)}</span>` : ''}</li>`).join('')}</ul></div>` : ''}
     ${peds.length ? `<div class="cartao"><h2>Pedido de compra</h2><ul class="lista-simples">${peds.map(p => `<li><a href="#/compras/pedidos/ver/${p.id}">${esc(p.numero)}</a> ${tag(p.status)}<b>${brl(p.valor_total)}</b></li>`).join('')}</ul></div>` : ''}`;
   linhaTempoReq(id, $('#lt-req'));
+  $('#pdf-cot')?.addEventListener('click', e => ocupado(e.currentTarget, async () => { try { await pdfSolicitacaoCotacao(r, itens); } catch (err) { falha(err); } }));
   $('#cotar')?.addEventListener('click', async e => ocupado(e.target, async () => {
     try { const c = await api.rpc('abrir_cotacao', { p_requisicao: id }); location.hash = '#/compras/cotacoes/ver/' + c; } catch (err) { falha(err); }
   }));
@@ -617,6 +619,108 @@ async function anexarEm(destinos, arquivos, descricao = null) {
     await api.inserir('anexos', destinos.map(([entidade, entidade_id]) => ({ entidade, entidade_id, caminho_arquivo: caminho, nome_original: original.name,
       tipo_mime: f.type || 'application/octet-stream', tamanho_bytes: f.size, enviado_por: estado.usuario.id, descricao })));
   }
+}
+
+// ===================== Documentos no papel timbrado da Verbo (PDF) =====================
+// Segue o modelo "Ofícios, comunicados, declarações e cartas": faixa verde com o logo no topo,
+// "Correspondência oficial", nº do documento, destinatário, assunto, marca-d'água e rodapé institucional.
+const _imgTimbrado = {};
+async function imgDataUrl(nome) {
+  if (_imgTimbrado[nome]) return _imgTimbrado[nome];
+  const b = await (await fetch(nome + '?v=1')).blob();
+  return (_imgTimbrado[nome] = await new Promise(ok => { const fr = new FileReader(); fr.onload = () => ok(fr.result); fr.readAsDataURL(b); }));
+}
+const MESES_DOC = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+async function pdfTimbrado({ setor, numero, destinatario = [], assunto, corpo, assinatura = [], arquivo }) {
+  await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+  await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js');
+  const [cab, logo, marca, rod] = await Promise.all(['doc-cabecalho.jpg', 'doc-logo.png', 'doc-marca.png', 'doc-rodape.jpg'].map(imgDataUrl));
+  const doc = new window.jspdf.jsPDF({ unit: 'mm', format: 'a4' });
+  const W = 210, ML = 20, MR = 190, TOPO = 44, BASE = 268;
+  const COR = { texto: [37, 46, 53], cinza: [107, 115, 120], ouro: [221, 169, 54], verde: [2, 101, 77], linha: [214, 220, 224] };
+  const cor = c => doc.setTextColor(...COR[c]);
+  const espacado = (txt, x, y, opts = {}) => { doc.setCharSpace(opts.esp ?? 1.1); doc.text(txt, x, y, opts); doc.setCharSpace(0); };
+  const moldura = () => {
+    doc.addImage(marca, 'PNG', 96.3, 186, 137.6, 82.5);
+    doc.addImage(cab, 'JPEG', 0, 0, W, 30.7);
+    doc.addImage(logo, 'PNG', ML, 8.5, 53.9, 14.8);
+    doc.addImage(rod, 'JPEG', 0, 291.3, W, 5.8);
+    // rodapé institucional
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); cor('texto'); espacado('VERBO LOGÍSTICA', ML, 279.6, { esp: 0.9 });
+    let x = ML + doc.getTextWidth('VERBO LOGÍSTICA') + 14 * 0.9 + 2.5;
+    const parte = (t, y) => { doc.setFont('helvetica', 'normal'); cor('ouro'); doc.text('|', x, y); x += 3; cor('cinza'); doc.text(t, x, y); x += doc.getTextWidth(t) + 2.5; };
+    doc.setFontSize(7.5); parte('CNPJ 39.606.766/0001-50', 279.6); parte('Av. Manuel Alves Barbosa, Jandaia III, Birigui/SP, CEP 16.203-231', 279.6);
+    x = ML; cor('cinza'); doc.text('www.verbologistica.com.br', x, 283.3); x += doc.getTextWidth('www.verbologistica.com.br') + 2.5;
+    parte('iraquitan.silva@verbologistica.com.br', 283.3); parte('(17) 9 9701-7562', 283.3);
+  };
+  // ---- 1ª página: cabeçalho da correspondência
+  moldura();
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); cor('ouro');
+  const seT = (setor || '').trim(); doc.setFontSize(8); const wSet = doc.getTextWidth(seT);
+  doc.setFontSize(7.5); espacado('CORRESPONDÊNCIA OFICIAL', MR - wSet - 4, 37, { align: 'right', esp: 1.6 });
+  doc.setFontSize(8); cor('texto'); doc.text(seT, MR, 37, { align: 'right' });
+  const hoje = new Date(); doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); cor('cinza');
+  doc.text(`Birigui/SP, ${hoje.getDate()} de ${MESES_DOC[hoje.getMonth()]} de ${hoje.getFullYear()}`, MR, 46, { align: 'right' });
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); cor('ouro'); espacado('DOCUMENTO Nº', ML, 57, { esp: 1.4 });
+  doc.setFontSize(9.5); cor('texto'); doc.text(numero, ML + 31, 57);
+  let y = 67;
+  destinatario.forEach(([t, estilo]) => { doc.setFont('helvetica', estilo === 'b' ? 'bold' : 'normal'); doc.setFontSize(estilo === 'b' ? 11 : 10); cor(estilo === 'b' ? 'texto' : 'cinza'); doc.text(t, ML, y); y += 5.4; });
+  y += 4; doc.setFont('helvetica', 'bold'); doc.setFontSize(11); cor('texto'); doc.text(`Assunto: ${assunto}`, ML, y);
+  doc.setDrawColor(...COR.linha); doc.setLineWidth(0.2); doc.line(ML, y + 1.6, MR, y + 1.6); y += 10;
+  // ---- corpo: parágrafos e tabelas, com quebra de página
+  const novaPagina = () => { doc.addPage(); moldura(); y = TOPO; };
+  const paragrafo = (txt, { negrito = false, espaco = 3.2 } = {}) => {
+    doc.setFont('helvetica', negrito ? 'bold' : 'normal'); doc.setFontSize(10.5); cor('texto');
+    const linhas = doc.splitTextToSize(txt, MR - ML);
+    linhas.forEach((l, i) => { if (y > BASE) novaPagina(); const ultima = i === linhas.length - 1;
+      doc.text(l, ML, y, ultima || negrito ? {} : { align: 'justify', maxWidth: MR - ML }); y += 5.5; });
+    y += espaco;
+  };
+  for (const b of corpo) {
+    if (typeof b === 'string') paragrafo(b);
+    else if (b.negrito) paragrafo(b.negrito, { negrito: true, espaco: 1 });
+    else if (b.lista) { b.lista.forEach(t => { if (y > BASE) novaPagina(); doc.setFont('helvetica', 'normal'); doc.setFontSize(10.5); cor('ouro'); doc.text('•', ML + 1, y); cor('texto');
+        const ls = doc.splitTextToSize(t, MR - ML - 6); ls.forEach(l => { if (y > BASE) novaPagina(); doc.text(l, ML + 6, y); y += 5.2; }); }); y += 3; }
+    else if (b.tabela) {
+      doc.autoTable({ startY: y, head: [b.tabela.cab], body: b.tabela.linhas, margin: { left: ML, right: W - MR, top: TOPO, bottom: 297 - BASE + 2 },
+        theme: 'grid', styles: { font: 'helvetica', fontSize: 9.5, textColor: COR.texto, lineColor: COR.linha, lineWidth: 0.15, cellPadding: 2.2, valign: 'middle' },
+        headStyles: { fillColor: COR.verde, textColor: 255, fontStyle: 'bold' }, alternateRowStyles: { fillColor: [246, 249, 248] },
+        columnStyles: b.tabela.colunas || {},
+        willDrawPage: d => { if (d.pageNumber > 1) moldura(); } });
+      y = doc.lastAutoTable.finalY + 7;
+    }
+  }
+  // ---- assinatura
+  if (y > BASE - 30) novaPagina();
+  y += 2; paragrafo('Atenciosamente,', { espaco: 14 });
+  doc.setDrawColor(...COR.texto); doc.setLineWidth(0.3); doc.line(ML, y, ML + 68, y); y += 5;
+  assinatura.forEach(([t, estilo], i) => { doc.setFont('helvetica', estilo === 'b' ? 'bold' : 'normal'); doc.setFontSize(estilo === 'b' ? 11 : 10); cor(estilo === 'b' ? 'texto' : 'cinza'); doc.text(t, ML, y); y += 5.2; });
+  // ---- "Página x de y"
+  const n = doc.getNumberOfPages();
+  for (let i = 1; i <= n; i++) { doc.setPage(i); doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); cor('texto'); doc.text(`Página ${i} de ${n}`, MR, 283.3, { align: 'right' }); }
+  doc.save(arquivo);
+}
+
+// Solicitação de cotação (para mandar ao fornecedor) — qualquer pessoa pode baixar
+async function pdfSolicitacaoCotacao(r, itens) {
+  const u = estado.usuario;
+  const linhas = itens.map((i, k) => [String(k + 1), i.descricao || '', Number(i.quantidade || 0).toLocaleString('pt-BR'), i.unidade || '']);
+  await pdfTimbrado({
+    setor: 'Compras', numero: r.numero, arquivo: `Solicitacao de cotacao ${r.numero}.pdf`,
+    destinatario: [['Ao(À) Fornecedor(a)'], ['Departamento Comercial', 'b'], ['A/C: responsável pelo orçamento']],
+    assunto: `Solicitação de cotação — ${r.numero}`,
+    corpo: [
+      'Prezado(a) Senhor(a),',
+      `Solicitamos a gentileza de nos enviar proposta comercial para o fornecimento dos itens relacionados abaixo, referentes à nossa solicitação de compra ${r.numero}.`,
+      { tabela: { cab: ['Item', 'Descrição / especificação', 'Qtd.', 'Unid.'], linhas,
+        colunas: { 0: { cellWidth: 13, halign: 'center' }, 2: { cellWidth: 22, halign: 'right' }, 3: { cellWidth: 20, halign: 'center' } } } },
+      { negrito: 'Na proposta, pedimos informar:' },
+      { lista: ['preço unitário e total de cada item;', 'prazo de entrega;', 'condição e forma de pagamento;', 'frete (CIF ou FOB) e impostos inclusos;', 'validade da proposta.'] },
+      `Local de entrega: Av. Manuel Alves Barbosa, Jandaia III, Birigui/SP, CEP 16.203-231.${r.data_necessidade ? ` Precisamos dos itens até ${dataBR(r.data_necessidade)}${r.urgencia === 'alta' ? ' (urgente)' : ''}.` : ''}`,
+      `Por gentileza, envie a proposta${u.email ? ` para ${u.email}` : ''} mencionando o número ${r.numero}. Ficamos à disposição para qualquer esclarecimento.`,
+    ],
+    assinatura: [[u.nome || 'Compras', 'b'], ['Compras | VERBO LOGÍSTICA']],
+  });
 }
 
 // Pedido para enviar ao fornecedor (imprimir ou salvar em PDF)
