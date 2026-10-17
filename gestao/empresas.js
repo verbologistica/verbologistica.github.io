@@ -67,11 +67,11 @@ async function formEmpresa(tela, e = null) {
   if (!tem('administrador')) { tela.innerHTML = '<div class="cartao vazio">Somente o administrador altera os dados da empresa.</div>'; return; }
   const cols = await api.listar('colaboradores', 'select=id,nome,cpf,email,email_corporativo,cargo:cargos(nome),setor:setores(nome)&ativo=eq.true&order=nome').catch(() => []);
   const linhaResp = (r = {}) => `<tr class="resp" data-id="${r.id || ''}">
-      <td data-r="Setor"><select name="setor"><option value="">Selecione…</option>${SETORES_EMP.map(s => `<option ${s === r.setor ? 'selected' : ''}>${s}</option>`).join('')}</select></td>
-      <td data-r="Nome completo"><input name="nome" list="lst-colab" value="${esc(r.nome || '')}" autocomplete="off"></td>
-      <td data-r="CPF"><input name="cpf" inputmode="numeric" value="${r.cpf ? fmtCPF(r.cpf) : ''}" style="width:130px"></td>
-      <td data-r="E-mail"><input name="email" type="email" value="${esc(r.email || '')}"></td>
-      <td data-r="Cargo"><input name="cargo" value="${esc(r.cargo || '')}"></td>
+      <td data-r="Setor"><select name="r_setor"><option value="">Selecione…</option>${SETORES_EMP.map(s => `<option ${s === r.setor ? 'selected' : ''}>${s}</option>`).join('')}</select></td>
+      <td data-r="Nome completo"><input name="r_nome" list="lst-colab" value="${esc(r.nome || '')}" autocomplete="off"></td>
+      <td data-r="CPF"><input name="r_cpf" inputmode="numeric" value="${r.cpf ? fmtCPF(r.cpf) : ''}" style="width:130px"></td>
+      <td data-r="E-mail"><input name="r_email" type="email" value="${esc(r.email || '')}"></td>
+      <td data-r="Cargo"><input name="r_cargo" value="${esc(r.cargo || '')}"></td>
       <td><button type="button" class="btn peq rem" title="Remover">✕</button></td></tr>`;
   tela.innerHTML = `<div class="topo"><div><h1>${e ? 'Editar CNPJ' : 'Novo CNPJ'}</h1><p class="sub">Digite o CNPJ: os dados da Receita são preenchidos automaticamente</p></div></div>
     <form id="f-emp"><div class="cartao"><div class="form">
@@ -113,13 +113,13 @@ async function formEmpresa(tela, e = null) {
       st.innerHTML = `<span class="tag verde">${esc(r.descricao_situacao_cadastral || 'Encontrado')}</span>`;
     } catch (err) { st.innerHTML = `<span class="tag amarelo">${esc(err.message)}</span>`; }
   });
-  const preencher = (tr, c) => { if (!c) return; const q = n => $(`[name=${n}]`, tr);
+  const preencher = (tr, c) => { if (!c) return; const q = n => $(`[name=r_${n}]`, tr);
     q('nome').value = c.nome; if (c.cpf) q('cpf').value = fmtCPF(c.cpf); if (!q('email').value) q('email').value = c.email_corporativo || c.email || '';
     if (!q('cargo').value) q('cargo').value = c.cargo?.nome || ''; tr.dataset.colab = c.id; };
   const ligar = () => $$('tr.resp', corpo).forEach(tr => {
     $('.rem', tr).onclick = () => { if (tr.dataset.id) removidos.push(tr.dataset.id); tr.remove(); };
-    $('[name=nome]', tr).onchange = ev => preencher(tr, cols.find(c => semAcento(c.nome).toLowerCase() === semAcento(ev.target.value.trim()).toLowerCase()));
-    $('[name=cpf]', tr).oninput = ev => { const d = soDigitos(ev.target.value).slice(0, 11); ev.target.value = d.length === 11 ? fmtCPF(d) : d;
+    $('[name=r_nome]', tr).onchange = ev => preencher(tr, cols.find(c => semAcento(c.nome).toLowerCase() === semAcento(ev.target.value.trim()).toLowerCase()));
+    $('[name=r_cpf]', tr).oninput = ev => { const d = soDigitos(ev.target.value).slice(0, 11); ev.target.value = d.length === 11 ? fmtCPF(d) : d;
       if (d.length === 11) preencher(tr, cols.find(c => soDigitos(c.cpf) === d)); };
   });
   ligar();
@@ -133,8 +133,8 @@ async function formEmpresa(tela, e = null) {
     const d = formDados(f), cnpj = soDigitos(d.cnpj);
     if (cnpj.length !== 14 || !cnpjValido(cnpj)) return aviso('Informe um CNPJ válido.', true);
     const resps = $$('tr.resp', corpo).map(tr => ({ id: tr.dataset.id || null, colaborador_id: tr.dataset.colab || null,
-      setor: $('[name=setor]', tr).value, nome: $('[name=nome]', tr).value.trim(), cpf: soDigitos($('[name=cpf]', tr).value) || null,
-      email: $('[name=email]', tr).value.trim() || null, cargo: $('[name=cargo]', tr).value.trim() || null })).filter(r => r.nome || r.setor);
+      setor: $('[name=r_setor]', tr).value, nome: $('[name=r_nome]', tr).value.trim(), cpf: soDigitos($('[name=r_cpf]', tr).value) || null,
+      email: $('[name=r_email]', tr).value.trim() || null, cargo: $('[name=r_cargo]', tr).value.trim() || null })).filter(r => r.nome || r.setor);
     const falta = resps.find(r => !r.setor || !r.nome);
     if (falta) return aviso('Cada responsável precisa de setor e nome completo.', true);
     const dados = { cnpj, razao_social: d.razao_social.trim(), nome_fantasia: d.nome_fantasia || null, inscricao_estadual: d.inscricao_estadual || null,
