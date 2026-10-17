@@ -96,6 +96,8 @@ const ICONES = {
   menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
   seta: '<path d="M5 12h14m0 0-5-5m5 5-5 5"/>',
   ok: '<circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/>',
+  copiar: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h8"/>',
+  bandeira: '<path d="M5 21V4m0 0h11l-2 4 2 4H5"/>',
 };
 const ico = (nome, cls = '') => ICONES[nome] ? `<svg class="i ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONES[nome]}</svg>` : '';
 
@@ -371,6 +373,7 @@ const MENU = [
   ['Adiantamentos', '#/financeiro/adiantamentos', P_FIN, 'dinheiro', 'prestacao_vencida', true],
   ['Fundo Fixo', '#/financeiro/fundo', P_FIN, 'moedas', null, true],
   ['A verificar', '#/financeiro/verificar', P_FIN, 'alerta', 'a_verificar', true],
+  ['Projeção financeira', '#/financeiro/projecao', [...P_FIN, 'aprovador'], 'tendencia', null, true],
   ['grupo', 'Orçamento e Contratos', 'pizza'],
   ['Orçado × Realizado', '#/orcamento', ['administrador', 'diretoria', 'financeiro', 'aprovador'], 'tendencia', 'orcamento_alerta', true],
   ['grupo', 'Operação', 'caminhao'],
@@ -816,6 +819,9 @@ rota('/inicio', async tela => {
     <ul class="mr-lista">${minhasReq.map(r => { const [n, txt] = ETAPA_REQ[r.status] || [0, r.status];
       return `<li><a href="#/compras/requisicoes/ver/${r.id}"><span class="mr-num">${esc(r.numero || '')}</span><span class="mr-txt">${esc((r.justificativa || '').slice(0, 90))}${(r.justificativa || '').length > 90 ? '…' : ''}</span>
         <span class="mr-etapa ${r.status === 'devolvida' ? 'alerta' : ''}"><span class="mr-pontos">${[0, 1, 2, 3, 4, 5, 6, 7].map(i => `<i class="${i < n ? 'f' : i === n ? 'a' : ''}"></i>`).join('')}</span>${txt}</span></a></li>`; }).join('')}</ul></div>` : '';
+  const [resGestao, minhasAcoes] = await Promise.all([api.rpc('resumo_gestao').catch(() => null), api.rpc('minhas_acoes').catch(() => [])]);
+  const blocoAcoes = htmlMinhasAcoes(minhasAcoes || []);
+  const blocoGestao = htmlResumoGestao(resGestao);
   const verAnt = estado.params?.get('avisos') === 'todos';
   const notifs = await api.listar('notificacoes', `usuario_id=eq.${estado.usuario.id}${verAnt ? '' : '&lida=eq.false'}&order=criado_em.desc&limit=${verAnt ? 40 : 30}`);
   const hh = new Date().getHours(), sauda = hh < 12 ? 'Bom dia' : hh < 18 ? 'Boa tarde' : 'Boa noite';
@@ -830,6 +836,8 @@ rota('/inicio', async tela => {
         ${(() => { const [f, a, o] = fraseDoDia(); return `<figure class="ih-frase"><blockquote>“${esc(f)}”</blockquote><figcaption>— <b>${esc(a)}</b>${o ? `, <cite>${esc(o)}</cite>` : ''}</figcaption></figure>`; })()}
       </div>
     </section>
+    ${blocoAcoes}
+    ${blocoGestao}
     <div class="inicio-kpis">
       <a class="cartao kpi ${minhasReq.some(r => r.status === 'devolvida') ? 'alerta' : ''}" href="#${minhasReq.length ? '/inicio' : '/compras/requisicoes'}" ${minhasReq.length ? 'onclick="event.preventDefault();document.getElementById(\'minhas-req\').scrollIntoView({behavior:\'smooth\'})"' : ''}><div class="n">${minhasReq.length}</div><div class="r">minha(s) requisição(ões) de compra em andamento</div></a>
       ${p.aprovar || veTudo() || tem('aprovador', 'financeiro') ? `<a class="cartao kpi ${p.aprovar ? 'alerta' : ''}" href="#/aprovacoes"><div class="n">${p.aprovar || 0}</div><div class="r">para você aprovar</div></a>` : ''}
@@ -906,13 +914,87 @@ rota('/inicio', async tela => {
       <div class="ik-grade"></div></section>`; }).join('');
   for (const [c] of SECOES) if (grupos[c]?.length) { const g = $(`.ik-sec[data-sec="${c}"] .ik-grade`, caixa); grupos[c].forEach(k => g.append(k)); }
   { const al = $$('.inicio-kpis .kpi.alerta', tela).length, ap = Number(p.aprovar || 0);
-    const partes = [ap ? `<b>${ap}</b> item(ns) para aprovar` : '', al ? `<b>${al}</b> ponto(s) de atenção` : ''].filter(Boolean);
+    const nAc = (minhasAcoes || []).length;
+    const partes = [ap ? `<b>${ap}</b> item(ns) para aprovar` : '', nAc ? `<b>${nAc}</b> ação(ões) no seu nome` : '', al ? `<b>${al}</b> ponto(s) de atenção` : ''].filter(Boolean);
     $('#ih-resumo', tela).innerHTML = partes.length ? `Hoje você tem ${partes.join(' e ')}.` : 'Tudo em dia por aqui.'; }
+  ligarMinhasAcoes(tela, minhasAcoes || []);
   $$('[data-lida]', tela).forEach(b => b.onclick = async e => { e.preventDefault(); await api.alterar('notificacoes', `id=eq.${b.dataset.lida}`, { lida: true }); navegar(); });
   $('#lidas')?.addEventListener('click', async () => {
     await api.alterar('notificacoes', `usuario_id=eq.${estado.usuario.id}&lida=eq.false`, { lida: true }); navegar();
   });
 });
+
+// ===================== Início: minhas ações (plano de ação) =====================
+const ST_ACAO_TXT = { aberta: ['Aberta', 'amarelo'], em_andamento: ['Em andamento', 'azul'], concluida: ['Concluída', 'verde'], cancelada: ['Cancelada', ''] };
+function prazoTxt(prazo) {
+  if (!prazo) return ['sem prazo', ''];
+  const d = Math.round((new Date(prazo + 'T12:00') - new Date(hojeISO() + 'T12:00')) / 864e5);
+  return d < 0 ? [`atrasada há ${-d} dia(s)`, 'atr'] : d === 0 ? ['vence hoje', 'hoje'] : d <= 3 ? [`vence em ${d} dia(s)`, 'perto'] : [`faltam ${d} dias`, ''];
+}
+function htmlMinhasAcoes(acs) {
+  if (!acs.length) return '';
+  const atr = acs.filter(a => a.prazo && a.prazo < hojeISO()).length;
+  return `<div class="cartao minhas-acoes" id="minhas-acoes"><div class="topo" style="margin:0 0 8px"><div><h2 style="margin:0">${ico('bandeira')} Minhas ações pendentes</h2>
+      <p class="muted" style="margin:2px 0 0">${acs.length} ação(ões) do plano de ação no seu nome${atr ? ` · <b class="txt-verm">${atr} atrasada(s)</b>` : ''} · abra para lançar o andamento</p></div></div>
+    <ul class="ma-lista">${acs.map(a => { const [pt, pc] = prazoTxt(a.prazo); const [st, sc] = ST_ACAO_TXT[a.status] || [a.status, ''];
+      return `<li class="${pc}"><div class="ma-txt"><b>${esc(a.descricao)}</b><span class="muted">${esc(a.origem)}${a.criado_por ? ' · por ' + esc(a.criado_por) : ''}</span></div>
+        <div class="ma-prazo"><span>${a.prazo ? 'Prazo ' + dataBR(a.prazo) : 'Sem prazo'}</span><span class="ma-pt ${pc}">${pt}</span></div>
+        <span class="tag ${sc}">${st}</span><button class="btn prim peq" data-acao="${a.modulo}:${a.id}">Abrir ação</button></li>`; }).join('')}</ul></div>`;
+}
+function ligarMinhasAcoes(tela, acs) {
+  $$('[data-acao]', tela).forEach(b => (b.onclick = async () => {
+    const [mod, id] = b.dataset.acao.split(':'); const a = acs.find(x => x.id === id && x.modulo === mod); if (!a) return;
+    const tabela = mod === 'ssma' ? 'ssma_acoes' : 'qual_acoes';
+    const linkMod = mod === 'ssma' ? (telaPermitida('/ssma/acoes') ? '#/ssma/acoes' : '') : a.nc_id && telaPermitida('/qualidade/nc') ? '#/qualidade/nc/ver/' + a.nc_id : '';
+    const [pt] = prazoTxt(a.prazo);
+    const r = await modal(`<form><h2>Ação do plano de ação</h2>
+      <div class="ma-det"><p><b>${esc(a.descricao)}</b></p><p class="muted">${esc(a.origem)}${a.criado_por ? ' · lançada por ' + esc(a.criado_por) : ''} · ${a.prazo ? 'prazo ' + dataBR(a.prazo) + ' (' + pt + ')' : 'sem prazo'}</p></div>
+      <div class="form">
+        <label class="campo">Situação<select name="status">${['aberta', 'em_andamento', 'concluida'].map(k => `<option value="${k}" ${k === a.status ? 'selected' : ''}>${ST_ACAO_TXT[k][0]}</option>`).join('')}</select></label>
+        <label class="campo largo">O que foi feito / andamento (evidência)<textarea name="evidencia" rows="3" placeholder="Descreva o que já foi feito. Para concluir, a evidência é obrigatória.">${esc(a.evidencia || '')}</textarea></label></div>
+      ${linkMod ? `<p class="muted"><a href="${linkMod}" data-fechar>Ver no módulo de ${mod === 'ssma' ? 'Segurança' : 'Qualidade'}</a></p>` : ''}
+      <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Salvar</button></div></form>`,
+      { validar: d => d.status === 'concluida' && !d.evidencia?.trim() ? 'Para concluir, descreva a evidência de que a ação foi feita.' : null });
+    if (!r) return;
+    try { await api.alterar(tabela, `id=eq.${id}`, { status: r.status, evidencia: r.evidencia?.trim() || null });
+      aviso(r.status === 'concluida' ? 'Ação concluída. 👍' : 'Andamento salvo.'); navegar(); } catch (err) { falha(err); }
+  }));
+}
+
+// ===================== Início: resumo financeiro da gestão =====================
+const MESES_AB = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+const MESES_EXT_RG = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+const mesTxt = (m, ext = false) => { const [a, mm] = String(m).split('-'); return (ext ? MESES_EXT_RG : MESES_AB)[+mm - 1] + (ext ? ' de ' : '/') + (ext ? a : a.slice(2)); };
+const projDesp = x => Number(x.desp_pago) + Number(x.desp_aberto) + Number(x.desp_previsto) + Number(x.compras_sem_nota);
+const projRec = x => Number(x.rec_recebido) + Number(x.rec_aberto) + Number(x.rec_prevista);
+function htmlResumoProj(proj, { titulo, sub, link, geral }) {
+  if (!proj?.meses?.length) return '';
+  const m0 = proj.meses[0];
+  const k = (rot, v, cls = '', s = '') => `<div class="rg-k ${cls}"><span class="rg-r">${rot}</span><b>${brl(v)}</b>${s ? `<span class="rg-s">${s}</span>` : ''}</div>`;
+  const orc = m0.orcado_desp != null ? Number(m0.orcado_desp) : null, gasto = Number(m0.desp_pago);
+  const pct = orc ? Math.round(100 * projDesp(m0) / orc) : null;
+  return `<section class="cartao resumo-gestao"><div class="rg-topo"><div><h2>${titulo}</h2><p class="muted">${sub || ''} · ${mesTxt(m0.m, true)}</p></div>${link && telaPermitida(link.split('?')[0].slice(1)) ? `<a class="btn peq" href="${link}">Projeção completa ${ico('seta')}</a>` : ''}</div>
+    <div class="rg-grade">
+      ${k('Gastos realizados (pagos)', gasto, 'ok', 'no mês, pela data do pagamento')}
+      ${k('A pagar no mês', m0.desp_aberto, '', Number(proj.vencido_pagar) ? `<b class="txt-verm">${brl(proj.vencido_pagar)} vencido</b> (todas as datas)` : 'contas em aberto')}
+      ${k('Previsões de gasto', m0.desp_previsto, 'prev', 'ainda sem nota/boleto')}
+      ${k('Compras sem nota', Number(m0.compras_sem_nota), 'prev', 'pedidos emitidos')}
+      ${geral ? k('Receitas previstas', Number(m0.rec_aberto) + Number(m0.rec_prevista), 'rec', `recebido no mês: ${brl(m0.rec_recebido)}`) : ''}
+      ${geral && proj.saldo_contas != null ? k('Saldo em contas', proj.saldo_contas, Number(proj.saldo_contas) < 0 ? 'alerta' : '', 'bancos e caixa hoje') : ''}
+      ${orc != null ? k('Orçado no mês', orc, pct > 100 ? 'alerta' : '', `projeção = ${pct}% do orçado`) : ''}
+    </div>
+    <div class="tabela-wrap"><table class="rg-tab"><thead><tr><th>Mês</th><th class="num">Gastos projetados</th>${geral ? '<th class="num">Receitas projetadas</th><th class="num">Resultado</th>' : ''}<th class="num">Orçado</th></tr></thead><tbody>
+      ${proj.meses.map(x => { const d = projDesp(x), r = projRec(x); return `<tr><td>${mesTxt(x.m)}</td><td class="num">${brl(d)}</td>${geral ? `<td class="num">${brl(r)}</td><td class="num ${r - d < 0 ? 'txt-verm' : 'txt-verde'}"><b>${brl(r - d)}</b></td>` : ''}<td class="num muted">${x.orcado_desp != null ? brl(x.orcado_desp) : '—'}</td></tr>`; }).join('')}
+    </tbody></table></div>
+    <p class="muted rg-nota">Gastos projetados = pagos + a pagar + previsões + compras sem nota.</p></section>`;
+}
+function htmlResumoGestao(r) {
+  if (!r) return '';
+  let h = '';
+  if (r.geral) h += htmlResumoProj(r.geral, { titulo: 'Resumo da gestão · empresa toda', sub: 'Gastos, previsões e receitas', link: '#/financeiro/projecao', geral: true });
+  for (const c of r.setores || []) h += htmlResumoProj(c.proj, { titulo: `Gastos do seu setor · ${esc(c.nome)}`, sub: 'Centro de custo sob sua responsabilidade', link: '#/financeiro/projecao?cc=' + c.id, geral: false });
+  return h;
+}
 
 // ===================== Filtros na própria tela =====================
 // Filtra cartões ou linhas já carregados, sem ir ao servidor. Cada item filtrável traz atributos

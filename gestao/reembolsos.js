@@ -282,6 +282,12 @@ rota('/aprovacoes', async tela => {
   const meus = pend.filter(a => a.entidade === 'reembolso' && docs[a.entidade_id]?.status === 'aguardando_aprovacao' && docs[a.entidade_id].colaborador_id !== estado.usuario.id
                          && (a.aprovador_id === estado.usuario.id || (a.perfil_aprovador && tem(a.perfil_aprovador))));
   const comp = await cartoesCotacao(pend);
+  const auto = estado.usuario.autoaprovacao ? await api.rpc('minhas_autoaprovacoes').catch(() => []) : [];
+  const ENT_AUTO = { reembolso: 'Reembolso', cotacao: 'Compra (cotação)', requisicao: 'Requisição', adiantamento: 'Adiantamento', pagamento: 'Pagamento' };
+  const blocoAuto = auto.length ? `<div class="cartao auto-aprov"><h2>Seus lançamentos aguardando aprovação (${auto.length})</h2>
+      <p class="muted">Você tem permissão de <b>autoaprovação</b>: pode decidir os seus próprios itens, sempre informando o motivo — ele fica gravado no histórico como “Autoaprovação”.</p>
+      <ul class="lista-simples">${auto.map(a => `<li data-auto="${a.id}" style="flex-wrap:wrap;gap:8px"><span><b>${esc(ENT_AUTO[a.entidade] || a.entidade)} ${esc(a.numero || '')}</b>${a.valor != null ? ' · ' + brl(a.valor) : ''}<br><span class="muted">${esc((a.descricao || '').slice(0, 140))}</span></span>
+        <span class="acoes"><a class="btn peq" href="${a.link}">Abrir</a><button class="btn ok peq" data-auto-d="aprovado">Autoaprovar</button><button class="btn peq" data-auto-d="devolvido">Devolver</button><button class="btn perigo peq" data-auto-d="reprovado">Reprovar</button></span></li>`).join('')}</ul></div>` : '';
   const outros = pend.length - meus.length - meusA.length - comp.n;
   tela.innerHTML = `
     <div class="topo"><div><h1>Aprovações</h1><p class="sub">${meus.length + meusA.length + comp.n} item(ns) esperando a sua decisão</p></div>
@@ -298,6 +304,7 @@ rota('/aprovacoes', async tela => {
         <div class="acoes" style="margin-top:12px"><button class="btn ok peq" data-d="aprovado">Aprovar</button>
           <button class="btn peq" data-d="devolvido">Devolver p/ correção</button><button class="btn perigo peq" data-d="reprovado">Reprovar</button></div>
       </div>`; }).join('') : ''}
+    ${blocoAuto}
     ${comp.html}
     ${meusA.map(a => { const x = adts[a.entidade_id]; return `
       <div class="cartao" data-ap="${a.id}"${fAttr('tipo', 'Adiantamento')}${fAttr('colab', x.colab?.nome || x.colaborador_nome)}${fAttr('data', x.data_saida || (x.criado_em || '').slice(0, 10))}${fAttr('valor', x.valor)}${fAttr('busca', [x.numero, x.colab?.nome, x.colaborador_nome, x.motivo].filter(Boolean).join(' '))}>
@@ -308,7 +315,7 @@ rota('/aprovacoes', async tela => {
           <button class="btn peq" data-d="devolvido">Devolver p/ correção</button><button class="btn perigo peq" data-d="reprovado">Reprovar</button>
           <a class="btn peq" href="#/adiantamentos/ver/${x.id}">Abrir</a></div>
       </div>`; }).join('')}
-    ${!meus.length && !meusA.length && !comp.n ? '<div class="cartao vazio">Nada para aprovar agora. 🎉</div>' : ''}
+    ${!meus.length && !meusA.length && !comp.n && !auto.length ? '<div class="cartao vazio">Nada para aprovar agora. 🎉</div>' : ''}
     ${outros > 0 && veTudo() ? `<p class="muted">${outros} item(ns) aguardam outros aprovadores (ou são lançamentos seus, que sobem para outra pessoa).</p>` : ''}`;
   $$('.anexos-de', tela).forEach(async el => { el.innerHTML = await htmlAnexos('reembolso', el.dataset.id); });
   $$('.cartao[data-ap]', tela).forEach(el => { if (!el.dataset.fTipo) el.dataset.fTipo = 'Compra'; });
@@ -318,6 +325,12 @@ rota('/aprovacoes', async tela => {
     let coment = null;
     if (d !== 'aprovado') { coment = await confirmar(d === 'devolvido' ? 'Devolver para correção' : 'Reprovar', { comMotivo: true, botao: d === 'devolvido' ? 'Devolver' : 'Reprovar' }); if (!coment) return; }
     await ocupado(b, async () => { try { await decidir(apId, d, coment); aviso('Decisão registrada.'); navegar(); } catch (err) { falha(err); } });
+  }));
+  $$('[data-auto-d]', tela).forEach(b => b.addEventListener('click', async () => {
+    const apId = b.closest('[data-auto]').dataset.auto, d = b.dataset.autoD;
+    const motivo = await confirmar(d === 'aprovado' ? 'Autoaprovar o seu próprio lançamento' : d === 'devolvido' ? 'Devolver para correção' : 'Reprovar', { comMotivo: true, botao: d === 'aprovado' ? 'Autoaprovar' : d === 'devolvido' ? 'Devolver' : 'Reprovar' });
+    if (!motivo) return;
+    await ocupado(b, async () => { try { await decidir(apId, d, motivo); aviso('Decisão registrada (autoaprovação).'); navegar(); } catch (err) { falha(err); } });
   }));
   const bSel = $('#aprovar-sel');
   const contar = () => { if (!bSel) return; const m = $$('.sel-ap:checked', tela); const n = m.length;

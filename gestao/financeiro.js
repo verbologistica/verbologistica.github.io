@@ -31,12 +31,28 @@ async function listaTitulos(tela, tipo) {
   if (aba === 'fixas') return listaFixas(tela);
   const st = estado.params.get('status') || 'abertas';
   const faixa = estado.params.get('faixa') || '';
+  // período (vencimento): padrão = mês atual; "tudo" = sem período; links de faixa (Início) abrem sem período
+  const mesIni = hojeISO().slice(0, 8) + '01', mesFim = somaDias(somaMeses(mesIni, 1), -1);
+  const semPeriodo = estado.params.get('periodo') === 'tudo' || (!!faixa && !estado.params.get('de'));
+  const per = semPeriodo ? null : { de: estado.params.get('de') || mesIni, ate: estado.params.get('ate') || mesFim };
+  const fPer = per ? `&vencimento=gte.${per.de}&vencimento=lte.${per.ate}` : '';
+  const fAba = aba === 'variaveis' ? '&origem=neq.recorrente' : '';
   const busca = (estado.params.get('q') || '').toLowerCase();
   const semComp = await api.listar('v_pagamentos_sem_comprovante', `select=parcela_id&tipo=eq.${tipo}`).catch(() => []);
   const semCompIds = new Set(semComp.map(x => x.parcela_id));
-  const filtroSt = { abertas: 'status=in.(aberta,aprovada,prevista)', pagas: 'status=eq.paga', todas: 'status=neq.cancelada',
+  const filtroSt = { abertas: 'status=in.(aberta,aprovada)', previsoes: 'status=eq.prevista', pagas: 'status=eq.paga', todas: 'status=neq.cancelada',
                      semcomp: semCompIds.size ? 'id=' + lista([...semCompIds]) : 'id=is.null' }[st] || 'status=neq.cancelada';
-  let ps = await api.listar('v_parcelas', `tipo=eq.${tipo}&${filtroSt}${aba === 'variaveis' ? '&origem=neq.recorrente' : ''}&order=vencimento,titulo_numero&limit=2000`);
+  let ps = await api.listar('v_parcelas', `tipo=eq.${tipo}&${filtroSt}${fAba}${fPer}&order=vencimento,titulo_numero&limit=3000`);
+  // resumo do período (todas as situações)
+  const [rs, atrasAnt] = await Promise.all([
+    api.listar('v_parcelas', `select=valor,valor_pago,saldo,status,vencida&tipo=eq.${tipo}&status=neq.cancelada${fAba}${fPer}&limit=20000`).catch(() => []),
+    per ? api.listar('v_parcelas', `select=saldo&tipo=eq.${tipo}&status=in.(aberta,aprovada)${fAba}&vencimento=lt.${per.de < hojeISO() ? per.de : hojeISO()}&limit=20000`).catch(() => []) : []]);
+  const soma = (arr, k) => arr.reduce((x, p) => x + Number(p[k] || 0), 0);
+  const R = { total: soma(rs, 'valor'), pago: soma(rs, 'valor_pago'), pend: soma(rs.filter(p => ['aberta', 'aprovada'].includes(p.status)), 'saldo'),
+    venc: soma(rs.filter(p => p.vencida), 'saldo'), prev: soma(rs.filter(p => p.status === 'prevista'), 'saldo'),
+    nPend: rs.filter(p => ['aberta', 'aprovada'].includes(p.status)).length, nVenc: rs.filter(p => p.vencida).length, nPrev: rs.filter(p => p.status === 'prevista').length, nPago: rs.filter(p => Number(p.valor_pago) > 0).length };
+  R.aVencer = R.pend - R.venc;
+  const atrasTot = soma(atrasAnt, 'saldo');
   const [planoC, ccsT] = await Promise.all([contas().catch(() => []), centros().catch(() => [])]);
   const nomeConta = id => planoC.find(c => c.id === id)?.nome, nomeCC = id => ccsT.find(c => c.id === id)?.nome;
   const ORIG_T = { reembolso: 'Reembolso', adiantamento: 'Adiantamento', pedido: 'Pedido de compra', fechamento: 'Fechamento de fornecedor', fatura_cartao: 'Fatura de cartão', recorrente: 'Conta fixa', avulso: 'Lançamento avulso', legado: 'Anterior ao sistema' };
@@ -45,26 +61,72 @@ async function listaTitulos(tela, tipo) {
   if (faixa && FAIXAS[faixa]) ps = ps.filter(FAIXAS[faixa][1]);
   if (busca) ps = ps.filter(p => (nome(p) + ' ' + (p.descricao || '') + ' ' + p.titulo_numero).toLowerCase().includes(busca));
   const pagas = st === 'pagas' || st === 'semcomp';
+  const podeSel = editaFin() && (st === 'abertas' || st === 'previsoes');
+  const urlCom = mud => { const q = new URLSearchParams(estado.params); Object.entries(mud).forEach(([k, v]) => (v == null || v === '' ? q.delete(k) : q.set(k, v))); return T.rota + '?' + q.toString(); };
+  const rotPer = per ? (per.de === mesIni && per.ate === mesFim ? 'este mês' : `${dataBR(per.de)} a ${dataBR(per.ate)}`) : 'todas as datas';
+  const kR = (cls, n, rot, sub, st2) => `<a class="fr-k ${cls}" href="${urlCom({ status: st2, faixa: null })}"><span class="fr-r">${rot}</span><b>${brl(n)}</b>${sub ? `<span class="fr-s">${sub}</span>` : ''}</a>`;
+  const blocoResumo = `<section class="cartao fin-resumo">
+      <form class="fr-per" id="fr-per"><b>Resumo ${tipo === 'pagar' ? 'das contas a pagar' : 'das contas a receber'}</b><span class="muted">· vencimento: ${rotPer}</span>
+        <span class="fr-campos"><label>de <input type="date" name="de" value="${per?.de || ''}"></label><label>até <input type="date" name="ate" value="${per?.ate || ''}"></label><button class="btn peq">Aplicar</button></span>
+        <span class="fr-atalhos"><button type="button" class="btn peq" data-p="mes">Este mês</button><button type="button" class="btn peq" data-p="prox">Próximo mês</button><button type="button" class="btn peq" data-p="ant">Mês anterior</button><button type="button" class="btn peq" data-p="ano">Este ano</button><button type="button" class="btn peq" data-p="tudo">Todas as datas</button></span></form>
+      <div class="fr-grade">
+        ${kR('', R.total, tipo === 'pagar' ? 'Valor total (gasto)' : 'Valor total', `${rs.length} parcela(s)`, 'todas')}
+        ${kR('ok', R.pago, T.feito, `${R.nPago} parcela(s)`, 'pagas')}
+        ${kR('pend', R.pend, tipo === 'pagar' ? 'Pendente a pagar' : 'Pendente a receber', `${R.nPend} parcela(s)`, 'abertas')}
+        ${kR('', R.aVencer, 'A vencer', '', 'abertas')}
+        ${kR(R.venc ? 'alerta' : '', R.venc, 'Vencido', `${R.nVenc} parcela(s)`, 'abertas')}
+        ${kR('prev', R.prev, tipo === 'pagar' ? 'Previsões de gasto' : 'Receitas previstas', `${R.nPrev} · fora do “pendente”`, 'previsoes')}
+      </div>
+      ${atrasTot > 0 ? `<p class="fr-aviso">${ico('alerta')} Há <b>${atrasAnt.length}</b> parcela(s) vencida(s) antes deste período (${brl(atrasTot)}). <a href="${urlCom({ periodo: 'tudo', de: null, ate: null, status: 'abertas', faixa: '1_vencidos' })}">Ver</a></p>` : ''}
+    </section>`;
   const total = ps.reduce((s, p) => s + Number(pagas ? p.valor_pago : p.saldo), 0);
   const colValor = pagas ? T.feito : 'Saldo';
   tela.innerHTML = `
     <div class="topo"><div><h1>${T.titulo}</h1><p class="sub">${ps.length} parcela(s) · ${brl(total)}${aba === 'variaveis' ? ' · sem as contas fixas mensais' : ''}</p></div>
       ${editaFin() ? `<div class="acoes"><a class="btn prim" href="${T.rota}/novo">+ ${T.novo}</a></div>` : ''}</div>
     ${tipo === 'pagar' ? abasPagar(aba) : ''}
+    ${blocoResumo}
     <form class="filtros" id="filtros"><input type="hidden" name="aba" value="${tipo === 'pagar' ? aba : ''}">
-      <select name="status">${[['abertas', 'Em aberto'], ['pagas', T.feitas], ...(tipo === 'pagar' ? [['semcomp', 'Pagas sem comprovante']] : []), ['todas', 'Todas']].map(([v, t]) => `<option value="${v}" ${v === st ? 'selected' : ''}>${t}</option>`).join('')}</select>
+      <input type="hidden" name="de" value="${per?.de || ''}"><input type="hidden" name="ate" value="${per?.ate || ''}"><input type="hidden" name="periodo" value="${per ? '' : 'tudo'}">
+      <select name="status">${[['abertas', 'Em aberto'], ['previsoes', tipo === 'pagar' ? 'Previsões de gasto' : 'Receitas previstas'], ['pagas', T.feitas], ...(tipo === 'pagar' ? [['semcomp', 'Pagas sem comprovante']] : []), ['todas', 'Todas']].map(([v, t]) => `<option value="${v}" ${v === st ? 'selected' : ''}>${t}</option>`).join('')}</select>
       <select name="faixa"><option value="">Qualquer vencimento</option>${Object.entries(FAIXAS).filter(([k]) => k !== 'vencidos').map(([k, [t]]) => `<option value="${k}" ${k === faixa ? 'selected' : ''}>${t}</option>`).join('')}</select>
       <input name="q" placeholder="Buscar ${T.pessoa.toLowerCase()} ou descrição" value="${esc(estado.params.get('q') || '')}">
       <button class="btn">Filtrar</button></form>
-    <div class="cartao">${ps.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Vencimento</th><th>${T.pessoa}</th><th>Descrição</th><th>Título</th><th class="num">Valor</th><th class="num">${colValor}</th><th>Situação</th></tr></thead><tbody>
-      ${ps.map(p => `<tr class="clicavel" data-t="${p.titulo_id}"${fAttr('pessoa', nome(p))}${fAttr('tipo', ORIG_T[p.origem] || p.origem)}${fAttr('conta', nomeConta(p.conta_id))}${fAttr('cc', nomeCC(p.centro_custo_id))}${fAttr('sit', _txt(tagTitulo(p.status, p.vencida, tipo)))}${fAttr('data', p.vencimento)}${fAttr('valor', pagas ? p.valor_pago : p.saldo)}${fAttr('busca', [nome(p), p.descricao, p.titulo_numero, p.observacoes].filter(Boolean).join(' '))}><td data-r="Vencimento" class="nowrap">${dataBR(p.vencimento)}</td><td data-r="${T.pessoa}">${esc(nome(p))}</td>
+    ${podeSel && ps.length ? `<div class="sel-barra" id="sel-barra" hidden><span id="sel-txt"></span>${st === 'abertas' ? '<button class="btn peq" id="virar-prev">Transformar em previsão</button>' : '<button class="btn ok peq" id="conf-prev">Confirmar como conta (nota/boleto chegou)</button>'}</div>` : ''}
+    ${st === 'previsoes' ? `<p class="muted">Previsões são gastos ${tipo === 'pagar' ? '' : '(receitas) '}esperados que ainda não viraram conta (sem nota/boleto). Não entram no “pendente”, mas entram na <a href="#/financeiro/projecao">Projeção financeira</a>.</p>` : ''}
+    <div class="cartao">${ps.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr>${podeSel ? '<th class="sel-cel"><input type="checkbox" id="sel-todos" aria-label="Selecionar todos"></th>' : ''}<th>Vencimento</th><th>${T.pessoa}</th><th>Descrição</th><th>Título</th><th class="num">Valor</th><th class="num">${colValor}</th><th>Situação</th></tr></thead><tbody>
+      ${ps.map(p => `<tr class="clicavel" data-t="${p.titulo_id}"${fAttr('pessoa', nome(p))}${fAttr('tipo', ORIG_T[p.origem] || p.origem)}${fAttr('conta', nomeConta(p.conta_id))}${fAttr('cc', nomeCC(p.centro_custo_id))}${fAttr('sit', _txt(tagTitulo(p.status, p.vencida, tipo)))}${fAttr('data', p.vencimento)}${fAttr('valor', pagas ? p.valor_pago : p.saldo)}${fAttr('busca', [nome(p), p.descricao, p.titulo_numero, p.observacoes].filter(Boolean).join(' '))}>${podeSel ? `<td class="sel-cel" data-r=""><input type="checkbox" class="sel-t" value="${p.titulo_id}" aria-label="Selecionar"></td>` : ''}<td data-r="Vencimento" class="nowrap">${dataBR(p.vencimento)}</td><td data-r="${T.pessoa}">${esc(nome(p))}</td>
         <td data-r="Descrição">${temVerificar(p.observacoes) ? '<span title="A verificar">⚠️</span> ' : ''}${esc(p.descricao || '')}</td><td data-r="Título" class="nowrap">${esc(p.titulo_numero)}${p.parcela > 1 ? ` <span class="muted">${p.parcela}ª</span>` : ''}</td>
         <td data-r="Valor" class="num">${brl(p.valor)}</td><td data-r="${colValor}" class="num"><b>${brl(pagas ? p.valor_pago : p.saldo)}</b></td><td data-r="Situação">${tagTitulo(p.status, p.vencida, tipo)}${tipo === 'pagar' && semCompIds.has(p.id) ? ' <span class="tag amarelo">Sem comprovante</span>' : ''}</td></tr>`).join('')}
-      </tbody><tfoot><tr><td colspan="5">Total</td><td class="num">${brl(total)}</td><td></td></tr></tfoot></table></div>` : '<div class="vazio">Nenhuma conta encontrada.</div>'}</div>`;
+      </tbody><tfoot><tr><td colspan="${podeSel ? 6 : 5}">Total</td><td class="num">${brl(total)}</td><td></td></tr></tfoot></table></div>` : '<div class="vazio">Nenhuma conta encontrada.</div>'}</div>`;
   $('#filtros').onsubmit = e => { e.preventDefault(); const d = formDados(e.target);
     location.hash = T.rota + '?' + new URLSearchParams(Object.entries(d).filter(([, v]) => v)).toString(); };
-  $$('tr[data-t]', tela).forEach(tr => (tr.onclick = () => (location.hash = T.rota + '/ver/' + tr.dataset.t)));
-  filtroLocal(tela, { itens: 'tbody tr[data-t]', antes: '.cartao', busca: false, periodo: true, rotuloPeriodo: 'Vencimento',
+  $$('tr[data-t]', tela).forEach(tr => (tr.onclick = e => { if (e.target.closest('.sel-cel')) return; location.hash = T.rota + '/ver/' + tr.dataset.t; }));
+  // período do resumo
+  $('#fr-per').onsubmit = e => { e.preventDefault(); const d = formDados(e.target); if (!d.de || !d.ate) return aviso('Informe as duas datas.', true);
+    location.hash = urlCom({ de: d.de, ate: d.ate, periodo: null, faixa: null }); };
+  $$('[data-p]', tela).forEach(b => (b.onclick = () => { const k = b.dataset.p;
+    if (k === 'tudo') { location.hash = urlCom({ periodo: 'tudo', de: null, ate: null }); return; }
+    const ini = k === 'ano' ? hojeISO().slice(0, 4) + '-01-01' : somaMeses(mesIni, k === 'prox' ? 1 : k === 'ant' ? -1 : 0);
+    const fim = k === 'ano' ? hojeISO().slice(0, 4) + '-12-31' : somaDias(somaMeses(ini, 1), -1);
+    location.hash = urlCom({ de: ini, ate: fim, periodo: null, faixa: null }); }));
+  // seleção para transformar em previsão / confirmar previsão
+  if (podeSel) {
+    const sels = () => [...new Set($$('.sel-t:checked', tela).filter(c => !c.closest('tr').hidden).map(c => c.value))];
+    const atualiza = () => { const n = sels().length; const b = $('#sel-barra'); if (!b) return; b.hidden = !n;
+      $('#sel-txt').innerHTML = `<b>${n}</b> conta(s) selecionada(s)`; };
+    $$('.sel-t', tela).forEach(c => (c.onchange = atualiza));
+    $('#sel-todos')?.addEventListener('change', e => { $$('.sel-t', tela).filter(c => !c.closest('tr').hidden).forEach(c => (c.checked = e.target.checked)); atualiza(); });
+    const acao = async (prev, botao) => { const ids = sels(); if (!ids.length) return;
+      const motivo = await confirmar(prev ? `Transformar ${ids.length} conta(s) em previsão de gasto?` : `Confirmar ${ids.length} previsão(ões) como conta a ${tipo === 'pagar' ? 'pagar' : 'receber'}?`,
+        { comMotivo: true, botao: prev ? 'Transformar em previsão' : 'Confirmar' });
+      if (!motivo) return;
+      await ocupado(botao, async () => { try { const n = await api.rpc('titulos_definir_previsao', { p_ids: ids, p_previsao: prev, p_motivo: motivo });
+        aviso(prev ? `${n} conta(s) agora são previsão.` : `${n} previsão(ões) confirmada(s) como conta.`); navegar(); } catch (err) { falha(err); } }); };
+    $('#virar-prev')?.addEventListener('click', e => acao(true, e.currentTarget));
+    $('#conf-prev')?.addEventListener('click', e => acao(false, e.currentTarget));
+  }
+  filtroLocal(tela, { itens: 'tbody tr[data-t]', antes: $('#sel-barra', tela) || $$('.cartao', tela).at(-1), busca: false, periodo: false,
     campos: [{ k: 'pessoa', rotulo: T.pessoa }, { k: 'tipo', rotulo: 'Tipo' }, { k: 'conta', rotulo: 'Conta do plano' }, { k: 'cc', rotulo: 'Centro de custo' }, { k: 'sit', rotulo: 'Situação' }] });
 }
 const tagTitulo = (s, vencida, tipo) => tipo === 'receber' && ['paga', 'pago'].includes(s) ? '<span class="tag verde">Recebida</span>' : tag(s, vencida);
@@ -90,6 +152,7 @@ async function novoTitulo(tela, tipo) {
       <label class="campo">Intervalo<select name="intervalo"><option value="mes">Mensal</option><option value="30">A cada 30 dias</option><option value="15">A cada 15 dias</option><option value="7">Semanal</option></select></label>
       <label class="check"><input type="checkbox" name="avista"> Pago/pagar à vista (vence na data de emissão)</label>
       <div class="largo" id="prazo-info"></div>
+      <label class="check largo"><input type="checkbox" name="previsao"> ${tipo === 'pagar' ? '<b>É só uma previsão de gasto</b> (ainda sem nota/boleto — entra na Projeção, não no “a pagar”)' : '<b>É só uma receita prevista</b> (ainda não faturada)'}</label>
       <label class="check largo"><input type="checkbox" name="legado"> ${T.legado}</label>
       <label class="campo largo">Anexos (${tipo === 'pagar' ? 'boleto, nota' : 'nota, CT-e, comprovante'})<input type="file" name="arquivos" accept="image/*,application/pdf" multiple></label>
       <div class="largo muted" id="previa"></div>
@@ -135,10 +198,10 @@ async function novoTitulo(tela, tipo) {
         const [t] = await api.inserir('titulos', { tipo, origem: d.legado ? 'legado' : 'avulso',
           fornecedor_id: tipo === 'pagar' ? d.pessoa_id || null : null, cliente_id: tipo === 'receber' ? d.pessoa_id || null : null,
           favorecido_nome: d.pessoa_id ? null : d.favorecido_nome, descricao: d.descricao, documento: d.documento || null,
-          data_emissao: d.data_emissao, competencia: d.data_emissao.slice(0, 8) + '01', conta_id: d.conta_id, centro_custo_id: d.centro_custo_id || null, valor_total: v, status: 'aberto' });
-        await api.inserir('titulo_parcelas', plano(d).map(p => ({ ...p, titulo_id: t.id, status: 'aberta' })));
+          data_emissao: d.data_emissao, competencia: d.data_emissao.slice(0, 8) + '01', conta_id: d.conta_id, centro_custo_id: d.centro_custo_id || null, valor_total: v, status: d.previsao ? 'previsto' : 'aberto' });
+        await api.inserir('titulo_parcelas', plano(d).map(p => ({ ...p, titulo_id: t.id, status: d.previsao ? 'prevista' : 'aberta' })));
         await anexar('titulo', t.id, d.arquivos);
-        aviso(`${tipo === 'pagar' ? 'Conta a pagar' : 'Conta a receber'} ${t.numero} criada.`);
+        aviso(`${d.previsao ? (tipo === 'pagar' ? 'Previsão de gasto' : 'Receita prevista') : tipo === 'pagar' ? 'Conta a pagar' : 'Conta a receber'} ${t.numero} criada.`);
         location.hash = T.rota + '/ver/' + t.id;
       } catch (err) { falha(err); }
     });
@@ -168,11 +231,13 @@ async function verTitulo(tela, id, tipo) {
   const origens = { reembolso: 'Reembolso', avulso: 'Lançamento avulso', legado: tipo === 'pagar' ? 'Compra anterior ao sistema' : 'Venda anterior ao sistema', pedido: 'Pedido de compra', recorrente: 'Conta fixa mensal (contrato do fornecedor)', fechamento: 'Fatura do posto (abastecimentos)', adiantamento: 'Adiantamento' };
   tela.innerHTML = `
     <div class="topo"><div><h1>${esc(t.numero)} · ${esc(pessoa)}</h1><p class="sub">${tagTitulo(t.status, false, tipo)} · ${esc(t.descricao || '')}</p></div>
-      <div class="acoes">${editaFin() && t.status !== 'cancelado' ? `<a class="btn prim" href="${T.rota}/editar/${id}">Editar</a>` : ''}${editaFin() && !['pago', 'cancelado'].includes(t.status) && !baixas.length ? '<button class="btn perigo" id="cancelar">Cancelar conta</button>' : ''}
+      <div class="acoes">${editaFin() && t.status !== 'cancelado' ? `<a class="btn prim" href="${T.rota}/editar/${id}">Editar</a>` : ''}${editaFin() && t.status === 'previsto' && t.origem !== 'fechamento' ? '<button class="btn ok" id="conf-prev">Confirmar como conta</button>' : ''}${editaFin() && ['aberto', 'aprovado'].includes(t.status) && !baixas.length ? '<button class="btn" id="virar-prev">Transformar em previsão</button>' : ''}${editaFin() && !['pago', 'cancelado'].includes(t.status) && !baixas.length ? '<button class="btn perigo" id="cancelar">Cancelar conta</button>' : ''}
         ${editaFin() && t.status !== 'cancelado' && baixas.length ? '<button class="btn perigo" id="estornar">Estornar pagamento</button>' : ''}
         <button class="btn" onclick="history.back()">Voltar</button></div></div>
+    ${t.status === 'previsto' ? `<div class="cartao fr-aviso-prev">${ico('relogio')} <span><b>${tipo === 'pagar' ? 'Previsão de gasto' : 'Receita prevista'}</b> — ainda não é conta ${tipo === 'pagar' ? 'a pagar' : 'a receber'} (sem nota/boleto). Entra na Projeção financeira; quando o documento chegar, use “Confirmar como conta”.</span></div>` : ''}
+    ${tipo === 'pagar' && t.status !== 'cancelado' ? cartaoPagamento(t, ps) : ''}
     <div class="cartao"><div class="form">
-      <div><div class="muted">${T.pessoa}</div><b>${esc(pessoa)}</b>${(t.cli?.documento || t.forn?.documento) ? `<div class="muted">${esc(fmtDoc(t.cli?.documento || t.forn?.documento))}</div>` : ''}${t.forn ? (dadosPagamento(t.forn) ? `<div class="muted" style="white-space:pre-line">${esc(dadosPagamento(t.forn))}</div>` : '') : pix ? `<div class="muted">Pix: ${esc(pix)}</div>` : ''}</div>
+      <div><div class="muted">${T.pessoa}</div><b>${esc(pessoa)}</b>${(t.cli?.documento || t.forn?.documento) ? `<div class="muted">${esc(fmtDoc(t.cli?.documento || t.forn?.documento))}</div>` : ''}${tipo === 'pagar' ? '' : t.forn ? (dadosPagamento(t.forn) ? `<div class="muted" style="white-space:pre-line">${esc(dadosPagamento(t.forn))}</div>` : '') : pix ? `<div class="muted">Pix: ${esc(pix)}</div>` : ''}</div>
       <div><div class="muted">Valor total</div><b>${brl(t.valor_total)}</b></div>
       <div><div class="muted">Documento</div><b>${esc(t.documento || '—')}</b></div>
       <div><div class="muted">Emissão</div><b>${dataBR(t.data_emissao)}</b></div>
@@ -195,6 +260,15 @@ async function verTitulo(tela, id, tipo) {
         ${editaFin() ? `<label class="btn peq" style="margin-left:6px">Anexar comprovante<input type="file" hidden accept="image/*,application/pdf" multiple data-comp="${b.id}"></label>
         <button class="btn peq" data-din="${b.id}">Foi em dinheiro</button>` : ''}` : `<span class="muted">Comprovante:</span> ${b.forma_pagamento === 'Dinheiro' && compBaixa[b.id].includes('Sem anexos') ? '<span class="muted">pagamento em dinheiro (sem comprovante)</span>' : compBaixa[b.id]}`}</div></li>`).join('')}</ul></div>` : ''}`;
   ligarObservacao('titulos', id, t.observacoes);
+  $$('[data-copiar]', tela).forEach(b => (b.onclick = async () => { const v = b.dataset.copiar;
+    try { await navigator.clipboard.writeText(v); } catch { const ta = document.createElement('textarea'); ta.value = v; document.body.append(ta); ta.select(); document.execCommand('copy'); ta.remove(); }
+    aviso('Copiado: ' + (v.length > 40 ? v.slice(0, 40) + '…' : v)); }));
+  const prevAcao = async (prev, botao) => {
+    const motivo = await confirmar(prev ? 'Transformar esta conta em previsão de gasto?' : 'Confirmar esta previsão como conta (o documento chegou)?', { comMotivo: true, botao: prev ? 'Transformar em previsão' : 'Confirmar como conta' });
+    if (!motivo) return;
+    await ocupado(botao, async () => { try { await api.rpc('titulos_definir_previsao', { p_ids: [id], p_previsao: prev, p_motivo: motivo }); aviso(prev ? 'Agora é uma previsão.' : 'Previsão confirmada como conta.'); navegar(); } catch (err) { falha(err); } }); };
+  $('#virar-prev')?.addEventListener('click', e => prevAcao(true, e.currentTarget));
+  $('#conf-prev')?.addEventListener('click', e => prevAcao(false, e.currentTarget));
   $$('[data-comp]', tela).forEach(inp => inp.addEventListener('change', async e => {
     try { await anexar('baixa', inp.dataset.comp, [...e.target.files]); aviso('Comprovante anexado.'); navegar(); } catch (err) { falha(err); } }));
   $$('[data-din]', tela).forEach(b => b.addEventListener('click', async () => {
@@ -230,6 +304,39 @@ async function verTitulo(tela, id, tipo) {
   $$('[data-baixa]', tela).forEach(b => b.addEventListener('click', async () => {
     if (await modalBaixa(ps.find(x => x.id === b.dataset.baixa), tipo)) navegar();
   }));
+}
+
+// Dados para pagamento do favorecido (sem sair da conta): conta bancária, Pix, boleto da parcela, com botões de copiar
+function cartaoPagamento(t, ps) {
+  const f = t.forn, colab = t.colab;
+  const contas = (Array.isArray(f?.dados_bancarios) ? f.dados_bancarios : []).slice().sort((a, b) => (b.principal ? 1 : 0) - (a.principal ? 1 : 0));
+  const prox = ps.find(p => ['aberta', 'aprovada'].includes(p.status)) || ps.find(p => p.status === 'prevista');
+  const cp = (v, rot = 'Copiar') => v ? `<button type="button" class="btn peq dp-cp" data-copiar="${esc(String(v))}" title="${rot}">${ico('copiar')}<span>${rot}</span></button>` : '';
+  const item = (rot, val, copiavel = val, extra = '') => val ? `<div class="dp-it"><span class="dp-r">${rot}</span><span class="dp-v">${esc(String(val))}${extra}</span>${copiavel ? cp(copiavel) : ''}</div>` : '';
+  const nomeFav = f?.razao_social || colab?.nome || t.favorecido_nome;
+  const docFav = f?.documento;
+  let corpo = '';
+  corpo += `<div class="dp-bloco"><h3>Favorecido</h3>${item('Nome', nomeFav)}${docFav ? item(docFav.replace(/\D/g, '').length > 11 ? 'CNPJ' : 'CPF', fmtDoc(docFav), docFav.replace(/\D/g, '')) : ''}
+    ${f?.prazo_faturamento_dias != null ? item('Prazo', f.prazo_faturamento_dias ? f.prazo_faturamento_dias + ' dias (faturamento)' : 'À vista', '') : ''}</div>`;
+  if (prox) {
+    const saldo = Number(prox.valor) - Number(prox.valor_pago);
+    corpo += `<div class="dp-bloco"><h3>${prox.status === 'prevista' ? 'Parcela prevista' : 'Parcela a pagar'}</h3>${item('Parcela', `${prox.parcela}ª de ${ps.filter(p => p.status !== 'cancelada').length}`, '')}
+      ${item('Vencimento', dataBR(prox.vencimento), '', prox.vencimento < hojeISO() && prox.status !== 'prevista' ? ' <span class="tag vermelho">vencida</span>' : '')}
+      ${item('Valor', brl(saldo), saldo.toFixed(2).replace('.', ','))}
+      ${item('Linha digitável', prox.linha_digitavel, (prox.linha_digitavel || '').replace(/\s/g, ''))}${item('Pix copia e cola', prox.pix_copia_cola ? prox.pix_copia_cola.slice(0, 38) + (prox.pix_copia_cola.length > 38 ? '…' : '') : '', prox.pix_copia_cola)}</div>`;
+  }
+  const bancos = contas.filter(c => c.banco || c.conta || c.pix_chave);
+  if (bancos.length) corpo += bancos.map((c, i) => `<div class="dp-bloco"><h3>${c.principal || bancos.length === 1 ? 'Conta para pagamento' : 'Outra conta'}${c.principal && bancos.length > 1 ? ' <span class="tag verde">principal</span>' : ''}</h3>
+      ${item('Pix' + (c.pix_tipo ? ` (${c.pix_tipo})` : ''), c.pix_chave)}
+      ${item('Banco', c.banco ? (typeof nomeBanco === 'function' ? nomeBanco(c.banco) : c.banco) : '', c.banco || '')}${item('Agência', c.agencia)}${item(c.tipo_conta ? 'Conta ' + c.tipo_conta.toLowerCase() : 'Conta', c.conta)}
+      ${item('Titular', c.titular)}${c.titular_documento ? item('CPF/CNPJ do titular', fmtDoc(c.titular_documento), c.titular_documento.replace(/\D/g, '')) : ''}</div>`).join('');
+  const pixAvulso = !bancos.some(c => c.pix_chave) && (f?.chave_pix || colab?.chave_pix);
+  if (pixAvulso) corpo += `<div class="dp-bloco"><h3>Pix</h3>${item('Chave', pixAvulso)}</div>`;
+  const nada = !bancos.length && !pixAvulso && !prox?.linha_digitavel && !prox?.pix_copia_cola;
+  return `<div class="cartao dados-pag"><div class="dp-topo"><h2>${ico('carteira')} Dados para pagamento</h2>${f?.boleto ? '<span class="tag azul">Fornecedor emite boleto</span>' : ''}
+      ${t.fornecedor_id ? `<a class="btn peq" href="#/cadastros/fornecedores/ver/${t.fornecedor_id}">Abrir cadastro</a>` : ''}</div>
+    <div class="dp-grade">${corpo}</div>
+    ${nada ? `<p class="muted" style="margin:6px 0 0">Nenhuma conta bancária ou Pix cadastrado${t.fornecedor_id ? ' para este fornecedor — cadastre em Fornecedores › Dados bancários' : ''}.${f?.boleto ? ' Pagamento por boleto: confira o boleto nos anexos.' : ''}</p>` : ''}</div>`;
 }
 
 // Registrar pagamento/recebimento de uma parcela (usado na conta e na lista de contas fixas)
@@ -345,6 +452,71 @@ async function editarTitulo(tela, id, tipo) {
       aviso('Conta corrigida: ' + (r.alteracoes || []).join('; ')); location.hash = T.rota + '/ver/' + id;
     } catch (err) { falha(err); } }); };
 }
+
+// ---------- Projeção financeira (previsões de gasto × contas × pagamentos, mês a mês) ----------
+rota('/financeiro/projecao', async tela => {
+  const ini = (estado.params.get('de') || hojeISO().slice(0, 7)) + '-01';
+  const nMeses = Math.min(24, Math.max(1, parseInt(estado.params.get('meses')) || 6));
+  const cc = estado.params.get('cc') || '';
+  const fim = somaDias(somaMeses(ini, nMeses), -1);
+  const ccs = await centros().catch(() => []);
+  let P;
+  try { P = await api.rpc('projecao_financeira', { p_de: ini, p_ate: fim, p_cc: cc || null }); }
+  catch (err) { tela.innerHTML = `<div class="cartao vazio">${esc(err.message || 'Sem acesso.')}</div>`; return; }
+  const mesAtual = hojeISO().slice(0, 7) + '-01';
+  const geral = !cc;
+  // saldo projetado: parte do saldo de hoje e soma o que ainda vai entrar/sair (do mês atual em diante)
+  let saldo = P.saldo_contas != null ? Number(P.saldo_contas) - Number(P.vencido_pagar) - Number(P.compras_atrasadas || 0) : null;   // recebíveis vencidos não entram (conservador)
+  const linhas = P.meses.map(x => {
+    const d = projDesp(x), r = projRec(x);
+    let sp = null;
+    if (saldo != null && x.m >= mesAtual) { saldo += Number(x.rec_aberto) + Number(x.rec_prevista) - Number(x.desp_aberto) - Number(x.desp_previsto) - Number(x.compras_sem_nota); sp = saldo; }
+    return { ...x, d, r, sp };
+  });
+  // os vencidos de meses anteriores entram no saldo do mês atual (já descontados acima)
+  const tot = k => linhas.reduce((a, x) => a + Number(x[k] || 0), 0);
+  const maxV = Math.max(1, ...linhas.map(x => Math.max(x.d, Number(x.orcado_desp || 0))));
+  const ccNome = cc ? ccs.find(c => c.id === cc)?.nome : null;
+  const linkMes = m => `#/financeiro/pagar?aba=todas&status=todas&de=${m}&ate=${somaDias(somaMeses(m, 1), -1)}`;
+  tela.innerHTML = `
+    <div class="topo"><div><h1>Projeção financeira</h1><p class="sub">Previsões de gasto, contas a pagar, pagamentos e receitas, mês a mês${ccNome ? ' · ' + esc(ccNome) : ' · empresa toda'}</p></div>
+      ${editaFin() ? '<div class="acoes"><a class="btn prim" href="#/financeiro/pagar/novo">+ Nova previsão / conta</a><a class="btn" href="#/financeiro/pagar?status=previsoes&periodo=tudo">Ver previsões</a></div>' : ''}</div>
+    <form class="filtros" id="f-proj"><label class="fl-data">A partir de<input type="month" name="de" value="${ini.slice(0, 7)}"></label>
+      <label class="fl-data">Meses<select name="meses">${[3, 6, 12, 18, 24].map(n => `<option ${n === nMeses ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+      ${veTudo() ? `<select name="cc"><option value="">Empresa toda</option>${ccs.filter(c => c.ativo).map(c => `<option value="${c.id}" ${c.id === cc ? 'selected' : ''}>${esc(c.nome)}</option>`).join('')}</select>` : ''}
+      <button class="btn">Ver</button></form>
+    <details class="cartao como-funciona"><summary><b>Como funciona a projeção</b></summary>
+      <ul><li><b>Previsão de gasto</b>: despesa que vai acontecer, mas ainda não tem nota/boleto (ex.: manutenção programada, folha, impostos estimados). Não entra no “a pagar”, só na projeção. Quando o documento chega, o Financeiro clica em <b>Confirmar como conta</b>.</li>
+        <li><b>A pagar</b>: contas reais em aberto, pelo vencimento. <b>Pago</b>: o que saiu, pela data do pagamento.</li>
+        <li><b>Compras sem nota</b>: pedidos de compra já emitidos cujo documento fiscal ainda não foi lançado — o dinheiro já está comprometido.</li>
+        <li><b>Orçado</b>: meta do Orçado × Realizado aprovado (escopo empresa) — a projeção mostra se o mês vai estourar.</li>
+        <li><b>Saldo projetado</b>: saldo dos bancos hoje − contas vencidas a pagar e, mês a mês, + receitas a receber/previstas − gastos a pagar/previstos/compras sem nota. Recebíveis já vencidos não entram (conservador).</li></ul></details>
+    <div class="grade" style="margin-bottom:14px">
+      ${P.saldo_contas != null ? `<div class="cartao kpi ${Number(P.saldo_contas) < 0 ? 'alerta' : ''}"><div class="n">${brl(P.saldo_contas)}</div><div class="r">saldo em contas hoje</div></div>` : ''}
+      <div class="cartao kpi"><div class="n">${brl(tot('d'))}</div><div class="r">gastos projetados no período</div></div>
+      <div class="cartao kpi"><div class="n">${brl(tot('desp_previsto'))}</div><div class="r">em previsões de gasto</div></div>
+      <div class="cartao kpi ${Number(P.vencido_pagar) ? 'alerta' : ''}"><div class="n">${brl(P.vencido_pagar)}</div><div class="r">vencido a pagar (todas as datas)</div></div>
+      ${geral ? `<div class="cartao kpi"><div class="n">${brl(tot('r'))}</div><div class="r">receitas projetadas no período</div></div>
+      <div class="cartao kpi ${tot('r') - tot('d') < 0 ? 'alerta' : ''}"><div class="n">${brl(tot('r') - tot('d'))}</div><div class="r">resultado projetado</div></div>` : ''}
+    </div>
+    <div class="cartao"><h2>Gastos por mês</h2>
+      <div class="pj-graf">${linhas.map(x => `<a class="pj-col" href="${linkMes(x.m)}" title="${mesTxt(x.m, true)}: ${brl(x.d)}">
+        <div class="pj-barra">${[['desp_pago', 'pg'], ['desp_aberto', 'ab'], ['desp_previsto', 'pv'], ['compras_sem_nota', 'cp']].map(([k, c]) => Number(x[k]) ? `<i class="${c}" style="height:${(100 * Number(x[k]) / maxV).toFixed(2)}%"></i>` : '').join('')}
+          ${x.orcado_desp != null ? `<span class="pj-orc" style="bottom:${(100 * Number(x.orcado_desp) / maxV).toFixed(2)}%"></span>` : ''}</div>
+        <span class="pj-v">${brl(x.d).replace(/,\d\d$/, '')}</span><span class="pj-m">${mesTxt(x.m)}</span></a>`).join('')}</div>
+      <div class="pj-leg"><span><i class="pg"></i>Pago</span><span><i class="ab"></i>A pagar</span><span><i class="pv"></i>Previsões</span><span><i class="cp"></i>Compras sem nota</span><span><i class="orc"></i>Orçado</span></div></div>
+    <div class="cartao"><h2>Mês a mês</h2><div class="tabela-wrap"><table class="pj-tab"><thead><tr><th>Mês</th><th class="num">Pago</th><th class="num">A pagar</th><th class="num">Previsões</th><th class="num">Compras sem nota</th><th class="num">Gastos projetados</th><th class="num">Orçado</th>
+        ${geral ? '<th class="num">Recebido</th><th class="num">A receber</th><th class="num">Receita prevista</th><th class="num">Receitas projetadas</th><th class="num">Resultado</th>' : ''}${P.saldo_contas != null ? '<th class="num">Saldo projetado</th>' : ''}</tr></thead><tbody>
+      ${linhas.map(x => `<tr class="clicavel" onclick="location.hash='${linkMes(x.m)}'"><td class="nowrap"><b>${mesTxt(x.m)}</b></td><td class="num">${brl(x.desp_pago)}</td><td class="num">${brl(x.desp_aberto)}</td><td class="num">${brl(x.desp_previsto)}</td><td class="num">${brl(x.compras_sem_nota)}</td>
+        <td class="num"><b>${brl(x.d)}</b></td><td class="num ${x.orcado_desp != null && x.d > Number(x.orcado_desp) ? 'txt-verm' : 'muted'}">${x.orcado_desp != null ? brl(x.orcado_desp) : '—'}</td>
+        ${geral ? `<td class="num">${brl(x.rec_recebido)}</td><td class="num">${brl(x.rec_aberto)}</td><td class="num">${brl(x.rec_prevista)}</td><td class="num"><b>${brl(x.r)}</b></td><td class="num ${x.r - x.d < 0 ? 'txt-verm' : 'txt-verde'}"><b>${brl(x.r - x.d)}</b></td>` : ''}
+        ${P.saldo_contas != null ? `<td class="num ${x.sp != null && x.sp < 0 ? 'txt-verm' : ''}">${x.sp != null ? brl(x.sp) : '—'}</td>` : ''}</tr>`).join('')}
+      </tbody><tfoot><tr><td>Total</td><td class="num">${brl(tot('desp_pago'))}</td><td class="num">${brl(tot('desp_aberto'))}</td><td class="num">${brl(tot('desp_previsto'))}</td><td class="num">${brl(tot('compras_sem_nota'))}</td><td class="num">${brl(tot('d'))}</td><td class="num">${linhas.some(x => x.orcado_desp != null) ? brl(tot('orcado_desp')) : '—'}</td>
+        ${geral ? `<td class="num">${brl(tot('rec_recebido'))}</td><td class="num">${brl(tot('rec_aberto'))}</td><td class="num">${brl(tot('rec_prevista'))}</td><td class="num">${brl(tot('r'))}</td><td class="num">${brl(tot('r') - tot('d'))}</td>` : ''}${P.saldo_contas != null ? '<td></td>' : ''}</tr></tfoot></table></div>
+      ${Number(P.atrasado_pagar) || Number(P.atrasado_receber) ? `<p class="muted">Antes de ${mesTxt(ini)} ainda há em aberto: ${brl(P.atrasado_pagar)} a pagar${geral ? ` e ${brl(P.atrasado_receber)} a receber` : ''} (vencidos).</p>` : ''}</div>`;
+  $('#f-proj').onsubmit = e => { e.preventDefault(); const d = formDados(e.target);
+    location.hash = '#/financeiro/projecao?' + new URLSearchParams(Object.entries({ de: d.de, meses: d.meses, cc: d.cc || (veTudo() ? '' : cc) }).filter(([, v]) => v)).toString(); };
+});
 
 rota('/financeiro/pagar', tela => listaTitulos(tela, 'pagar'));
 rota('/financeiro/pagar/novo', tela => novoTitulo(tela, 'pagar'));
