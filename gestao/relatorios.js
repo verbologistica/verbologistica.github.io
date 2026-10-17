@@ -288,7 +288,7 @@ async function exportarExcel(table, titulo) {
 // Botões em cima de cada tabela (substitui a versão simples)
 function ferramentasExportacao(tela) {
   $$('.tabela-wrap', tela).forEach(w => {
-    if (w.previousElementSibling?.classList.contains('exportar') || w.closest('.modal')) return;
+    if (w.previousElementSibling?.classList.contains('exportar') || w.closest('.modal') || w.closest('.resumo-gestao')) return;
     const t = $('table', w); if (!t || $$('tbody tr', t).length === 0) return;
     const barra = document.createElement('div'); barra.className = 'exportar';
     barra.innerHTML = '<button type="button" class="btn peq" data-x="xls" title="Planilha com indicadores, filtros, totais e resumo">⬇ Excel</button><button type="button" class="btn peq" data-x="pdf" title="Relatório pronto para imprimir ou salvar em PDF">⬇ PDF</button>';

@@ -33,14 +33,14 @@ async function listaTitulos(tela, tipo) {
   const faixa = estado.params.get('faixa') || '';
   // período (vencimento): padrão = mês atual; "tudo" = sem período; links de faixa (Início) abrem sem período
   const mesIni = hojeISO().slice(0, 8) + '01', mesFim = somaDias(somaMeses(mesIni, 1), -1);
-  const semPeriodo = estado.params.get('periodo') === 'tudo' || (!!faixa && !estado.params.get('de'));
-  const per = semPeriodo ? null : { de: estado.params.get('de') || mesIni, ate: estado.params.get('ate') || mesFim };
+  // padrão: todas as datas (nada some da lista); o período só vale quando escolhido
+  const per = estado.params.get('de') && estado.params.get('ate') ? { de: estado.params.get('de'), ate: estado.params.get('ate') } : null;
   const fPer = per ? `&vencimento=gte.${per.de}&vencimento=lte.${per.ate}` : '';
   const fAba = aba === 'variaveis' ? '&origem=neq.recorrente' : '';
   const busca = (estado.params.get('q') || '').toLowerCase();
   const semComp = await api.listar('v_pagamentos_sem_comprovante', `select=parcela_id&tipo=eq.${tipo}`).catch(() => []);
   const semCompIds = new Set(semComp.map(x => x.parcela_id));
-  const filtroSt = { abertas: 'status=in.(aberta,aprovada)', previsoes: 'status=eq.prevista', pagas: 'status=eq.paga', todas: 'status=neq.cancelada',
+  const filtroSt = { abertas: 'status=in.(aberta,aprovada,prevista)', previsoes: 'status=eq.prevista', pagas: 'status=eq.paga', todas: 'status=neq.cancelada',
                      semcomp: semCompIds.size ? 'id=' + lista([...semCompIds]) : 'id=is.null' }[st] || 'status=neq.cancelada';
   let ps = await api.listar('v_parcelas', `tipo=eq.${tipo}&${filtroSt}${fAba}${fPer}&order=vencimento,titulo_numero&limit=3000`);
   // resumo do período (todas as situações)

@@ -579,7 +579,7 @@ function atualizarPilha(h) {
   try { sessionStorage.setItem('pilha', JSON.stringify(PILHA)); } catch { /* ok */ }
 }
 function botaoVoltar(tela) {
-  if (PILHA.length < 2 || $('.btn-voltar', tela)) return;
+  if (PILHA.length < 2 || $('.btn-voltar', tela) || /^#\/inicio/.test(location.hash)) return;
   const topo = $('.topo', tela) || tela.firstElementChild; if (!topo) return;
   // os "Voltar" fixos da própria tela dão lugar a este (que volta para onde você estava)
   $$('.topo .acoes a, .topo .acoes button', tela).forEach(b => { if (/^voltar$/i.test(b.textContent.trim())) b.hidden = true; });
@@ -976,12 +976,12 @@ function htmlResumoProj(proj, { titulo, sub, link, geral }) {
   return `<section class="cartao resumo-gestao"><div class="rg-topo"><div><h2>${titulo}</h2><p class="muted">${mesTxt(m0.m, true)}</p></div>${link && telaPermitida(link.split('?')[0].slice(1)) ? `<a class="btn peq" href="${link}">Projeção completa ${ico('seta')}</a>` : ''}</div>
     <div class="rg-grade">
       ${k('Pago no mês', gasto, 'ok')}
-      ${k('A pagar no mês', m0.desp_aberto, '', Number(proj.vencido_pagar) ? `<b class="txt-verm">${brl(proj.vencido_pagar)} vencido</b>` : '')}
-      ${k('Previsões de gasto', m0.desp_previsto, 'prev')}
+      ${k('A pagar', m0.desp_aberto, '', Number(proj.vencido_pagar) ? `<b class="txt-verm">${brl(proj.vencido_pagar)} vencido</b>` : '')}
+      ${k('Previsões', m0.desp_previsto, 'prev')}
       ${k('Compras sem nota', Number(m0.compras_sem_nota), 'prev')}
-      ${geral ? k('Receitas previstas', Number(m0.rec_aberto) + Number(m0.rec_prevista), 'rec', `recebido: ${brl(m0.rec_recebido)}`) : ''}
-      ${geral && proj.saldo_contas != null ? k('Saldo em contas', proj.saldo_contas, Number(proj.saldo_contas) < 0 ? 'alerta' : '') : ''}
-      ${orc != null ? k('Orçado no mês', orc, pct > 100 ? 'alerta' : '', `${pct}% do orçado`) : ''}
+      ${geral ? k('Receitas', Number(m0.rec_aberto) + Number(m0.rec_prevista), 'rec', `recebido: ${brl(m0.rec_recebido)}`) : ''}
+      ${geral && proj.saldo_contas != null ? k('Saldo bancário', proj.saldo_contas, Number(proj.saldo_contas) < 0 ? 'alerta' : '') : ''}
+      ${orc != null ? k('Orçado', orc, pct > 100 ? 'alerta' : '', `${pct}% do orçado`) : ''}
     </div>
     <div class="tabela-wrap"><table class="rg-tab"><thead><tr><th>Mês</th><th class="num">Gastos projetados</th>${geral ? '<th class="num">Receitas projetadas</th><th class="num">Resultado</th>' : ''}<th class="num">Orçado</th></tr></thead><tbody>
       ${proj.meses.map(x => { const d = projDesp(x), r = projRec(x); return `<tr><td>${mesTxt(x.m)}</td><td class="num">${brl(d)}</td>${geral ? `<td class="num">${brl(r)}</td><td class="num ${r - d < 0 ? 'txt-verm' : 'txt-verde'}"><b>${brl(r - d)}</b></td>` : ''}<td class="num muted">${x.orcado_desp != null ? brl(x.orcado_desp) : '—'}</td></tr>`; }).join('')}
@@ -1010,8 +1010,8 @@ function filtroLocal(tela, { itens, antes, campos = [], busca = true, periodo = 
   const usados = campos.map(c => ({ ...c, valores: [...new Set(todos.map(e => e.dataset['f' + c.k[0].toUpperCase() + c.k.slice(1)]).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR')) }))
     .filter(c => c.valores.length > 1 || salvo[c.k]);
   const barra = document.createElement('div');
-  barra.className = 'filtros filtro-local';
-  barra.innerHTML = `
+  barra.className = 'filtros filtro-local' + (Object.keys(salvo).some(k => k !== 'q' && salvo[k]) ? '' : ' fl-fechado');
+  barra.innerHTML = `<button type="button" class="btn peq fl-toggle" data-fl-toggle>Filtros</button>
     ${busca ? `<input type="search" data-fl="q" placeholder="Buscar…" value="${esc(salvo.q || '')}" aria-label="Buscar">` : ''}
     ${usados.map(c => `<select data-fl="${c.k}" aria-label="${esc(c.rotulo)}"><option value="">${esc(c.rotulo)}: todos</option>${c.valores.map(v => `<option value="${esc(v)}" ${salvo[c.k] === v ? 'selected' : ''}>${esc(c.rotulo)}: ${esc(v)}</option>`).join('')}</select>`).join('')}
     ${periodo ? `<label class="fl-data">${esc(rotuloPeriodo)} de<input type="date" data-fl="de" value="${esc(salvo.de || '')}"></label><label class="fl-data">até<input type="date" data-fl="ate" value="${esc(salvo.ate || '')}"></label>` : ''}
@@ -1038,6 +1038,7 @@ function filtroLocal(tela, { itens, antes, campos = [], busca = true, periodo = 
     aoMudar?.(n);
   };
   barra.addEventListener('input', aplicar); barra.addEventListener('change', aplicar);
+  $('[data-fl-toggle]', barra).onclick = () => barra.classList.toggle('fl-fechado');
   $('[data-fl-limpar]', barra).onclick = () => { $$('[data-fl]', barra).forEach(i => { i.value = ''; }); aplicar(); };
   aplicar();
   return { aplicar, visiveis: () => els().filter(e => !e.hidden) };

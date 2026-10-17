@@ -207,7 +207,6 @@ rota('/financeiro/reembolsos', async tela => {
       <input type="date" name="de" value="${ini}" aria-label="De"><input type="date" name="ate" value="${fim}" aria-label="Até">
       <button class="btn">Filtrar</button>
     </form>
-    ${editaFin() ? '<p class="muted">Marque lançamentos para <b>gerar o pagamento</b> (aprovados, de um mesmo colaborador) ou para <b>alterar a forma de custeio</b> — por exemplo, transformar reembolsos em prestação de contas de um adiantamento.</p>' : ''}
     <div class="cartao">${tabelaReembolsos(linhas, { comColab: true, selecionar: editaFin() })}</div>`;
   $('#filtros').onsubmit = e => { e.preventDefault(); const d = formDados(e.target);
     location.hash = '#/financeiro/reembolsos?' + new URLSearchParams(Object.entries(d).filter(([, v]) => v)).toString(); };
