@@ -973,6 +973,7 @@ async function abrirAcao(a) {
       <label class="campo">Situação<select name="status">${['aberta', 'em_andamento', 'concluida', ...(podeEditar ? ['cancelada'] : [])].map(k => `<option value="${k}" ${k === a.status ? 'selected' : ''}>${ST_ACAO_TXT[k][0]}</option>`).join('')}</select></label>
       <label class="campo largo">O que foi feito<textarea name="evidencia" rows="3">${esc(a.evidencia || '')}</textarea></label></div>
     ${linkMod ? `<p class="muted"><a href="${linkMod}" data-fechar>Ver no módulo de ${a.modulo === 'ssma' ? 'Segurança' : 'Qualidade'}</a></p>` : ''}
+    ${a.plano_id && !location.hash.startsWith('#/planos/ver/') ? `<p class="muted">Referência: <a href="#/planos/ver/${a.plano_id}" data-fechar>${esc(a.origem)}</a></p>` : ''}
     <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button>${podeEditar || ehResp || gestor ? '<button class="btn prim">Salvar</button>' : ''}</div></form>`,
     { validar: d => d.status === 'concluida' && !d.evidencia?.trim() ? 'Para concluir, descreva a evidência de que a ação foi feita.' : null });
   if (!r) return false;
@@ -988,44 +989,139 @@ function ligarMinhasAcoes(tela, acs) {
 }
 
 // ===================== Planos de ação (todos) =====================
+// Toda ação geral nasce de um PLANO (reunião, auditoria, visita…): é a referência dela.
+const TIPOS_PLANO = { reuniao: 'Reunião', auditoria: 'Auditoria', inspecao: 'Inspeção', visita: 'Visita', indicador: 'Análise de indicador', projeto: 'Projeto', outro: 'Outro' };
+const SETORES_PLANO = ['Diretoria', 'Financeiro', 'Compras', 'Operação', 'Manutenção', 'Almoxarifado', 'RH', 'DP', 'Segurança', 'Qualidade', 'Administrativo'];
+const linhaAcaoHtml = (us, i) => `<tr data-linha="${i}"><td><input name="d_${i}" placeholder="O que fazer"></td>
+  <td><select name="r_${i}">${opcoes(us, null, u => u.nome, null, 'Responsável…')}</select></td>
+  <td><input type="date" name="p_${i}" value="${somaDias(hojeISO(), 7)}"></td><td><button type="button" class="btn peq" data-tirar title="Tirar linha">✕</button></td></tr>`;
+const blocoAcoesHtml = us => `<h3 style="margin:14px 0 6px">Ações</h3>
+  <div class="tabela-wrap"><table class="pl-linhas"><thead><tr><th>O que fazer</th><th style="width:30%">Responsável</th><th style="width:150px">Prazo</th><th style="width:44px"></th></tr></thead>
+  <tbody>${[0, 1, 2].map(i => linhaAcaoHtml(us, i)).join('')}</tbody></table></div>
+  <button type="button" class="btn peq" data-mais-linha style="margin-top:8px">+ Linha</button>`;
+function ligarLinhasAcao(f, us) {
+  let n = $$('tr[data-linha]', f).length;
+  f.addEventListener('click', e => {
+    if (e.target.closest('[data-mais-linha]')) { $('.pl-linhas tbody', f).insertAdjacentHTML('beforeend', linhaAcaoHtml(us, n++)); $$('.pl-linhas tbody tr', f).at(-1).querySelector('input').focus(); }
+    const t = e.target.closest('[data-tirar]'); if (t) t.closest('tr').remove();
+  });
+}
+const lerLinhasAcao = d => Object.keys(d).filter(k => /^d_\d+$/.test(k) && String(d[k]).trim()).map(k => { const i = k.slice(2); return { descricao: String(d[k]).trim(), responsavel_id: d['r_' + i], prazo: d['p_' + i] || null }; });
+const validarLinhas = (d, obrigatoria) => { const ls = lerLinhasAcao(d); if (obrigatoria && !ls.length) return 'Inclua pelo menos uma ação.';
+  return ls.some(l => !l.responsavel_id) ? 'Escolha o responsável de cada ação.' : ls.some(l => !l.prazo) ? 'Informe o prazo de cada ação.' : null; };
+async function salvarAcoesDoPlano(planoId, linhas) {
+  if (linhas.length) await api.inserir('acoes_gerais', linhas.map(l => ({ ...l, plano_id: planoId })));
+  return linhas.some(l => l.responsavel_id !== estado.usuario.id);
+}
+async function modalPlano(p = null) {
+  const us = (await usuarios().catch(() => [])).filter(u => u.ativo);
+  const r = await modal(`<form><h2>${p ? 'Editar plano' : 'Novo plano de ação'}</h2><div class="form">
+      <label class="campo">Origem<select name="tipo" required>${Object.entries(TIPOS_PLANO).map(([k, t]) => `<option value="${k}" ${k === (p?.tipo || 'reuniao') ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+      <label class="campo">Data<input type="date" name="data" value="${p?.data || hojeISO()}" required></label>
+      <label class="campo">Setor<select name="setor"><option value="">—</option>${SETORES_PLANO.map(x => `<option ${x === p?.setor ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
+      <label class="campo largo">Título / assunto<input name="titulo" required value="${esc(p?.titulo || '')}" placeholder="Ex.: Reunião de resultados de outubro; Auditoria interna ISO 9001"></label>
+      <label class="campo largo">Participantes<input name="participantes" value="${esc(p?.participantes || '')}" placeholder="Quem participou"></label>
+      <label class="campo largo">Resumo / pauta<textarea name="descricao" rows="2">${esc(p?.descricao || '')}</textarea></label></div>
+    ${p ? '' : blocoAcoesHtml(us)}
+    <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">${p ? 'Salvar' : 'Criar plano'}</button></div></form>`,
+    { aoAbrir: f => { $('.modal', f).classList.add('modal-largo'); if (!p) ligarLinhasAcao(f, us); }, validar: d => !d.titulo?.trim() ? 'Informe o título.' : p ? null : validarLinhas(d, true) });
+  if (!r) return null;
+  const dados = { tipo: r.tipo, data: r.data, setor: r.setor || null, titulo: r.titulo.trim(), participantes: r.participantes?.trim() || null, descricao: r.descricao?.trim() || null };
+  try {
+    if (p) { await api.alterar('planos', `id=eq.${p.id}`, dados); aviso('Plano atualizado.'); return p.id; }
+    const [np] = await api.inserir('planos', dados);
+    const avisou = await salvarAcoesDoPlano(np.id, lerLinhasAcao(r));
+    aviso(`Plano ${np.numero} criado${avisou ? ' e responsáveis avisados' : ''}.`); return np.id;
+  } catch (err) { falha(err); return null; }
+}
+async function modalAcoesNoPlano(planoId) {
+  const us = (await usuarios().catch(() => [])).filter(u => u.ativo);
+  let pid = planoId;
+  let opPlanos = '';
+  if (!pid) { const ps = await api.rpc('planos_lista').catch(() => []);
+    opPlanos = `<label class="campo largo">Plano de origem (referência)<select name="plano" required><option value="">Escolha a reunião, auditoria…</option><option value="__novo">+ Criar novo plano</option>${ps.map(p => `<option value="${p.id}">${esc(TIPOS_PLANO[p.tipo] + ' ' + dataBR(p.data) + ' · ' + p.titulo)}</option>`).join('')}</select></label>`; }
+  const r = await modal(`<form><h2>Lançar ações</h2>${opPlanos ? `<div class="form">${opPlanos}</div>` : ''}${blocoAcoesHtml(us)}
+    <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Lançar</button></div></form>`,
+    { aoAbrir: f => { $('.modal', f).classList.add('modal-largo'); ligarLinhasAcao(f, us); }, validar: d => !pid && !d.plano ? 'Escolha o plano de origem da ação.' : d.plano === '__novo' ? null : validarLinhas(d, true) });
+  if (!r) return null;
+  if (r.plano === '__novo') return (await modalPlano()) ? 'novo' : null;
+  pid = pid || r.plano;
+  try { const avisou = await salvarAcoesDoPlano(pid, lerLinhasAcao(r)); aviso(`Ações lançadas${avisou ? ' e responsáveis avisados' : ''}.`); return pid; } catch (err) { falha(err); return null; }
+}
+function tabelaAcoesHtml(acs, { mostrarResp = true, mostrarOrigem = true } = {}) {
+  return `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Ação</th>${mostrarOrigem ? '<th>Referência</th>' : ''}${mostrarResp ? '<th>Responsável</th>' : ''}<th>Prazo</th><th>Situação</th><th></th></tr></thead><tbody>
+    ${acs.map((a, i) => { const [pt, pc] = prazoTxt(a.prazo); const fim = ['concluida', 'cancelada'].includes(a.status); const [st, sc] = ST_ACAO_TXT[a.status] || [a.status, ''];
+      return `<tr class="clicavel" data-i="${i}"${fAttr('origem', (a.origem || '').split(' · ')[0])}${fAttr('resp', a.responsavel)}${fAttr('sit', !fim && pc === 'atr' ? 'Atrasada' : st)}${fAttr('data', a.prazo)}${fAttr('busca', [a.descricao, a.origem, a.responsavel, a.evidencia].filter(Boolean).join(' '))}>
+        <td data-r="Ação"><b>${esc(a.descricao)}</b>${a.evidencia ? `<div class="muted">${esc(a.evidencia)}</div>` : ''}</td>
+        ${mostrarOrigem ? `<td data-r="Referência">${a.plano_id ? `<a href="#/planos/ver/${a.plano_id}" data-ref>${esc(a.origem)}</a>` : esc(a.origem)}</td>` : ''}${mostrarResp ? `<td data-r="Responsável">${esc(a.responsavel || '—')}</td>` : ''}
+        <td data-r="Prazo" class="nowrap">${a.prazo ? dataBR(a.prazo) : '—'}${!fim && a.prazo ? `<div class="ma-pt ${pc}">${pt}</div>` : ''}</td>
+        <td data-r="Situação"><span class="tag ${!fim && pc === 'atr' ? 'vermelho' : sc}">${!fim && pc === 'atr' ? 'Atrasada' : st}</span></td>
+        <td class="nowrap"><button class="btn peq" data-i="${i}">Abrir</button></td></tr>`; }).join('')}
+  </tbody></table></div>`;
+}
+function ligarTabelaAcoes(tela, acs) {
+  $$('tr[data-i]', tela).forEach(tr => (tr.onclick = async e => { if (e.target.closest('[data-ref]')) return; if (await abrirAcao(acs[Number(tr.dataset.i)])) navegar(); }));
+}
 rota('/planos', async tela => {
   const gestor = tem('administrador', 'diretoria');
-  const esc_ = estado.params.get('ver') || 'minhas';
-  const escopo = esc_ === 'todas' && !gestor ? 'minhas' : esc_;
+  const ver = estado.params.get('ver') || 'minhas';
   const abertas = !temTodos(pLista('sit', 'todas'));
-  const acs = await api.rpc('planos_acao', { p_escopo: escopo, p_abertas: abertas }).catch(err => { falha(err); return []; });
-  const ABAS = [['minhas', 'No meu nome'], ['criadas', 'Que eu abri'], ...(gestor ? [['todas', 'Todas']] : [])];
-  const atr = acs.filter(a => a.prazo && a.prazo < hojeISO() && ['aberta', 'em_andamento'].includes(a.status)).length;
-  const url = m => '#/planos?' + new URLSearchParams({ ver: escopo, sit: abertas ? 'abertas' : 'todas', ...m }).toString();
+  const ABAS = [['minhas', 'No meu nome'], ['criadas', 'Que eu abri'], ['planos', 'Reuniões, auditorias e outros'], ...(gestor ? [['todas', 'Todas as ações']] : [])];
+  const url = m => '#/planos?' + new URLSearchParams({ ver, ...m }).toString();
+  const topo = (sub) => `<div class="topo"><div><h1>Planos de ação</h1><p class="sub">${sub}</p></div>
+      <div class="acoes"><button class="btn" id="lancar-acoes">+ Ações em plano existente</button><button class="btn prim" id="novo-plano">+ Novo plano</button></div></div>
+    <div class="abas">${ABAS.map(([k, t]) => `<a href="#/planos?ver=${k}" class="${k === ver ? 'ativa' : ''}">${t}</a>`).join('')}</div>`;
+  if (ver === 'planos') {
+    const ps = await api.rpc('planos_lista').catch(err => { falha(err); return []; });
+    tela.innerHTML = `${topo(`${ps.length} plano(s)`)}
+      <div class="cartao">${ps.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Nº</th><th>Data</th><th>Origem</th><th>Título</th><th>Setor</th><th>Andamento</th></tr></thead><tbody>
+        ${ps.map(p => { const pct = p.total ? Math.round(100 * p.concluidas / p.total) : 0;
+          return `<tr class="clicavel" data-p="${p.id}"${fAttr('origem', TIPOS_PLANO[p.tipo])}${fAttr('setor', p.setor)}${fAttr('data', p.data)}${fAttr('busca', [p.numero, p.titulo, p.setor, p.criado_por].filter(Boolean).join(' '))}>
+          <td data-r="Nº" class="mono">${esc(p.numero || '')}</td><td data-r="Data" class="nowrap">${dataBR(p.data)}</td><td data-r="Origem">${esc(TIPOS_PLANO[p.tipo] || p.tipo)}</td>
+          <td data-r="Título"><b>${esc(p.titulo)}</b>${p.criado_por ? `<div class="muted">por ${esc(p.criado_por)}</div>` : ''}</td><td data-r="Setor">${esc(p.setor || '—')}</td>
+          <td data-r="Andamento"><div class="pl-prog"><span style="width:${pct}%"></span></div><span class="muted">${p.concluidas}/${p.total} concluída(s)${p.atrasadas ? ` · <b class="txt-verm">${p.atrasadas} atrasada(s)</b>` : ''}</span></td></tr>`; }).join('')}
+        </tbody></table></div>` : '<div class="vazio">Nenhum plano. Crie um a partir de uma reunião, auditoria ou visita.</div>'}</div>`;
+    $$('tr[data-p]', tela).forEach(tr => (tr.onclick = () => (location.hash = '#/planos/ver/' + tr.dataset.p)));
+    filtroLocal(tela, { itens: 'tbody tr[data-p]', antes: $$('.cartao', tela).at(-1), campos: [{ k: 'origem', rotulo: 'Origem' }, { k: 'setor', rotulo: 'Setor' }], periodo: true, rotuloPeriodo: 'Data' });
+  } else {
+    const escopo = ver === 'todas' && !gestor ? 'minhas' : ver;
+    const acs = await api.rpc('planos_acao', { p_escopo: escopo, p_abertas: abertas }).catch(err => { falha(err); return []; });
+    const atr = acs.filter(a => a.prazo && a.prazo < hojeISO() && ['aberta', 'em_andamento'].includes(a.status)).length;
+    tela.innerHTML = `${topo(`${acs.length} ação(ões)${atr ? ` · <b class="txt-verm">${atr} atrasada(s)</b>` : ''}`)}
+      <form class="filtros" id="f-pl"><select name="sit"><option value="todas">Todas</option><option value="abertas" ${abertas ? 'selected' : ''}>Em aberto</option></select></form>
+      <div class="cartao">${acs.length ? tabelaAcoesHtml(acs, { mostrarResp: escopo !== 'minhas' }) : `<div class="vazio">${escopo === 'minhas' ? 'Nenhuma ação no seu nome.' : 'Nenhuma ação.'}</div>`}</div>`;
+    $('#f-pl').onchange = e => { location.hash = url({ sit: e.target.value }); };
+    ligarTabelaAcoes(tela, acs);
+    filtroLocal(tela, { itens: 'tbody tr[data-i]', antes: $$('.cartao', tela).at(-1), campos: [{ k: 'origem', rotulo: 'Origem' }, ...(escopo === 'minhas' ? [] : [{ k: 'resp', rotulo: 'Responsável' }]), { k: 'sit', rotulo: 'Situação' }], periodo: true, rotuloPeriodo: 'Prazo' });
+  }
+  $('#novo-plano').onclick = async () => { const id = await modalPlano(); if (id) location.hash = '#/planos/ver/' + id; };
+  $('#lancar-acoes').onclick = async () => { const id = await modalAcoesNoPlano(null); if (id && id !== 'novo') location.hash = '#/planos/ver/' + id; else if (id) navegar(); };
+});
+rota('/planos/ver/:id', async (tela, id) => {
+  const p = await api.um('planos', `id=eq.${id}`).catch(() => null);
+  if (!p) { tela.innerHTML = '<div class="cartao vazio">Plano não encontrado ou sem acesso.</div>'; return; }
+  const [autor, linhas] = await Promise.all([p.criado_por ? api.um('usuarios', `id=eq.${p.criado_por}&select=nome`).catch(() => null) : null,
+    api.listar('acoes_gerais', `plano_id=eq.${id}&ativo=eq.true&select=id,descricao,prazo,status,evidencia,concluida_em,responsavel_id,criado_por,criado_em,u:usuarios!acoes_gerais_responsavel_id_fkey(nome)`).catch(() => [])]);
+  p.autor = autor;
+  const acs = linhas.map(a => ({ modulo: 'geral', id: a.id, descricao: a.descricao, prazo: a.prazo, status: a.status, evidencia: a.evidencia, concluida_em: a.concluida_em,
+    responsavel_id: a.responsavel_id, responsavel: a.u?.nome, criado_por_id: a.criado_por, plano_id: id, origem: `${TIPOS_PLANO[p.tipo] || 'Plano'} ${dataBR(p.data)} · ${p.titulo}` }));
+  acs.sort((x, y) => (['concluida', 'cancelada'].includes(x.status) - ['concluida', 'cancelada'].includes(y.status)) || String(x.prazo || '9').localeCompare(String(y.prazo || '9')));
+  const vivas = acs.filter(a => a.status !== 'cancelada'), conc = vivas.filter(a => a.status === 'concluida').length;
+  const atr = vivas.filter(a => ['aberta', 'em_andamento'].includes(a.status) && a.prazo && a.prazo < hojeISO()).length;
+  const podeEditar = p.criado_por === estado.usuario.id || tem('administrador', 'diretoria');
+  const pct = vivas.length ? Math.round(100 * conc / vivas.length) : 0;
   tela.innerHTML = `
-    <div class="topo"><div><h1>Planos de ação</h1><p class="sub">${acs.length} ação(ões)${atr ? ` · <b class="txt-verm">${atr} atrasada(s)</b>` : ''}</p></div>
-      <div class="acoes"><button class="btn prim" id="nova-acao">+ Nova ação</button></div></div>
-    <div class="abas">${ABAS.map(([k, t]) => `<a href="${url({ ver: k })}" class="${k === escopo ? 'ativa' : ''}">${t}</a>`).join('')}</div>
-    <form class="filtros" id="f-pl"><select name="sit"><option value="todas">Todas</option><option value="abertas" ${abertas ? 'selected' : ''}>Em aberto</option></select></form>
-    <div class="cartao">${acs.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Ação</th><th>Origem</th>${escopo === 'minhas' ? '' : '<th>Responsável</th>'}<th>Prazo</th><th>Situação</th><th></th></tr></thead><tbody>
-      ${acs.map((a, i) => { const [pt, pc] = prazoTxt(a.prazo); const fim = ['concluida', 'cancelada'].includes(a.status); const [st, sc] = ST_ACAO_TXT[a.status] || [a.status, ''];
-        return `<tr class="clicavel" data-i="${i}"${fAttr('origem', a.origem.split(' · ').pop())}${fAttr('resp', a.responsavel)}${fAttr('data', a.prazo)}${fAttr('busca', [a.descricao, a.origem, a.responsavel, a.evidencia].filter(Boolean).join(' '))}>
-          <td data-r="Ação"><b>${esc(a.descricao)}</b>${a.evidencia ? `<div class="muted">${esc(a.evidencia)}</div>` : ''}</td>
-          <td data-r="Origem" class="nowrap">${esc(a.origem)}</td>${escopo === 'minhas' ? '' : `<td data-r="Responsável">${esc(a.responsavel || '—')}</td>`}
-          <td data-r="Prazo" class="nowrap">${a.prazo ? dataBR(a.prazo) : '—'}${!fim && a.prazo ? `<div class="ma-pt ${pc}">${pt}</div>` : ''}</td>
-          <td data-r="Situação"><span class="tag ${!fim && pc === 'atr' ? 'vermelho' : sc}">${!fim && pc === 'atr' ? 'Atrasada' : st}</span></td>
-          <td class="nowrap"><button class="btn peq" data-i="${i}">Abrir</button></td></tr>`; }).join('')}
-      </tbody></table></div>` : `<div class="vazio">${escopo === 'minhas' ? 'Nenhuma ação no seu nome.' : 'Nenhuma ação.'}</div>`}</div>`;
-  $('#f-pl').onchange = e => { location.hash = url({ sit: e.target.value }); };
-  $$('tr[data-i]', tela).forEach(tr => (tr.onclick = async () => { if (await abrirAcao(acs[Number(tr.dataset.i)])) navegar(); }));
-  filtroLocal(tela, { itens: 'tbody tr[data-i]', antes: $$('.cartao', tela).at(-1), campos: [{ k: 'origem', rotulo: 'Origem' }, ...(escopo === 'minhas' ? [] : [{ k: 'resp', rotulo: 'Responsável' }])], periodo: true, rotuloPeriodo: 'Prazo' });
-  $('#nova-acao').onclick = async () => {
-    const us = (await usuarios().catch(() => [])).filter(u => u.ativo);
-    const r = await modal(`<form><h2>Nova ação</h2><div class="form">
-      <label class="campo largo">O que fazer<textarea name="descricao" rows="2" required></textarea></label>
-      <label class="campo">Assunto / setor<input name="assunto" list="pl-assuntos" placeholder="Ex.: Financeiro"><datalist id="pl-assuntos">${['Financeiro', 'Compras', 'Operação', 'Manutenção', 'Almoxarifado', 'RH', 'DP', 'Segurança', 'Qualidade', 'Administrativo'].map(x => `<option>${x}</option>`).join('')}</datalist></label>
-      <label class="campo">Responsável<select name="resp" required>${opcoes(us, null, u => u.nome, estado.usuario.id, 'Selecione…')}</select></label>
-      <label class="campo">Prazo<input type="date" name="prazo" value="${somaDias(hojeISO(), 7)}" required></label></div>
-      <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Criar ação</button></div></form>`);
-    if (!r) return;
-    try { await api.inserir('acoes_gerais', { descricao: r.descricao.trim(), assunto: r.assunto?.trim() || null, responsavel_id: r.resp, prazo: r.prazo });
-      aviso(r.resp === estado.usuario.id ? 'Ação criada.' : 'Ação criada e responsável avisado.'); location.hash = url({ ver: r.resp === estado.usuario.id ? 'minhas' : 'criadas' }); navegar(); } catch (err) { falha(err); }
-  };
+    <div class="topo"><div><h1>${esc(p.titulo)}</h1><p class="sub">${esc(p.numero || '')} · ${esc(TIPOS_PLANO[p.tipo] || p.tipo)} de ${dataBR(p.data)}${p.setor ? ' · ' + esc(p.setor) : ''}</p></div>
+      <div class="acoes">${podeEditar ? '<button class="btn" id="ed-plano">Editar</button>' : ''}<button class="btn prim" id="mais-acoes">+ Ações</button></div></div>
+    <div class="cartao pl-cab"><div class="form">
+      <div><div class="muted">Andamento</div><div class="pl-prog grande"><span style="width:${pct}%"></span></div><b>${conc} de ${vivas.length} concluída(s)</b>${atr ? ` · <b class="txt-verm">${atr} atrasada(s)</b>` : ''}</div>
+      <div><div class="muted">Aberto por</div><b>${esc(p.autor?.nome || '—')}</b></div>
+      ${p.participantes ? `<div class="largo"><div class="muted">Participantes</div>${esc(p.participantes)}</div>` : ''}
+      ${p.descricao ? `<div class="largo"><div class="muted">Resumo / pauta</div><div style="white-space:pre-line">${esc(p.descricao)}</div></div>` : ''}</div></div>
+    <div class="cartao"><h2>Ações deste plano</h2>${acs.length ? tabelaAcoesHtml(acs, { mostrarOrigem: false }) : '<div class="vazio">Nenhuma ação lançada.</div>'}</div>`;
+  ligarTabelaAcoes(tela, acs);
+  $('#mais-acoes').onclick = async () => { if (await modalAcoesNoPlano(id)) navegar(); };
+  $('#ed-plano')?.addEventListener('click', async () => { if (await modalPlano(p)) navegar(); });
 });
 
 // ===================== Início: resumo financeiro da gestão =====================
@@ -1174,7 +1270,22 @@ function multiFiltro(sel) {
   $('[data-aplicar]', box).onclick = enviar;
   document.addEventListener('click', () => { if (!pan.hidden && box.isConnected) enviar(); });
 }
-function combosEm(raiz) { (raiz.matches?.('select') ? [raiz] : $$('select', raiz)).forEach(sel => (podeMulti(sel) ? multiFiltro(sel) : comboSelect(sel))); }
+// Barra de rolagem horizontal sempre à vista: tabelas largas ganham uma barra que fica presa no
+// rodapé da tela enquanto a tabela aparece (não é preciso ir até o fim da lista para rolar de lado).
+function barraRolagem(w) {
+  if (w._hbar || w.closest('.modal, .cb-lista')) return; w._hbar = true;
+  const bar = document.createElement('div'); bar.className = 'hbar'; bar.innerHTML = '<div></div>'; bar.setAttribute('aria-hidden', 'true');
+  w.after(bar); w.classList.add('com-hbar');
+  const miolo = bar.firstChild;
+  const medir = () => { const larga = w.scrollWidth > w.clientWidth + 1; bar.hidden = !larga; w.classList.toggle('larga', larga);
+    miolo.style.width = w.scrollWidth + 'px'; bar.style.width = w.clientWidth + 'px'; if (larga) bar.scrollLeft = w.scrollLeft; };
+  bar.addEventListener('scroll', () => { if (Math.abs(w.scrollLeft - bar.scrollLeft) > 1) w.scrollLeft = bar.scrollLeft; });
+  w.addEventListener('scroll', () => { if (Math.abs(bar.scrollLeft - w.scrollLeft) > 1) bar.scrollLeft = w.scrollLeft; });
+  if (window.ResizeObserver) { const ro = new ResizeObserver(medir); ro.observe(w); const t = w.querySelector('table'); if (t) ro.observe(t); }
+  medir(); setTimeout(medir, 300);
+}
+function barrasEm(raiz) { (raiz.matches?.('.tabela-wrap') ? [raiz] : $$('.tabela-wrap', raiz)).forEach(barraRolagem); }
+function combosEm(raiz) { barrasEm(raiz); (raiz.matches?.('select') ? [raiz] : $$('select', raiz)).forEach(sel => (podeMulti(sel) ? multiFiltro(sel) : comboSelect(sel))); }
 new MutationObserver(ms => { for (const m of ms) for (const n of m.addedNodes) if (n.nodeType === 1 && !n.classList?.contains('cb-lista')) combosEm(n);
   if (_cbAberto && !_cbAberto.box.isConnected) _cbAberto.fechar(); }).observe(document.documentElement, { childList: true, subtree: true });
 addEventListener('scroll', e => { if (_cbAberto && !_cbAberto.lista?.contains(e.target)) _cbAberto.posicionar(); }, true);
