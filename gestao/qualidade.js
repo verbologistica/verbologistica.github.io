@@ -132,7 +132,7 @@ rota('/qualidade/nc', async tela => {
 });
 rota('/qualidade/nc/nova', async tela => {
   const aud = estado.params.get('auditoria') || '';
-  const [ss, cls, fs, us] = await Promise.all([setoresL().catch(() => []), cad('clientes', 'select=id,nome,ativo&order=nome').catch(() => []), cad('fornecedores', 'select=id,razao_social,ativo&order=razao_social').catch(() => []), usuarios().catch(() => [])]);
+  const [ss, cls, fs, us] = await Promise.all([setoresL().catch(() => []), cad('clientes', 'select=id,nome,ativo&order=nome').catch(() => []), cad('fornecedores', 'select=id,razao_social,nome_fantasia,documento,ativo&order=razao_social').catch(() => []), usuarios().catch(() => [])]);
   tela.innerHTML = `<div class="topo"><div><h1>Registrar não conformidade</h1><p class="sub">Qualquer pessoa pode registrar. A Qualidade analisa e acompanha.</p></div></div>
     <form id="f-nc" class="cartao"><div class="form">
       <label class="campo">Classificação<select name="classificacao">${Object.entries(CLASS_NC).map(([k, t]) => `<option value="${k}">${t}</option>`).join('')}</select></label>
@@ -141,7 +141,7 @@ rota('/qualidade/nc/nova', async tela => {
       <label class="campo">Data<input type="date" name="data" value="${hojeISO()}"></label>
       <label class="campo">Setor<select name="setor_id"><option value="">—</option>${ss.filter(s => s.ativo).map(s => `<option value="${s.id}">${esc(s.nome)}</option>`).join('')}</select></label>
       <label class="campo">Cliente<select name="cliente_id"><option value="">—</option>${cls.filter(c => c.ativo).map(c => `<option value="${c.id}">${esc(c.nome)}</option>`).join('')}</select></label>
-      <label class="campo">Fornecedor<select name="fornecedor_id"><option value="">—</option>${fs.filter(f => f.ativo).map(f => `<option value="${f.id}">${esc(f.razao_social)}</option>`).join('')}</select></label>
+      <label class="campo">Fornecedor<select name="fornecedor_id"><option value="">—</option>${fs.filter(f => f.ativo).map(f => `<option value="${f.id}">${esc(rotForn(f))}</option>`).join('')}</select></label>
       <label class="campo">Referência (nº OS, ocorrência, acidente)<input name="origem_ref"></label>
       <label class="campo largo">O que aconteceu? *<textarea name="descricao" rows="3" required></textarea></label>
       <label class="campo largo">Evidência<input name="evidencia" placeholder="Onde se vê o problema: registro, foto, documento"></label>
@@ -226,13 +226,13 @@ rota('/qualidade/auditorias', async tela => {
   $('#nova')?.addEventListener('click', () => formAuditoria());
 });
 async function formAuditoria(a = null) {
-  const [ss, fs] = await Promise.all([setoresL().catch(() => []), cad('fornecedores', 'select=id,razao_social,ativo&order=razao_social')]);
+  const [ss, fs] = await Promise.all([setoresL().catch(() => []), cad('fornecedores', 'select=id,razao_social,nome_fantasia,documento,ativo&order=razao_social')]);
   const r = await modal(`<form><h2>${a ? 'Editar ' + esc(a.numero) : 'Nova auditoria'}</h2><div class="form">
     <label class="campo">Tipo<select name="tipo">${Object.entries(TIPO_AUD).map(([k, t]) => `<option value="${k}" ${k === a?.tipo ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
     <label class="campo">Norma / referência<input name="norma" list="normas" value="${esc(a?.norma || '')}"><datalist id="normas">${['ISO 9001', 'ISO 14001', 'ISO 45001', 'SASSMAQ', 'Requisitos do cliente', 'Procedimentos internos'].map(n => `<option>${n}</option>`).join('')}</datalist></label>
     <label class="campo largo">Escopo *<input name="escopo" required value="${esc(a?.escopo || '')}" placeholder="Processos/setores auditados"></label>
     <label class="campo">Setor<select name="setor_id"><option value="">—</option>${ss.filter(s => s.ativo).map(s => `<option value="${s.id}" ${s.id === a?.setor_id ? 'selected' : ''}>${esc(s.nome)}</option>`).join('')}</select></label>
-    <label class="campo">Fornecedor auditado<select name="fornecedor_id"><option value="">—</option>${fs.filter(f => f.ativo).map(f => `<option value="${f.id}" ${f.id === a?.fornecedor_id ? 'selected' : ''}>${esc(f.razao_social)}</option>`).join('')}</select></label>
+    <label class="campo">Fornecedor auditado<select name="fornecedor_id"><option value="">—</option>${fs.filter(f => f.ativo).map(f => `<option value="${f.id}" ${f.id === a?.fornecedor_id ? 'selected' : ''}>${esc(rotForn(f))}</option>`).join('')}</select></label>
     <label class="campo">Data prevista *<input type="date" name="prev" required value="${a?.data_prevista || ''}"></label><label class="campo">Data realizada<input type="date" name="real" value="${a?.data_realizada || ''}"></label>
     <label class="campo">Auditor(es)<input name="auditor" value="${esc(a?.auditor || '')}"></label>
     ${a ? `<label class="campo">Situação<select name="status">${Object.entries(ST_AUD).map(([k, [t]]) => `<option value="${k}" ${k === a.status ? 'selected' : ''}>${t}</option>`).join('')}</select></label>

@@ -155,12 +155,12 @@ rota('/dp/beneficios', async tela => {
   $$('[data-ed]', tela).forEach(b => b.onclick = () => formBeneficio(bs.find(x => x.id === b.dataset.ed)));
 });
 async function formBeneficio(b = null) {
-  const [cs, fs] = await Promise.all([api.listar('colaboradores', 'select=id,nome,salario&ativo=eq.true&status=not.in.(candidato,desligado)&order=nome').catch(() => []), cad('fornecedores', 'select=id,razao_social,ativo&order=razao_social')]);
+  const [cs, fs] = await Promise.all([api.listar('colaboradores', 'select=id,nome,salario&ativo=eq.true&status=not.in.(candidato,desligado)&order=nome').catch(() => []), cad('fornecedores', 'select=id,razao_social,nome_fantasia,documento,ativo&order=razao_social')]);
   const r = await modal(`<form><h2>${b ? 'Editar benefício' : 'Novo benefício'}</h2><div class="form">
     <label class="campo largo">Colaborador *<select name="colab" required>${'<option value="">Selecione…</option>' + cs.map(c => `<option value="${c.id}" data-sal="${c.salario || ''}" ${c.id === b?.colaborador_id ? 'selected' : ''}>${esc(c.nome)}</option>`).join('')}</select></label>
     <label class="campo">Tipo<select name="tipo" data-valor="${esc(b?.tipo || '')}">${TIPOS_BENEF.map(t => `<option ${t === b?.tipo ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
     <label class="campo">Descrição / plano<input name="descricao" value="${esc(b?.descricao || '')}"></label>
-    <label class="campo">Fornecedor<select name="forn"><option value="">—</option>${fs.filter(f => f.ativo).map(f => `<option value="${f.id}" ${f.id === b?.fornecedor_id ? 'selected' : ''}>${esc(f.razao_social)}</option>`).join('')}</select></label>
+    <label class="campo">Fornecedor<select name="forn"><option value="">—</option>${fs.filter(f => f.ativo).map(f => `<option value="${f.id}" ${f.id === b?.fornecedor_id ? 'selected' : ''}>${esc(rotForn(f))}</option>`).join('')}</select></label>
     <label class="campo">Custo da empresa (R$/mês)<input name="ve" inputmode="decimal" value="${b?.valor_empresa ?? ''}"></label><label class="campo">Desconto do colaborador (R$/mês)<input name="vc" inputmode="decimal" value="${b?.valor_colaborador ?? ''}"></label>
     <label class="campo">Início<input type="date" name="inicio" value="${b?.inicio || hojeISO()}"></label><label class="campo">Fim<input type="date" name="fim" value="${b?.fim || ''}"></label>
     <label class="check largo"><input type="checkbox" name="aut" ${b?.autorizacao_assinada ? 'checked' : ''}> Autorização de desconto assinada pelo colaborador</label></div>

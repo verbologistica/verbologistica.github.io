@@ -416,7 +416,7 @@ async function editarTitulo(tela, id, tipo) {
   const [ps, pess, ccs] = await Promise.all([api.listar('titulo_parcelas', `titulo_id=eq.${id}&status=neq.cancelada&order=parcela`), tipo === 'pagar' ? fornecedores(true) : clientes(true), centros()]);
   const valorLivre = ['avulso', 'legado', 'recorrente', 'pedido'].includes(t.origem);
   const pessoaFixa = ['reembolso', 'adiantamento'].includes(t.origem);
-  const rot = x => (tipo === 'pagar' ? x.razao_social : x.nome) + (x.nome_fantasia ? ` (${x.nome_fantasia})` : '');
+  const rot = x => (tipo === 'pagar' ? x.razao_social : x.nome) + (x.nome_fantasia ? ` (${x.nome_fantasia})` : '') + (x.documento ? ' · ' + fmtDoc(x.documento) : '');
   const pid = tipo === 'pagar' ? t.fornecedor_id : t.cliente_id;
   tela.innerHTML = `
     <div class="topo"><div><h1>Editar ${esc(t.numero)}</h1><p class="sub">Corrija o que foi lançado errado. Tudo fica no histórico da conta, com o motivo.</p></div></div>

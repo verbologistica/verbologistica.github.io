@@ -87,7 +87,7 @@ rota('/manut/os', async tela => {
 });
 
 async function formOS(tela, o = null) {
-  const [eqs, fs, cs] = await Promise.all([eqsAtivos(), cad('fornecedores', 'select=id,razao_social,ativo&order=razao_social'), api.listar('v_colaboradores_basico', 'select=id,nome,cargo&order=nome').catch(() => [])]);
+  const [eqs, fs, cs] = await Promise.all([eqsAtivos(), cad('fornecedores', 'select=id,razao_social,nome_fantasia,documento,ativo&order=razao_social'), api.listar('v_colaboradores_basico', 'select=id,nome,cargo&order=nome').catch(() => [])]);
   const eqSel = o?.equipamento_id || estado.params.get('eq') || '';
   const comps = eqSel ? await api.listar('veiculos', `equipamento_id=eq.${eqSel}&ativo=eq.true&order=ordem`).catch(() => []) : [];
   const ed = editaManut();
@@ -102,7 +102,7 @@ async function formOS(tela, o = null) {
       <label class="check largo"><input type="checkbox" name="equipamento_parado" ${o?.equipamento_parado ? 'checked' : ''}> Equipamento parado (não pode operar até concluir)</label>
       ${ed ? `<label class="campo largo">Diagnóstico<textarea name="diagnostico" rows="2">${esc(o?.diagnostico || '')}</textarea></label>
       <label class="campo">Oficina<select name="oficina"><option value="interna">Interna</option><option value="externa" ${o?.oficina === 'externa' ? 'selected' : ''}>Externa (terceiro)</option></select></label>
-      <label class="campo">Fornecedor / oficina<select name="fornecedor_id"><option value="">—</option>${fs.filter(f => f.ativo).map(f => `<option value="${f.id}" ${f.id === o?.fornecedor_id ? 'selected' : ''}>${esc(f.razao_social)}</option>`).join('')}</select></label>
+      <label class="campo">Fornecedor / oficina<select name="fornecedor_id"><option value="">—</option>${fs.filter(f => f.ativo).map(f => `<option value="${f.id}" ${f.id === o?.fornecedor_id ? 'selected' : ''}>${esc(rotForn(f))}</option>`).join('')}</select></label>
       <label class="campo">Mecânico responsável<select name="mecanico_id"><option value="">—</option>${cs.map(c => `<option value="${c.id}" ${c.id === o?.mecanico_id ? 'selected' : ''}>${esc(c.nome)}</option>`).join('')}</select></label>
       <label class="campo">Previsão de liberação<input type="date" name="previsao" value="${o?.previsao || ''}"></label>
       <label class="campo">Causa provável<select name="causa" data-valor="${esc(o?.causa || '')}"><option value="">A definir</option>${Object.entries(CAUSAS_OS).map(([k, t]) => `<option value="${k}" ${k === o?.causa ? 'selected' : ''}>${t}</option>`).join('')}<option value="Outro">Outro</option></select></label>
@@ -137,7 +137,7 @@ rota('/manut/os/ver/:id', async (tela, id) => {
   if (!o) { tela.innerHTML = '<div class="cartao vazio">OS não encontrada ou sem acesso.</div>'; return; }
   const [its, pecas, cs, fs, veic] = await Promise.all([api.listar('manut_os_itens', `os_id=eq.${id}&ativo=eq.true&select=*,colab:colaboradores(nome),forn:fornecedores(razao_social)&order=criado_em`),
     api.listar('almox_itens', 'ativo=eq.true&select=id,codigo,descricao,unidade,saldo,custo_medio&order=descricao').catch(() => []), api.listar('v_colaboradores_basico', 'select=id,nome&order=nome').catch(() => []),
-    cad('fornecedores', 'select=id,razao_social,ativo&order=razao_social'), o.veiculo_id ? api.um('veiculos', `id=eq.${o.veiculo_id}`).catch(() => null) : null]);
+    cad('fornecedores', 'select=id,razao_social,nome_fantasia,documento,ativo&order=razao_social'), o.veiculo_id ? api.um('veiculos', `id=eq.${o.veiculo_id}`).catch(() => null) : null]);
   const ed = editaManut(), aberta = !['concluida', 'cancelada'].includes(o.status);
   const tot = t => its.filter(i => t.includes(i.tipo)).reduce((a, i) => a + Number(i.valor_total || 0), 0);
   tela.innerHTML = `
@@ -192,7 +192,7 @@ rota('/manut/os/ver/:id', async (tela, id) => {
       <label class="campo">Quantidade / horas<input name="quantidade" inputmode="decimal" value="1"></label>
       <label class="campo" id="b-val">Valor unitário (R$)<input name="valor_unitario" inputmode="decimal"></label>
       <label class="campo" id="b-colab">Mecânico<select name="colaborador_id"><option value="">—</option>${cs.map(c => `<option value="${c.id}" ${c.id === o.mecanico_id ? 'selected' : ''}>${esc(c.nome)}</option>`).join('')}</select></label>
-      <label class="campo" id="b-forn">Fornecedor<select name="fornecedor_id"><option value="">—</option>${fs.filter(f => f.ativo).map(f => `<option value="${f.id}" ${f.id === o.fornecedor_id ? 'selected' : ''}>${esc(f.razao_social)}</option>`).join('')}</select></label>
+      <label class="campo" id="b-forn">Fornecedor<select name="fornecedor_id"><option value="">—</option>${fs.filter(f => f.ativo).map(f => `<option value="${f.id}" ${f.id === o.fornecedor_id ? 'selected' : ''}>${esc(rotForn(f))}</option>`).join('')}</select></label>
       <label class="campo" id="b-doc">Nota fiscal<input name="documento"></label></div>
       <p class="muted" id="m-pc">Peça comprada fora: lance também a conta a pagar no Financeiro (ou pelo pedido de compra) com a NF.</p>
       <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Lançar</button></div></form>`,
@@ -371,7 +371,7 @@ rota('/manut/pneus', async tela => {
   $$('[data-mov]', tela).forEach(b => b.onclick = () => movPneu(ps.find(p => p.id === b.dataset.mov), eqs));
 });
 async function formPneu(p = null) {
-  const fs = await cad('fornecedores', 'select=id,razao_social,ativo&order=razao_social');
+  const fs = await cad('fornecedores', 'select=id,razao_social,nome_fantasia,documento,ativo&order=razao_social');
   const r = await modal(`<form><h2>${p ? 'Editar pneu ' + esc(p.numero_fogo) : 'Cadastrar pneu'}</h2><div class="form">
     <label class="campo">Número de fogo<input name="numero_fogo" value="${esc(p?.numero_fogo || '')}" placeholder="Vazio = automático"></label>
     <label class="campo">Marca<input name="marca" value="${esc(p?.marca || '')}"></label><label class="campo">Modelo<input name="modelo" value="${esc(p?.modelo || '')}"></label>
@@ -379,7 +379,7 @@ async function formPneu(p = null) {
     <label class="campo">Banda<select name="tipo_banda" data-valor="${esc(p?.tipo_banda || '')}">${['', 'Lisa (direcional)', 'Borrachuda (tração)', 'Mista', 'Outro'].map(t => `<option ${t === p?.tipo_banda ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
     <label class="campo">Sulco inicial (mm)<input name="sulco_inicial" inputmode="decimal" value="${p?.sulco_inicial ?? ''}"></label>
     <label class="campo">Custo (R$)<input name="custo" inputmode="decimal" value="${p?.custo ?? ''}"></label>
-    <label class="campo">Fornecedor<select name="fornecedor_id"><option value="">—</option>${fs.filter(f => f.ativo).map(f => `<option value="${f.id}" ${f.id === p?.fornecedor_id ? 'selected' : ''}>${esc(f.razao_social)}</option>`).join('')}</select></label>
+    <label class="campo">Fornecedor<select name="fornecedor_id"><option value="">—</option>${fs.filter(f => f.ativo).map(f => `<option value="${f.id}" ${f.id === p?.fornecedor_id ? 'selected' : ''}>${esc(rotForn(f))}</option>`).join('')}</select></label>
     <label class="campo">Nota fiscal<input name="nota_fiscal" value="${esc(p?.nota_fiscal || '')}"></label><label class="campo">Data da compra<input type="date" name="data_compra" value="${p?.data_compra || ''}"></label>
     ${p ? '' : '<label class="campo">Quantidade (iguais)<input type="number" name="qtd" value="1" min="1" max="40"></label>'}</div>
     <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Salvar</button></div></form>`);
@@ -396,7 +396,7 @@ async function movPneu(p, eqs) {
   const permitidos = { estoque: ['montagem', 'inspecao', 'envio_recapagem', 'envio_conserto', 'sucata'], montado: ['rodizio', 'desmontagem', 'inspecao', 'envio_recapagem', 'envio_conserto', 'sucata'],
     recapagem: ['retorno_recapagem', 'sucata'], conserto: ['retorno_conserto', 'sucata'], sucata: [] }[p.status];
   if (!permitidos.length) return aviso('Pneu sucateado não tem movimentos.', true);
-  const fs = await cad('fornecedores', 'select=id,razao_social,ativo&order=razao_social');
+  const fs = await cad('fornecedores', 'select=id,razao_social,nome_fantasia,documento,ativo&order=razao_social');
   const r = await modal(`<form><h2>Pneu ${esc(p.numero_fogo)}</h2><p class="muted">${tagSt(ST_PNEU, p.status)} ${p.status === 'montado' ? `${esc(p.e?.codigo_frota || '')} · ${esc(p.posicao || '')}` : ''}</p><div class="form">
     <label class="campo largo">Movimento<select name="tipo">${permitidos.map(k => `<option value="${k}">${MOV_PNEU[k]}</option>`).join('')}</select></label>
     <label class="campo largo" id="b-eq">Equipamento<select name="equipamento_id"><option value="">—</option>${optEq(eqs, p.equipamento_id)}</select></label>
@@ -405,7 +405,7 @@ async function movPneu(p, eqs) {
     <label class="campo">Km do equipamento<input name="km" inputmode="numeric" placeholder="vazio = km atual"></label>
     <label class="campo">Sulco medido (mm)<input name="sulco" inputmode="decimal"></label><label class="campo">Calibragem (psi)<input name="psi" inputmode="numeric"></label>
     <label class="campo" id="b-custo">Custo (R$)<input name="custo" inputmode="decimal"></label>
-    <label class="campo" id="b-forn">Fornecedor<select name="fornecedor_id"><option value="">—</option>${fs.filter(f => f.ativo).map(f => `<option value="${f.id}">${esc(f.razao_social)}</option>`).join('')}</select></label>
+    <label class="campo" id="b-forn">Fornecedor<select name="fornecedor_id"><option value="">—</option>${fs.filter(f => f.ativo).map(f => `<option value="${f.id}">${esc(rotForn(f))}</option>`).join('')}</select></label>
     <label class="campo largo">Motivo / observação<input name="motivo"></label></div>
     <p class="muted" id="m-suc" hidden>Pneu inservível deve ir para ponto de coleta (Res. Conama 416/2009). Guarde o comprovante de destinação.</p>
     <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Registrar</button></div></form>`,

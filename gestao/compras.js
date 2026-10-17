@@ -13,7 +13,7 @@ const ehComprador = () => tem('administrador', 'comprador');
 const veCompras = () => veTudo() || tem('comprador', 'aprovador');
 const minimoCot = v => (v <= 1000 ? 1 : v <= 5000 ? 2 : 3);   // espelha regras_cotacao (mínimo obrigatório)
 const SELECT_REQ = 'select=*,cc:centros_custo(nome),solic:usuarios!requisicoes_solicitante_id_fkey(nome)';
-const nomeForn = f => f ? (f.nome_fantasia ? `${f.razao_social} (${f.nome_fantasia})` : f.razao_social) : '—';
+const nomeForn = f => rotForn(f);
 
 async function listarReq(consulta) {
   try { return await api.listar('requisicoes', `${SELECT_REQ}&${consulta}`); }
@@ -456,7 +456,7 @@ rota('/compras/pedidos/ver/:id', async (tela, id) => {
         ${ehComprador() && ativo && !fat && !recsV.length ? '<button class="btn perigo" id="cancelar">Cancelar pedido</button>' : ''}
         <button class="btn" onclick="history.back()">Voltar</button></div></div>
     <div class="cartao"><div class="form">
-      <div><div class="muted">Fornecedor</div><b>${esc(nomeForn(forn))}</b><div class="muted">${esc([forn?.documento, forn?.telefone, forn?.email].filter(Boolean).join(' · '))}</div></div>
+      <div><div class="muted">Fornecedor</div><b>${esc(nomeForn(forn))}</b><div class="muted">${esc([forn?.telefone, forn?.email].filter(Boolean).join(' · '))}</div></div>
       <div><div class="muted">Pagamento</div><b>${esc(p.condicao_pagamento || '—')}</b></div>
       <div><div class="muted">Previsão de entrega</div><b>${p.previsao_entrega ? dataBR(p.previsao_entrega) : '—'}</b>${ativo && !entregue && p.previsao_entrega && p.previsao_entrega < hojeISO() ? ' <span class="tag vermelho">atrasado</span>' : ''}</div>
       <div><div class="muted">Origem</div>${r ? `Requisição <a href="#/compras/requisicoes/ver/${r.id}">${esc(r.numero)}</a> · ${esc(r.solic?.nome || '')}` : '—'}${cot && veCompras() ? `<br>Cotação <a href="#/compras/cotacoes/ver/${p.cotacao_id}">${esc(cot.numero)}</a>` : ''}</div>
@@ -736,7 +736,7 @@ function imprimirPedido(p, forn, itens, r) {
     th,td{border:1px solid #ccc;padding:6px 8px;text-align:left}td.n,th.n{text-align:right}.cab{display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #1b3a5c;padding-bottom:10px}
     .bl{margin-top:14px}.muted{color:#666}img{height:48px}</style></head><body>
     <div class="cab"><img src="${location.origin + location.pathname.replace(/[^/]*$/, '')}logo.png" alt="Verbo Logística"><div style="text-align:right"><h1>Pedido de compra ${esc(p.numero)}</h1><div class="muted">Emitido em ${dataBR(p.criado_em)}</div></div></div>
-    <div class="bl"><b>Fornecedor:</b> ${esc(nomeForn(forn))}${forn?.documento ? ' · ' + esc(forn.documento) : ''}${forn?.telefone ? ' · ' + esc(forn.telefone) : ''}</div>
+    <div class="bl"><b>Fornecedor:</b> ${esc(nomeForn(forn))}${forn?.telefone ? ' · ' + esc(forn.telefone) : ''}</div>
     <div class="bl"><b>Condição de pagamento:</b> ${esc(p.condicao_pagamento || '—')} · <b>Previsão de entrega:</b> ${p.previsao_entrega ? dataBR(p.previsao_entrega) : '—'}</div>
     ${r?.justificativa ? `<div class="bl"><b>Referência:</b> ${esc(r.justificativa)}</div>` : ''}
     <table><thead><tr><th>Descrição</th><th class="n">Qtd.</th><th>Unid.</th><th class="n">Valor unit.</th><th class="n">Total</th></tr></thead><tbody>

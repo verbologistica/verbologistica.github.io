@@ -125,12 +125,12 @@ rota('/almox/itens/ver/:id', async (tela, id) => {
   $$('[data-mov]', tela).forEach(b => b.onclick = () => movimentoAvulso(i, b.dataset.mov, eqs));
 });
 async function movimentoAvulso(i, tipo, eqs) {
-  const [cs, ccs, fs] = await Promise.all([colabsRH('&status=in.(ativo,ferias,afastado,aviso_previo,em_admissao)').catch(() => []), centros(), cad('fornecedores', 'select=id,razao_social,ativo&order=razao_social')]);
+  const [cs, ccs, fs] = await Promise.all([colabsRH('&status=in.(ativo,ferias,afastado,aviso_previo,em_admissao)').catch(() => []), centros(), cad('fornecedores', 'select=id,razao_social,nome_fantasia,documento,ativo&order=razao_social')]);
   const r = await modal(`<form><h2>${{ entrada: 'Entrada', saida: 'Saída', ajuste: 'Ajuste de estoque' }[tipo]} · ${esc(i.descricao)}</h2><p class="muted">Saldo atual: ${fmtQtd(i.saldo, i.unidade)}</p><div class="form">
     ${tipo === 'ajuste' ? '<label class="campo">Ajuste<select name="t"><option value="ajuste_mais">Somar ao estoque</option><option value="ajuste_menos">Retirar do estoque</option></select></label>' : ''}
     <label class="campo">Quantidade *<input name="quantidade" inputmode="decimal" required></label><label class="campo">Data<input type="date" name="data" value="${hojeISO()}"></label>
     ${tipo === 'entrada' ? `<label class="campo">Custo unitário (R$) *<input name="custo" inputmode="decimal" required></label>
-      <label class="campo">Fornecedor<select name="fornecedor_id"><option value="">—</option>${fs.filter(f => f.ativo).map(f => `<option value="${f.id}">${esc(f.razao_social)}</option>`).join('')}</select></label>` : ''}
+      <label class="campo">Fornecedor<select name="fornecedor_id"><option value="">—</option>${fs.filter(f => f.ativo).map(f => `<option value="${f.id}">${esc(rotForn(f))}</option>`).join('')}</select></label>` : ''}
     ${tipo === 'saida' ? `<label class="campo">Entregue a<select name="colaborador_id"><option value="">—</option>${cs.map(c => `<option value="${c.id}">${esc(c.nome)}</option>`).join('')}</select></label>
       <label class="campo">Aplicado no equipamento<select name="equipamento_id"><option value="">—</option>${eqs.map(e => `<option value="${e.id}">${esc(e.codigo_frota || e.tipo)}</option>`).join('')}</select></label>
       <label class="campo">Centro de custo<select name="centro_custo_id">${opcoes(ccs.filter(c => c.ativo), null, c => c.nome, null, '—')}</select></label>` : ''}
@@ -150,14 +150,14 @@ async function movimentoAvulso(i, tipo, eqs) {
 // ===================== Entrada com vários itens (NF) =====================
 rota('/almox/entrada', async tela => {
   if (!editaAlmox()) { tela.innerHTML = '<div class="cartao vazio">Sem permissão.</div>'; return; }
-  const [its, fs, peds] = await Promise.all([itensAlmox(true), cad('fornecedores', 'select=id,razao_social,ativo&order=razao_social'),
+  const [its, fs, peds] = await Promise.all([itensAlmox(true), cad('fornecedores', 'select=id,razao_social,nome_fantasia,documento,ativo&order=razao_social'),
     api.listar('pedidos', 'select=id,numero,fornecedor_id&status=in.(emitido,faturado,entregue,parcialmente_recebido,recebido)&order=criado_em.desc&limit=100').catch(() => [])]);
   const linha = () => `<tr><td><select name="item" required><option value="">Selecione…</option>${its.filter(i => i.ativo).map(i => `<option value="${i.id}">${esc(i.codigo + ' · ' + i.descricao)} (${esc(i.unidade)})</option>`).join('')}</select></td>
     <td><input name="qtd" inputmode="decimal" required style="width:90px"></td><td><input name="custo" inputmode="decimal" required style="width:110px"></td><td class="num tot">—</td><td><button type="button" class="btn peq" data-rem>✕</button></td></tr>`;
   tela.innerHTML = `
     <div class="topo"><div><h1>Entrada de material</h1><p class="sub">Lance a nota fiscal com todos os itens de uma vez</p></div></div>
     <form id="f-ent" class="cartao"><div class="form">
-      <label class="campo">Fornecedor<select name="fornecedor_id"><option value="">—</option>${fs.filter(f => f.ativo).map(f => `<option value="${f.id}">${esc(f.razao_social)}</option>`).join('')}</select></label>
+      <label class="campo">Fornecedor<select name="fornecedor_id"><option value="">—</option>${fs.filter(f => f.ativo).map(f => `<option value="${f.id}">${esc(rotForn(f))}</option>`).join('')}</select></label>
       <label class="campo">Pedido de compra<select name="pedido_id"><option value="">—</option>${peds.map(p => `<option value="${p.id}" data-forn="${p.fornecedor_id || ''}">${esc(p.numero)}</option>`).join('')}</select></label>
       <label class="campo">Nota fiscal<input name="documento" placeholder="Nº da NF"></label><label class="campo">Data<input type="date" name="data" value="${hojeISO()}"></label></div>
       <div class="tabela-wrap itens-req" style="margin-top:10px"><table><thead><tr><th>Item</th><th>Qtd</th><th>Custo unit. (R$)</th><th class="num">Total</th><th></th></tr></thead><tbody id="linhas">${linha()}</tbody>
@@ -321,7 +321,7 @@ rota('/patrimonio', async tela => {
   $('#novo-pat')?.addEventListener('click', () => formPatrimonio());
 });
 async function formPatrimonio(p = null) {
-  const [ss, fs, cont] = await Promise.all([setoresL(), cad('fornecedores', 'select=id,razao_social,ativo&order=razao_social'), api.listar('patrimonios', 'select=id,tag,descricao&ativo=eq.true&categoria=in.(Celular,Tablet,Notebook,Rastreador / telemetria)&order=tag').catch(() => [])]);
+  const [ss, fs, cont] = await Promise.all([setoresL(), cad('fornecedores', 'select=id,razao_social,nome_fantasia,documento,ativo&order=razao_social'), api.listar('patrimonios', 'select=id,tag,descricao&ativo=eq.true&categoria=in.(Celular,Tablet,Notebook,Rastreador / telemetria)&order=tag').catch(() => [])]);
   const r = await modal(`<form><h2>${p ? 'Editar ' + esc(p.tag) : 'Cadastrar bem'}</h2><div class="form">
     <label class="campo">Tag de patrimônio<input name="tag" value="${esc(p?.tag || '')}" placeholder="Vazio = automático (PAT-00001)"></label>
     <label class="campo">Categoria *<select name="categoria" data-valor="${esc(p?.categoria || '')}">${CATEG_PAT.map(c => `<option ${c === p?.categoria ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
@@ -333,7 +333,7 @@ async function formPatrimonio(p = null) {
       <label class="campo">Plano<input name="plano" value="${esc(p?.plano || '')}"></label>
       <label class="campo">Instalado no aparelho<select name="contido_em_id"><option value="">—</option>${cont.filter(c => c.id !== p?.id).map(c => `<option value="${c.id}" ${c.id === p?.contido_em_id ? 'selected' : ''}>${esc(c.tag + ' · ' + c.descricao)}</option>`).join('')}</select></label></div>
     <label class="campo">Valor de aquisição (R$)<input name="valor_aquisicao" inputmode="decimal" value="${p?.valor_aquisicao ?? ''}"></label><label class="campo">Data de aquisição<input type="date" name="data_aquisicao" value="${p?.data_aquisicao || ''}"></label>
-    <label class="campo">Fornecedor<select name="fornecedor_id"><option value="">—</option>${fs.filter(f => f.ativo).map(f => `<option value="${f.id}" ${f.id === p?.fornecedor_id ? 'selected' : ''}>${esc(f.razao_social)}</option>`).join('')}</select></label>
+    <label class="campo">Fornecedor<select name="fornecedor_id"><option value="">—</option>${fs.filter(f => f.ativo).map(f => `<option value="${f.id}" ${f.id === p?.fornecedor_id ? 'selected' : ''}>${esc(rotForn(f))}</option>`).join('')}</select></label>
     <label class="campo">Nota fiscal<input name="nota_fiscal" value="${esc(p?.nota_fiscal || '')}"></label><label class="campo">Garantia até<input type="date" name="garantia_ate" value="${p?.garantia_ate || ''}"></label>
     <label class="campo">Setor<select name="setor_id"><option value="">—</option>${ss.filter(s => s.ativo).map(s => `<option value="${s.id}" ${s.id === p?.setor_id ? 'selected' : ''}>${esc(s.nome)}</option>`).join('')}</select></label>
     <label class="campo">Local<input name="local" value="${esc(p?.local || '')}" placeholder="Ex.: Escritório Três Lagoas"></label>

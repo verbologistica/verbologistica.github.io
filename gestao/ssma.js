@@ -93,7 +93,7 @@ rota('/ssma/aso', async tela => {
   $$('[data-hist]', tela).forEach(b => b.onclick = () => historicoExames(b.dataset.hist));
 });
 async function formExame(colabId = null) {
-  const [cs, fs] = await Promise.all([colabsBasico(), cad('fornecedores', 'select=id,razao_social,ativo&order=razao_social')]);
+  const [cs, fs] = await Promise.all([colabsBasico(), cad('fornecedores', 'select=id,razao_social,nome_fantasia,documento,ativo&order=razao_social')]);
   const r = await modal(`<form><h2>Registrar exame</h2><div class="form">
     <label class="campo largo">Colaborador *<select name="colab" required><option value="">Selecione…</option>${cs.map(c => `<option value="${c.id}" ${c.id === colabId ? 'selected' : ''}>${esc(c.nome)}${c.cargo ? ' · ' + esc(c.cargo) : ''}</option>`).join('')}</select></label>
     <label class="campo">Tipo *<select name="tipo">${Object.entries(TIPO_EXAME).map(([k, t]) => `<option value="${k}">${t}</option>`).join('')}</select></label>
@@ -102,7 +102,7 @@ async function formExame(colabId = null) {
     <label class="campo" id="b-val">Validade (meses)<input type="number" name="validade" placeholder="padrão: 12 (PCMSO)"></label>
     <label class="campo largo" id="b-rest">Restrições<input name="restricoes" placeholder="Ex.: não trabalhar em altura por 60 dias"></label>
     <label class="campo">Médico<input name="medico"></label><label class="campo">CRM<input name="crm"></label>
-    <label class="campo">Clínica<select name="clinica_id"><option value="">—</option>${fs.filter(f => f.ativo).map(f => `<option value="${f.id}">${esc(f.razao_social)}</option>`).join('')}</select></label>
+    <label class="campo">Clínica<select name="clinica_id"><option value="">—</option>${fs.filter(f => f.ativo).map(f => `<option value="${f.id}">${esc(rotForn(f))}</option>`).join('')}</select></label>
     <label class="campo">Custo (R$)<input name="custo" inputmode="decimal"></label>
     <label class="campo largo">Exames complementares<input name="compl" placeholder="Ex.: audiometria, acuidade visual, glicemia"></label>
     <label class="campo largo">ASO / laudo (arquivo)<input type="file" name="arquivos" accept="image/*,application/pdf"></label></div>

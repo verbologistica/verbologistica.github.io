@@ -339,7 +339,7 @@ rota('/operacao/abastecimentos/ver/:id', async (tela, id) => {
 async function modalCorrigirAbast(a) {
   const [pess, cols, forn] = await Promise.all([api.listar('pessoas_sem_login', 'select=id,nome,usuario_id&order=nome').catch(() => []),
     api.listar('colaboradores', 'select=id,nome,usuario_id,pessoa_sem_login_id&ativo=eq.true&order=nome').catch(() => []),
-    api.listar('fornecedores', 'select=id,razao_social,nome_fantasia&ativo=eq.true&order=razao_social').catch(() => [])]);
+    api.listar('fornecedores', 'select=id,razao_social,nome_fantasia,documento&ativo=eq.true&order=razao_social').catch(() => [])]);
   // uma lista de pessoas (colaborador do RH + pessoas sem login que não estão no RH)
   const pessoas = [...cols.map(c => ({ v: 'c:' + c.id, t: c.nome + ' (RH)', sel: c.id === a.colaborador_id })),
     ...pess.filter(p => !cols.some(c => c.pessoa_sem_login_id === p.id)).map(p => ({ v: 'p:' + p.id, t: p.nome, sel: !a.colaborador_id && p.id === a.pessoa_sem_login_id }))]
@@ -349,7 +349,7 @@ async function modalCorrigirAbast(a) {
     <label class="campo largo">Motorista (cadastro)<select name="pessoa">${pessoas.map(p => `<option value="${p.v}" ${p.sel ? 'selected' : ''}>${esc(p.t)}</option>`).join('')}</select>
       <span class="muted">No app: "${esc(a.motorista_nome || '')}". Ao trocar, os próximos lançamentos com esse nome também vão para a pessoa escolhida.</span></label>
     <label class="campo">Placa<input name="placa" value="${esc(a.placa || '')}"></label>
-    <label class="campo">Posto<select name="posto_id"><option value="">${esc(a.posto || '—')} (como está)</option>${forn.map(f => `<option value="${f.id}" ${f.id === a.posto_id ? 'selected' : ''}>${esc(f.nome_fantasia || f.razao_social)}</option>`).join('')}</select></label>
+    <label class="campo">Posto<select name="posto_id"><option value="">${esc(a.posto || '—')} (como está)</option>${forn.map(f => `<option value="${f.id}" ${f.id === a.posto_id ? 'selected' : ''}>${esc((f.nome_fantasia || f.razao_social) + (f.documento ? ' · ' + fmtDoc(f.documento) : ''))}</option>`).join('')}</select></label>
     <label class="campo">Combustível<select name="combustivel">${[...new Set([a.combustivel, ...COMBUST].filter(Boolean))].map(c => `<option ${c === a.combustivel ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>
     <label class="campo">Litros<input name="litros" inputmode="decimal" value="${n2(a.litros, 3)}"></label>
     <label class="campo">Valor (R$)<input name="valor" inputmode="decimal" value="${n2(a.valor_total)}"></label>

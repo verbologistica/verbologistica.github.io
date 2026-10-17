@@ -281,6 +281,8 @@ async function cad(tabela, consulta, forcar = false) {
 const contas = f => cad('plano_contas', 'select=id,codigo,nome,tipo,aceita_lancamento,ativo&order=codigo', f);
 const centros = f => cad('centros_custo', 'select=id,codigo,nome,ativo&order=nome', f);
 const usuarios = f => cad('usuarios', 'select=id,nome,email,ativo,centro_custo_id&order=nome', f);
+// fornecedor com CNPJ, para distinguir lojas/franquias de mesma razão social
+const rotForn = f => f ? [f.razao_social + (f.nome_fantasia && f.nome_fantasia !== f.razao_social ? ` (${f.nome_fantasia})` : ''), f.documento ? fmtDoc(f.documento) : ''].filter(Boolean).join(' · ') : '—';
 const fornecedores = f => cad('fornecedores', 'select=id,razao_social,nome_fantasia,documento,ativo,boleto,prazo_faturamento_dias,conta_padrao_id,cobranca&order=razao_social', f);
 const bancos = f => cad('contas_bancarias', 'select=id,nome,tipo,ativo&order=nome', f);
 const veiculos = f => cad('veiculos', 'select=id,placa,modelo,ativo&order=placa', f);
