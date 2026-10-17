@@ -75,7 +75,7 @@ async function listaTitulos(tela, tipo) {
         ${kR('pend', R.pend, tipo === 'pagar' ? 'Pendente a pagar' : 'Pendente a receber', `${R.nPend} parcela(s)`, 'abertas')}
         ${kR('', R.aVencer, 'A vencer', '', 'abertas')}
         ${kR(R.venc ? 'alerta' : '', R.venc, 'Vencido', `${R.nVenc} parcela(s)`, 'abertas')}
-        ${kR('prev', R.prev, tipo === 'pagar' ? 'Previsões de gasto' : 'Receitas previstas', `${R.nPrev} · fora do “pendente”`, 'previsoes')}
+        ${kR('prev', R.prev, tipo === 'pagar' ? 'Previsões de gasto' : 'Receitas previstas', `${R.nPrev} parcela(s)`, 'previsoes')}
       </div>
       ${atrasTot > 0 ? `<p class="fr-aviso">${ico('alerta')} Há <b>${atrasAnt.length}</b> parcela(s) vencida(s) antes deste período (${brl(atrasTot)}). <a href="${urlCom({ periodo: 'tudo', de: null, ate: null, status: 'abertas', faixa: '1_vencidos' })}">Ver</a></p>` : ''}
     </section>`;
@@ -93,7 +93,6 @@ async function listaTitulos(tela, tipo) {
       <input name="q" placeholder="Buscar ${T.pessoa.toLowerCase()} ou descrição" value="${esc(estado.params.get('q') || '')}">
       <button class="btn">Filtrar</button></form>
     ${podeSel && ps.length ? `<div class="sel-barra" id="sel-barra" hidden><span id="sel-txt"></span>${st === 'abertas' ? '<button class="btn peq" id="virar-prev">Transformar em previsão</button>' : '<button class="btn ok peq" id="conf-prev">Confirmar como conta (nota/boleto chegou)</button>'}</div>` : ''}
-    ${st === 'previsoes' ? `<p class="muted">Previsões são gastos ${tipo === 'pagar' ? '' : '(receitas) '}esperados que ainda não viraram conta (sem nota/boleto). Não entram no “pendente”, mas entram na <a href="#/financeiro/projecao">Projeção financeira</a>.</p>` : ''}
     <div class="cartao">${ps.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr>${podeSel ? '<th class="sel-cel"><input type="checkbox" id="sel-todos" aria-label="Selecionar todos"></th>' : ''}<th>Vencimento</th><th>${T.pessoa}</th><th>Descrição</th><th>Título</th><th class="num">Valor</th><th class="num">${colValor}</th><th>Situação</th></tr></thead><tbody>
       ${ps.map(p => `<tr class="clicavel" data-t="${p.titulo_id}"${fAttr('pessoa', nome(p))}${fAttr('tipo', ORIG_T[p.origem] || p.origem)}${fAttr('conta', nomeConta(p.conta_id))}${fAttr('cc', nomeCC(p.centro_custo_id))}${fAttr('sit', _txt(tagTitulo(p.status, p.vencida, tipo)))}${fAttr('data', p.vencimento)}${fAttr('valor', pagas ? p.valor_pago : p.saldo)}${fAttr('busca', [nome(p), p.descricao, p.titulo_numero, p.observacoes].filter(Boolean).join(' '))}>${podeSel ? `<td class="sel-cel" data-r=""><input type="checkbox" class="sel-t" value="${p.titulo_id}" aria-label="Selecionar"></td>` : ''}<td data-r="Vencimento" class="nowrap">${dataBR(p.vencimento)}</td><td data-r="${T.pessoa}">${esc(nome(p))}</td>
         <td data-r="Descrição">${temVerificar(p.observacoes) ? '<span title="A verificar">⚠️</span> ' : ''}${esc(p.descricao || '')}</td><td data-r="Título" class="nowrap">${esc(p.titulo_numero)}${p.parcela > 1 ? ` <span class="muted">${p.parcela}ª</span>` : ''}</td>
@@ -152,7 +151,7 @@ async function novoTitulo(tela, tipo) {
       <label class="campo">Intervalo<select name="intervalo"><option value="mes">Mensal</option><option value="30">A cada 30 dias</option><option value="15">A cada 15 dias</option><option value="7">Semanal</option></select></label>
       <label class="check"><input type="checkbox" name="avista"> Pago/pagar à vista (vence na data de emissão)</label>
       <div class="largo" id="prazo-info"></div>
-      <label class="check largo"><input type="checkbox" name="previsao"> ${tipo === 'pagar' ? '<b>É só uma previsão de gasto</b> (ainda sem nota/boleto — entra na Projeção, não no “a pagar”)' : '<b>É só uma receita prevista</b> (ainda não faturada)'}</label>
+      <label class="check largo"><input type="checkbox" name="previsao"> ${tipo === 'pagar' ? 'Previsão de gasto' : 'Receita prevista'}</label>
       <label class="check largo"><input type="checkbox" name="legado"> ${T.legado}</label>
       <label class="campo largo">Anexos (${tipo === 'pagar' ? 'boleto, nota' : 'nota, CT-e, comprovante'})<input type="file" name="arquivos" accept="image/*,application/pdf" multiple></label>
       <div class="largo muted" id="previa"></div>
@@ -234,7 +233,7 @@ async function verTitulo(tela, id, tipo) {
       <div class="acoes">${editaFin() && t.status !== 'cancelado' ? `<a class="btn prim" href="${T.rota}/editar/${id}">Editar</a>` : ''}${editaFin() && t.status === 'previsto' && t.origem !== 'fechamento' ? '<button class="btn ok" id="conf-prev">Confirmar como conta</button>' : ''}${editaFin() && ['aberto', 'aprovado'].includes(t.status) && !baixas.length ? '<button class="btn" id="virar-prev">Transformar em previsão</button>' : ''}${editaFin() && !['pago', 'cancelado'].includes(t.status) && !baixas.length ? '<button class="btn perigo" id="cancelar">Cancelar conta</button>' : ''}
         ${editaFin() && t.status !== 'cancelado' && baixas.length ? '<button class="btn perigo" id="estornar">Estornar pagamento</button>' : ''}
         <button class="btn" onclick="history.back()">Voltar</button></div></div>
-    ${t.status === 'previsto' ? `<div class="cartao fr-aviso-prev">${ico('relogio')} <span><b>${tipo === 'pagar' ? 'Previsão de gasto' : 'Receita prevista'}</b> — ainda não é conta ${tipo === 'pagar' ? 'a pagar' : 'a receber'} (sem nota/boleto). Entra na Projeção financeira; quando o documento chegar, use “Confirmar como conta”.</span></div>` : ''}
+    ${t.status === 'previsto' ? `<div class="cartao fr-aviso-prev">${ico('relogio')} <span><b>${tipo === 'pagar' ? 'Previsão de gasto' : 'Receita prevista'}</b></span></div>` : ''}
     ${tipo === 'pagar' && t.status !== 'cancelado' ? cartaoPagamento(t, ps) : ''}
     <div class="cartao"><div class="form">
       <div><div class="muted">${T.pessoa}</div><b>${esc(pessoa)}</b>${(t.cli?.documento || t.forn?.documento) ? `<div class="muted">${esc(fmtDoc(t.cli?.documento || t.forn?.documento))}</div>` : ''}${tipo === 'pagar' ? '' : t.forn ? (dadosPagamento(t.forn) ? `<div class="muted" style="white-space:pre-line">${esc(dadosPagamento(t.forn))}</div>` : '') : pix ? `<div class="muted">Pix: ${esc(pix)}</div>` : ''}</div>
@@ -336,7 +335,7 @@ function cartaoPagamento(t, ps) {
   return `<div class="cartao dados-pag"><div class="dp-topo"><h2>${ico('carteira')} Dados para pagamento</h2>${f?.boleto ? '<span class="tag azul">Fornecedor emite boleto</span>' : ''}
       ${t.fornecedor_id ? `<a class="btn peq" href="#/cadastros/fornecedores/ver/${t.fornecedor_id}">Abrir cadastro</a>` : ''}</div>
     <div class="dp-grade">${corpo}</div>
-    ${nada ? `<p class="muted" style="margin:6px 0 0">Nenhuma conta bancária ou Pix cadastrado${t.fornecedor_id ? ' para este fornecedor — cadastre em Fornecedores › Dados bancários' : ''}.${f?.boleto ? ' Pagamento por boleto: confira o boleto nos anexos.' : ''}</p>` : ''}</div>`;
+    ${nada ? `<p class="muted" style="margin:6px 0 0">Sem dados bancários cadastrados.</p>` : ''}</div>`;
 }
 
 // Registrar pagamento/recebimento de uma parcela (usado na conta e na lista de contas fixas)
@@ -479,23 +478,17 @@ rota('/financeiro/projecao', async tela => {
   const ccNome = cc ? ccs.find(c => c.id === cc)?.nome : null;
   const linkMes = m => `#/financeiro/pagar?aba=todas&status=todas&de=${m}&ate=${somaDias(somaMeses(m, 1), -1)}`;
   tela.innerHTML = `
-    <div class="topo"><div><h1>Projeção financeira</h1><p class="sub">Previsões de gasto, contas a pagar, pagamentos e receitas, mês a mês${ccNome ? ' · ' + esc(ccNome) : ' · empresa toda'}</p></div>
+    <div class="topo"><div><h1>Projeção financeira</h1>${ccNome ? `<p class="sub">${esc(ccNome)}</p>` : ''}</div>
       ${editaFin() ? '<div class="acoes"><a class="btn prim" href="#/financeiro/pagar/novo">+ Nova previsão / conta</a><a class="btn" href="#/financeiro/pagar?status=previsoes&periodo=tudo">Ver previsões</a></div>' : ''}</div>
     <form class="filtros" id="f-proj"><label class="fl-data">A partir de<input type="month" name="de" value="${ini.slice(0, 7)}"></label>
       <label class="fl-data">Meses<select name="meses">${[3, 6, 12, 18, 24].map(n => `<option ${n === nMeses ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
       ${veTudo() ? `<select name="cc"><option value="">Empresa toda</option>${ccs.filter(c => c.ativo).map(c => `<option value="${c.id}" ${c.id === cc ? 'selected' : ''}>${esc(c.nome)}</option>`).join('')}</select>` : ''}
       <button class="btn">Ver</button></form>
-    <details class="cartao como-funciona"><summary><b>Como funciona a projeção</b></summary>
-      <ul><li><b>Previsão de gasto</b>: despesa que vai acontecer, mas ainda não tem nota/boleto (ex.: manutenção programada, folha, impostos estimados). Não entra no “a pagar”, só na projeção. Quando o documento chega, o Financeiro clica em <b>Confirmar como conta</b>.</li>
-        <li><b>A pagar</b>: contas reais em aberto, pelo vencimento. <b>Pago</b>: o que saiu, pela data do pagamento.</li>
-        <li><b>Compras sem nota</b>: pedidos de compra já emitidos cujo documento fiscal ainda não foi lançado — o dinheiro já está comprometido.</li>
-        <li><b>Orçado</b>: meta do Orçado × Realizado aprovado (escopo empresa) — a projeção mostra se o mês vai estourar.</li>
-        <li><b>Saldo projetado</b>: saldo dos bancos hoje − contas vencidas a pagar e, mês a mês, + receitas a receber/previstas − gastos a pagar/previstos/compras sem nota. Recebíveis já vencidos não entram (conservador).</li></ul></details>
     <div class="grade" style="margin-bottom:14px">
       ${P.saldo_contas != null ? `<div class="cartao kpi ${Number(P.saldo_contas) < 0 ? 'alerta' : ''}"><div class="n">${brl(P.saldo_contas)}</div><div class="r">saldo em contas hoje</div></div>` : ''}
       <div class="cartao kpi"><div class="n">${brl(tot('d'))}</div><div class="r">gastos projetados no período</div></div>
       <div class="cartao kpi"><div class="n">${brl(tot('desp_previsto'))}</div><div class="r">em previsões de gasto</div></div>
-      <div class="cartao kpi ${Number(P.vencido_pagar) ? 'alerta' : ''}"><div class="n">${brl(P.vencido_pagar)}</div><div class="r">vencido a pagar (todas as datas)</div></div>
+      <div class="cartao kpi ${Number(P.vencido_pagar) ? 'alerta' : ''}"><div class="n">${brl(P.vencido_pagar)}</div><div class="r">vencido a pagar</div></div>
       ${geral ? `<div class="cartao kpi"><div class="n">${brl(tot('r'))}</div><div class="r">receitas projetadas no período</div></div>
       <div class="cartao kpi ${tot('r') - tot('d') < 0 ? 'alerta' : ''}"><div class="n">${brl(tot('r') - tot('d'))}</div><div class="r">resultado projetado</div></div>` : ''}
     </div>

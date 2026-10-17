@@ -284,8 +284,7 @@ rota('/aprovacoes', async tela => {
   const comp = await cartoesCotacao(pend);
   const auto = estado.usuario.autoaprovacao ? await api.rpc('minhas_autoaprovacoes').catch(() => []) : [];
   const ENT_AUTO = { reembolso: 'Reembolso', cotacao: 'Compra (cotação)', requisicao: 'Requisição', adiantamento: 'Adiantamento', pagamento: 'Pagamento' };
-  const blocoAuto = auto.length ? `<div class="cartao auto-aprov"><h2>Seus lançamentos aguardando aprovação (${auto.length})</h2>
-      <p class="muted">Você tem permissão de <b>autoaprovação</b>: pode decidir os seus próprios itens, sempre informando o motivo — ele fica gravado no histórico como “Autoaprovação”.</p>
+  const blocoAuto = auto.length ? `<div class="cartao auto-aprov"><h2>Meus lançamentos pendentes (${auto.length})</h2>
       <ul class="lista-simples">${auto.map(a => `<li data-auto="${a.id}" style="flex-wrap:wrap;gap:8px"><span><b>${esc(ENT_AUTO[a.entidade] || a.entidade)} ${esc(a.numero || '')}</b>${a.valor != null ? ' · ' + brl(a.valor) : ''}<br><span class="muted">${esc((a.descricao || '').slice(0, 140))}</span></span>
         <span class="acoes"><a class="btn peq" href="${a.link}">Abrir</a><button class="btn ok peq" data-auto-d="aprovado">Autoaprovar</button><button class="btn peq" data-auto-d="devolvido">Devolver</button><button class="btn perigo peq" data-auto-d="reprovado">Reprovar</button></span></li>`).join('')}</ul></div>` : '';
   const outros = pend.length - meus.length - meusA.length - comp.n;
