@@ -440,6 +440,8 @@ rota('/compras/pedidos/ver/:id', async (tela, id) => {
     p.requisicao_id ? listarReq(`id=eq.${p.requisicao_id}`).catch(() => [null]) : [null],
     p.cotacao_id ? api.um('cotacoes', `id=eq.${p.cotacao_id}&select=numero`).catch(() => null) : null]);
   const conta = p.conta_id ? (await contas()).find(x => x.id === p.conta_id) : null;
+  const emps = await empresasL().catch(() => []);
+  const empFat = emps.find(e => e.id === p.empresa_id) || emps[0] || null;
   const ativo = p.status !== 'cancelado';
   const fat = fats[0] || null;
   const recsV = recs.filter(x => x.status !== 'cancelado');
@@ -454,12 +456,16 @@ rota('/compras/pedidos/ver/:id', async (tela, id) => {
   const etapa = (n, ok, titulo, quem) => `<div class="topo" style="margin:0 0 8px"><div><h2 style="margin:0">${ok ? '✅' : n === 1 ? '🧾' : '📦'} ${n}. ${titulo}</h2><p class="muted" style="margin:2px 0 0">${quem}</p></div>`;
   tela.innerHTML = `
     <div class="topo"><div><h1>Pedido ${esc(p.numero)}</h1><p class="sub">${situacao} · ${esc(nomeForn(forn))} · <b>${brl(p.valor_total)}</b></p></div>
-      <div class="acoes"><button class="btn" id="imprimir">Imprimir pedido</button>
-        ${ehComprador() && ativo && !fat && !recsV.length ? '<button class="btn perigo" id="cancelar">Cancelar pedido</button>' : ''}
+      <div class="acoes"><button class="btn prim" id="imprimir">⬇ PDF do pedido</button>
+        ${ehComprador() && ativo && !fat && !recsV.length ? '<button class="btn" id="editar-ped">Editar pedido</button><button class="btn" id="corrigir-ped">Corrigir fornecedor/valor</button><button class="btn perigo" id="cancelar">Cancelar compra</button>' : ''}
         <button class="btn" onclick="history.back()">Voltar</button></div></div>
     <div class="cartao"><div class="form">
       <div><div class="muted">Fornecedor</div><b>${esc(nomeForn(forn))}</b><div class="muted">${esc([forn?.telefone, forn?.email].filter(Boolean).join(' · '))}</div></div>
+      <div><div class="muted">Faturar para</div><b>${esc(empFat ? empFat.razao_social : '—')}</b><div class="muted">${empFat?.cnpj ? 'CNPJ ' + fmtCNPJ(empFat.cnpj) : ''}</div></div>
       <div><div class="muted">Pagamento</div><b>${esc(p.condicao_pagamento || '—')}</b></div>
+      ${p.entrega_local ? `<div><div class="muted">Local de entrega</div>${esc(p.entrega_local)}</div>` : ''}
+      ${p.contato_fornecedor ? `<div><div class="muted">A/C (fornecedor)</div>${esc(p.contato_fornecedor)}</div>` : ''}
+      ${p.observacoes ? `<div class="largo"><div class="muted">Observações do pedido</div>${esc(p.observacoes)}</div>` : ''}
       <div><div class="muted">Previsão de entrega</div><b>${p.previsao_entrega ? dataBR(p.previsao_entrega) : '—'}</b>${ativo && !entregue && p.previsao_entrega && p.previsao_entrega < hojeISO() ? ' <span class="tag vermelho">atrasado</span>' : ''}</div>
       <div><div class="muted">Origem</div>${r ? `Requisição <a href="#/compras/requisicoes/ver/${r.id}">${esc(r.numero)}</a> · ${esc(r.solic?.nome || '')}` : '—'}${cot && veCompras() ? `<br>Cotação <a href="#/compras/cotacoes/ver/${p.cotacao_id}">${esc(cot.numero)}</a>` : ''}</div>
       ${conta ? `<div><div class="muted">Conta do plano</div><b>${esc(conta.codigo + ' ' + conta.nome)}</b></div>` : ''}
@@ -493,12 +499,37 @@ rota('/compras/pedidos/ver/:id', async (tela, id) => {
 
   $('#imprimir').onclick = () => imprimirPedido(p, forn, itens, r);
   $('#cancelar')?.addEventListener('click', async () => {
-    const motivo = await confirmar('Cancelar este pedido?', { comMotivo: true, botao: 'Cancelar pedido' });
+    const motivo = await confirmar('Cancelar a compra? O pedido, a cotação e a requisição são encerrados.', { comMotivo: true, botao: 'Cancelar compra' });
     if (!motivo) return;
-    const quando = new Date().toISOString();
-    try { await api.alterar('pedidos', `id=eq.${id}`, { status: 'cancelado', cancelado_em: quando, cancelado_por: estado.usuario.id, motivo_cancelamento: motivo });
-          if (r) await api.alterar('requisicoes', `id=eq.${r.id}`, { status: 'cancelada', cancelado_em: quando, cancelado_por: estado.usuario.id, motivo_cancelamento: 'Pedido cancelado: ' + motivo });
-          aviso('Pedido cancelado.'); navegar(); } catch (err) { falha(err); }
+    try { await api.rpc('cancelar_pedido', { p_pedido: id, p_motivo: motivo, p_refazer: false }); aviso('Compra cancelada.'); navegar(); } catch (err) { falha(err); }
+  });
+  $('#corrigir-ped')?.addEventListener('click', async () => {
+    const motivo = await confirmar('Corrigir fornecedor ou valor? Este pedido é cancelado e a cotação volta aberta com as propostas: ajuste a proposta (ou cadastre a correta), escolha a vencedora e envie de novo para aprovação.',
+      { comMotivo: true, botao: 'Voltar para a cotação' });
+    if (!motivo) return;
+    try { const x = await api.rpc('cancelar_pedido', { p_pedido: id, p_motivo: motivo, p_refazer: true }); aviso('Cotação reaberta. Corrija e envie para aprovação.'); location.hash = '#/compras/cotacoes/ver/' + x.cotacao; } catch (err) { falha(err); }
+  });
+  $('#editar-ped')?.addEventListener('click', async () => {
+    const d = await modal(`<form><h2>Editar pedido ${esc(p.numero)}</h2><div class="form">
+      <label class="campo largo">Faturar para (CNPJ)<select name="empresa_id">${emps.map(e => `<option value="${e.id}" ${e.id === empFat?.id ? 'selected' : ''}>${esc(rotEmpresa(e))}</option>`).join('')}</select></label>
+      <label class="campo">Condição de pagamento<select name="cond">${[...new Set([...CONDICOES_PAG, ...(p.condicao_pagamento ? [p.condicao_pagamento] : [])])].map(t => `<option ${t === p.condicao_pagamento ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></label>
+      <label class="campo">Previsão de entrega<input type="date" name="prev" value="${p.previsao_entrega || ''}"></label>
+      <label class="campo largo">Local de entrega<input name="local" value="${esc(p.entrega_local || '')}" placeholder="Em branco: endereço do CNPJ de faturamento"></label>
+      <label class="campo largo">A/C no fornecedor (vendedor/contato)<input name="contato" value="${esc(p.contato_fornecedor || '')}"></label>
+      <label class="campo largo">Observações (saem no PDF)<textarea name="obs" rows="2">${esc(p.observacoes || '')}</textarea></label>
+      <div class="largo"><div class="muted">Valor unitário por item (opcional — deixe em branco se o fornecedor só passou o total)</div>
+        ${itens.map(i => `<div class="lado" style="gap:8px;margin:4px 0"><span style="flex:1">${esc(i.descricao)} <span class="muted">· ${Number(i.quantidade).toLocaleString('pt-BR')} ${esc(i.unidade || '')}</span></span>
+          <input name="vu_${i.id}" inputmode="decimal" style="width:130px" value="${Number(i.valor_unitario) > 0 ? Number(i.valor_unitario).toFixed(2).replace('.', ',') : ''}" placeholder="R$"></div>`).join('')}</div></div>
+      <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Salvar</button></div></form>`,
+      { validar: x => { const soma = itens.reduce((t, i) => t + (num(x['vu_' + i.id]) || 0) * Number(i.quantidade), 0);
+          return soma > 0 && Math.abs(soma - Number(p.valor_total)) > 0.05 ? `A soma dos itens (${brl(soma)}) não fecha com o total do pedido (${brl(p.valor_total)}). Ajuste ou deixe em branco.` : null; } });
+    if (!d) return;
+    try {
+      await api.alterar('pedidos', `id=eq.${id}`, { empresa_id: d.empresa_id || null, condicao_pagamento: d.cond || null, previsao_entrega: d.prev || null,
+        entrega_local: d.local?.trim() || null, contato_fornecedor: d.contato?.trim() || null, observacoes: d.obs?.trim() || null });
+      for (const i of itens) { const v = num(d['vu_' + i.id]) || 0; if (Math.abs(v - Number(i.valor_unitario || 0)) > 0.0001) await api.alterar('pedido_itens', `id=eq.${i.id}`, { valor_unitario: v }); }
+      aviso('Pedido atualizado.'); navegar();
+    } catch (err) { falha(err); }
   });
   $('#cancelar-fat')?.addEventListener('click', async () => {
     const motivo = await confirmar(`Cancelar o lançamento de ${fat.tipo_documento} ${fat.numero_documento}? A conta a pagar gerada também é cancelada (só é possível se ainda não foi paga).`, { comMotivo: true, botao: 'Cancelar lançamento' });
@@ -638,7 +669,8 @@ async function imgDataUrl(nome) {
   return (_imgTimbrado[nome] = await new Promise(ok => { const fr = new FileReader(); fr.onload = () => ok(fr.result); fr.readAsDataURL(b); }));
 }
 const MESES_DOC = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
-async function pdfTimbrado({ setor, numero, destinatario = [], assunto, corpo, assinatura = [], arquivo }) {
+async function pdfTimbrado({ setor, numero, destinatario = [], assunto, corpo, assinatura = [], arquivo, empresa = null }) {
+  const E = empresa || (await empresasL().catch(() => []))[0] || {};
   await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
   await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js');
   const [cab, logo, marca, rod] = await Promise.all(['doc-cabecalho.jpg', 'doc-logo.png', 'doc-marca.png', 'doc-rodape.jpg'].map(imgDataUrl));
@@ -655,13 +687,19 @@ async function pdfTimbrado({ setor, numero, destinatario = [], assunto, corpo, a
     doc.addImage(cab, 'JPEG', 0, 0, W, 30.7);
     doc.addImage(logo, 'PNG', ML, 8.5, 53.9, 14.8);
     doc.addImage(rod, 'JPEG', 0, 291.3, W, 5.8);
-    // rodapé institucional
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); cor('texto');
-    let x = ML + espacado('VERBO LOGÍSTICA', ML, 279.6, { esp: 0.9 }) + 2.5;
-    const parte = (t, y) => { doc.setFont('helvetica', 'normal'); cor('ouro'); doc.text('|', x, y); x += 3; cor('cinza'); doc.text(t, x, y); x += doc.getTextWidth(t) + 2.5; };
-    doc.setFontSize(7.5); parte('CNPJ 39.606.766/0001-50', 279.6); parte('Av. Manuel Alves Barbosa, Jandaia III, Birigui/SP, CEP 16.203-231', 279.6);
-    x = ML; cor('cinza'); doc.text('www.verbologistica.com.br', x, 283.3); x += doc.getTextWidth('www.verbologistica.com.br') + 2.5;
-    parte('iraquitan.silva@verbologistica.com.br', 283.3); parte('(17) 9 9701-7562', 283.3);
+    // rodapé institucional (dados do CNPJ escolhido)
+    const nomeEmp = (E.nome_fantasia || E.razao_social || 'Verbo Logística').toUpperCase();
+    const l1 = [E.cnpj ? 'CNPJ ' + fmtCNPJ(E.cnpj) : '', empresaEndereco(E)].filter(Boolean);
+    const l2 = [E.site, E.email, E.telefone ? fmtTel(E.telefone) : ''].filter(Boolean);
+    let fs = 7.5; const larg = () => { doc.setFontSize(fs); doc.setFont('helvetica', 'normal'); return [l1, l2].map(l => l.reduce((w, t) => w + doc.getTextWidth(t) + 5.5, 0)); };
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(fs);
+    while (fs > 5.5 && Math.max(larg()[0] + largEsp(nomeEmp, 0.9) + 3, larg()[1] + 22) > MR - ML) fs -= 0.5;
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(fs); cor('texto');
+    let x = ML + espacado(nomeEmp, ML, 279.6, { esp: 0.9 }) + 2.5;
+    const parte = (t, y) => { doc.setFont('helvetica', 'normal'); doc.setFontSize(fs); cor('ouro'); doc.text('|', x, y); x += 3; cor('cinza'); doc.text(t, x, y); x += doc.getTextWidth(t) + 2.5; };
+    l1.forEach(t => parte(t, 279.6));
+    x = ML; doc.setFont('helvetica', 'normal'); doc.setFontSize(fs); cor('cinza');
+    l2.forEach((t, i) => { if (i === 0) { doc.text(t, x, 283.3); x += doc.getTextWidth(t) + 2.5; } else parte(t, 283.3); });
   };
   // ---- 1ª página: cabeçalho da correspondência
   moldura();
@@ -670,7 +708,7 @@ async function pdfTimbrado({ setor, numero, destinatario = [], assunto, corpo, a
   doc.setFontSize(7.5); espacado('CORRESPONDÊNCIA OFICIAL', MR - wSet - 4, 37, { align: 'right', esp: 1.5 });
   doc.setFontSize(8); cor('texto'); doc.text(seT, MR, 37, { align: 'right' });
   const hoje = new Date(); doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); cor('cinza');
-  doc.text(`Birigui/SP, ${hoje.getDate()} de ${MESES_DOC[hoje.getMonth()]} de ${hoje.getFullYear()}`, MR, 46, { align: 'right' });
+  doc.text(`${E.cidade || 'Birigui'}/${E.uf || 'SP'}, ${hoje.getDate()} de ${MESES_DOC[hoje.getMonth()]} de ${hoje.getFullYear()}`, MR, 46, { align: 'right' });
   doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); cor('ouro'); const wDoc = espacado('DOCUMENTO Nº', ML, 57, { esp: 1.3 });
   doc.setFontSize(9.5); cor('texto'); doc.text(numero, ML + wDoc + 4, 57);
   let y = 67;
@@ -713,10 +751,12 @@ async function pdfTimbrado({ setor, numero, destinatario = [], assunto, corpo, a
 
 // Solicitação de cotação (para mandar ao fornecedor) — qualquer pessoa pode baixar
 async function pdfSolicitacaoCotacao(r, itens) {
-  const u = estado.usuario;
+  const em = await escolherEmissao({ titulo: `Solicitação de cotação ${r.numero}`, setor: 'Compras' });
+  if (!em) return;
+  const { empresa: E, resp } = em;
   const linhas = itens.map((i, k) => [String(k + 1), i.descricao || '', Number(i.quantidade || 0).toLocaleString('pt-BR'), i.unidade || '']);
   await pdfTimbrado({
-    setor: 'Compras', numero: r.numero, arquivo: `Solicitacao de cotacao ${r.numero}.pdf`,
+    setor: 'Compras', numero: r.numero, arquivo: `Solicitacao de cotacao ${r.numero}.pdf`, empresa: E,
     destinatario: [['Ao(À) Fornecedor(a)'], ['Departamento Comercial', 'b'], ['A/C: responsável pelo orçamento']],
     assunto: `Solicitação de cotação — ${r.numero}`,
     corpo: [
@@ -726,42 +766,58 @@ async function pdfSolicitacaoCotacao(r, itens) {
         colunas: { 0: { cellWidth: 13, halign: 'center' }, 2: { cellWidth: 22, halign: 'right' }, 3: { cellWidth: 20, halign: 'center' } } } },
       { negrito: 'Na proposta, pedimos informar:' },
       { lista: ['preço unitário e total de cada item;', 'prazo de entrega;', 'condição e forma de pagamento;', 'frete (CIF ou FOB) e impostos inclusos;', 'validade da proposta.'] },
-      `Local de entrega: Av. Manuel Alves Barbosa, Jandaia III, Birigui/SP, CEP 16.203-231.${r.data_necessidade ? ` Precisamos dos itens até ${dataBR(r.data_necessidade)}${r.urgencia === 'alta' ? ' (urgente)' : ''}.` : ''}`,
-      `Por gentileza, envie a proposta${u.email ? ` para ${u.email}` : ''} mencionando o número ${r.numero}. Ficamos à disposição para qualquer esclarecimento.`,
+      `Faturamento para ${E.razao_social}${E.cnpj ? ', CNPJ ' + fmtCNPJ(E.cnpj) : ''}. Local de entrega: ${empresaEndereco(E) || '—'}.${r.data_necessidade ? ` Precisamos dos itens até ${dataBR(r.data_necessidade)}${r.urgencia === 'alta' ? ' (urgente)' : ''}.` : ''}`,
+      `Por gentileza, envie a proposta${resp.email ? ` para ${resp.email}` : ''} mencionando o número ${r.numero}. Ficamos à disposição para qualquer esclarecimento.`,
     ],
-    assinatura: [[u.nome || 'Compras', 'b'], ['Compras | VERBO LOGÍSTICA']],
+    assinatura: [[resp.nome || 'Compras', 'b'], [`${resp.cargo || 'Compras'} | ${(E.nome_fantasia || E.razao_social || '').toUpperCase()}`]],
   });
 }
 
-// Pedido de compra no papel timbrado (PDF para o fornecedor). Valor unitário só aparece se foi informado.
+// Pedido de compra no papel timbrado (PDF para o fornecedor): dados do pedido + CNPJ de faturamento escolhido.
+// Valor unitário só aparece se foi informado.
 async function pdfPedido(p, forn, itens, r) {
-  const u = estado.usuario || {};
+  const podeSalvar = ehComprador() && p.status !== 'cancelado';
+  const em = await escolherEmissao({ titulo: `PDF do pedido ${p.numero}`, setor: 'Compras', empresaId: p.empresa_id,
+    extrasHtml: `<label class="campo largo">A/C no fornecedor<input name="contato" value="${esc(p.contato_fornecedor || '')}" placeholder="Nome do vendedor / contato"></label>
+      <label class="campo">Previsão de entrega<input type="date" name="prev" value="${p.previsao_entrega || ''}"></label>
+      <label class="campo largo">Local de entrega<input name="local" value="${esc(p.entrega_local || '')}" placeholder="Em branco: endereço do CNPJ de faturamento"></label>
+      <label class="campo largo">Observações<textarea name="obs" rows="2">${esc(p.observacoes || '')}</textarea></label>` });
+  if (!em) return;
+  const { empresa: E, resp, dados: d } = em;
+  const ped = { ...p, empresa_id: E.id, contato_fornecedor: d.contato?.trim() || null, previsao_entrega: d.prev || null, entrega_local: d.local?.trim() || null, observacoes: d.obs?.trim() || null };
+  if (podeSalvar) await api.alterar('pedidos', `id=eq.${p.id}`, { empresa_id: ped.empresa_id, contato_fornecedor: ped.contato_fornecedor, previsao_entrega: ped.previsao_entrega,
+    entrega_local: ped.entrega_local, observacoes: ped.observacoes }).catch(() => {});
   const comUnit = itens.some(i => Number(i.valor_unitario) > 0);
   const linhas = itens.map((i, k) => [String(k + 1), i.descricao || '', Number(i.quantidade || 0).toLocaleString('pt-BR'), i.unidade || '',
     ...(comUnit ? [Number(i.valor_unitario) > 0 ? brl(i.valor_unitario) : '—', Number(i.valor_unitario) > 0 ? brl(Number(i.quantidade) * Number(i.valor_unitario)) : '—'] : [])]);
-  linhas.push([{ content: 'Total do pedido', colSpan: comUnit ? 5 : 3, styles: { fontStyle: 'bold', halign: 'left' } }, { content: brl(p.valor_total), colSpan: 1, styles: { fontStyle: 'bold', halign: 'right' } }]);
+  linhas.push([{ content: 'Total do pedido', colSpan: comUnit ? 5 : 3, styles: { fontStyle: 'bold', halign: 'left' } }, { content: brl(ped.valor_total), colSpan: 1, styles: { fontStyle: 'bold', halign: 'right' } }]);
   const cab = ['Item', 'Descrição', 'Qtd.', 'Unid.', ...(comUnit ? ['Valor unit.', 'Total'] : [])];
   const colunas = comUnit ? { 0: { cellWidth: 12, halign: 'center' }, 2: { cellWidth: 16, halign: 'right' }, 3: { cellWidth: 16, halign: 'center' }, 4: { cellWidth: 28, halign: 'right' }, 5: { cellWidth: 30, halign: 'right' } }
     : { 0: { cellWidth: 13, halign: 'center' }, 2: { cellWidth: 22, halign: 'right' }, 3: { cellWidth: 34, halign: 'center' } };
-  const parc = parcelasCond(p.condicao_pagamento);
-  const vParc = parc.length > 1 ? parc.map((d, k) => { const base = Math.floor(Number(p.valor_total) * 100 / parc.length) / 100; return k === parc.length - 1 ? Number(p.valor_total) - base * (parc.length - 1) : base; }) : [];
+  const parc = parcelasCond(ped.condicao_pagamento);
+  const vParc = parc.length > 1 ? parc.map((x, k) => { const base = Math.floor(Number(ped.valor_total) * 100 / parc.length) / 100; return k === parc.length - 1 ? Math.round((Number(ped.valor_total) - base * (parc.length - 1)) * 100) / 100 : base; }) : [];
+  const fornL3 = [forn?.documento ? 'CNPJ ' + fmtDoc(forn.documento) : '', forn?.telefone ? 'Tel. ' + fmtTel(forn.telefone) : ''].filter(Boolean).join(' · ');
   await pdfTimbrado({
-    setor: 'Compras', numero: p.numero, arquivo: `Pedido de compra ${p.numero}.pdf`,
-    destinatario: [['Ao(À) Fornecedor(a)'], [forn?.razao_social || '—', 'b'], [[forn?.documento ? 'CNPJ ' + fmtDoc(forn.documento) : '', forn?.telefone ? 'Tel. ' + forn.telefone : ''].filter(Boolean).join(' · ')]],
-    assunto: `Pedido de compra — ${p.numero}`,
+    setor: 'Compras', numero: ped.numero, arquivo: `Pedido de compra ${ped.numero}.pdf`, empresa: E,
+    destinatario: [['Ao(À) Fornecedor(a)'], [forn?.razao_social || '—', 'b'], ...(fornL3 ? [[fornL3]] : []), ...(ped.contato_fornecedor ? [['A/C: ' + ped.contato_fornecedor]] : [])],
+    assunto: `Pedido de compra — ${ped.numero}`,
     corpo: [
       'Prezado(a) Senhor(a),',
       `Confirmamos a compra dos itens relacionados abaixo${r?.justificativa ? ` (${r.justificativa})` : ''}, conforme proposta aprovada.`,
       { tabela: { cab, linhas, colunas } },
+      { negrito: 'Dados para faturamento' },
+      { lista: [`${E.razao_social}${E.cnpj ? ' — CNPJ ' + fmtCNPJ(E.cnpj) : ''}${E.inscricao_estadual ? ' — IE ' + E.inscricao_estadual : ''}`, empresaEndereco(E) || '—'] },
       { negrito: 'Condições' },
-      { lista: [`Pagamento: ${p.condicao_pagamento || '—'}${vParc.length ? ' — ' + vParc.map((v, k) => `${parc[k]} dias: ${brl(v)}`).join('; ') : ''}.`,
-        `Previsão de entrega: ${p.previsao_entrega ? dataBR(p.previsao_entrega) : 'a combinar'}.`,
-        'Local de entrega: Av. Manuel Alves Barbosa, Jandaia III, Birigui/SP, CEP 16.203-231.',
-        `Informar o número ${p.numero} na nota fiscal e no boleto.`] },
-      'Ficamos à disposição para qualquer esclarecimento.',
+      { lista: [`Pagamento: ${ped.condicao_pagamento || '—'}${vParc.length ? ' — ' + vParc.map((v, k) => `${parc[k]} dias: ${brl(v)}`).join('; ') : ''}.`,
+        `Previsão de entrega: ${ped.previsao_entrega ? dataBR(ped.previsao_entrega) : 'a combinar'}.`,
+        `Local de entrega: ${ped.entrega_local || empresaEndereco(E) || '—'}.`,
+        `Informar o número ${ped.numero} na nota fiscal e no boleto.`] },
+      ...(ped.observacoes ? [{ negrito: 'Observações' }, ped.observacoes] : []),
+      `Ficamos à disposição para qualquer esclarecimento${resp.email ? ` pelo e-mail ${resp.email}` : ''}.`,
     ],
-    assinatura: [[u.nome || 'Compras', 'b'], ['Compras | VERBO LOGÍSTICA']],
+    assinatura: [[resp.nome || 'Compras', 'b'], [`${resp.cargo || 'Compras'} | ${(E.nome_fantasia || E.razao_social || '').toUpperCase()}`]],
   });
+  if (podeSalvar && typeof navegar === 'function') navegar();
 }
 function imprimirPedido(p, forn, itens, r) { return pdfPedido(p, forn, itens, r).catch(falha); }
 // "Boleto 30/60/90 dias" -> [30,60,90]; "30 dias" -> [30]; à vista -> [0]

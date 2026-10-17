@@ -18,9 +18,12 @@ function carregarScript(url) {
 }
 
 // ---------- Dados disponíveis para preencher os modelos ----------
-async function contextoDocumento(colaboradorId) {
-  const [emp] = await api.listar('empresa', 'select=*&ativo=eq.true&limit=1').catch(() => [{}]);
-  const ctx = { empresa: { ...(emp || {}), nome_fantasia: emp?.nome_fantasia || emp?.razao_social || '' }, usuario: { nome: estado.usuario.nome },
+async function contextoDocumento(colaboradorId, empEscolhida = null, resp = null) {
+  const emp = empEscolhida || (typeof empresasL === 'function' ? (await empresasL().catch(() => []))[0] : (await api.listar('empresa', 'select=*&ativo=eq.true&limit=1').catch(() => [{}]))[0]) || {};
+  const ctx = { empresa: { ...emp, nome_fantasia: emp.nome_fantasia || emp.razao_social || '', cnpj: emp.cnpj ? fmtCNPJ(emp.cnpj) : '', endereco: (typeof empresaEndereco === 'function' && empresaEndereco(emp)) || emp.endereco || '',
+                           telefone: emp.telefone ? fmtTel(emp.telefone) : '', _bruto: emp },
+                responsavel: resp ? { ...resp, cpf: resp.cpf ? fmtCPF(resp.cpf) : '' } : { nome: estado.usuario.nome, cargo: '', cpf: '', email: estado.usuario.email || '' },
+                usuario: { nome: estado.usuario.nome },
                 hoje: dataBR(hojeISO()), hoje_extenso: dataExtenso(hojeISO()) };
   if (colaboradorId) {
     const c = await api.um('colaboradores', `id=eq.${colaboradorId}&select=*,cargo:cargos(nome,cbo,motorista),setor:setores(nome)`);
@@ -52,14 +55,42 @@ function preencherModelo(html, ctx, respostas = {}) {
     return v == null || v === '' ? '__________' : esc(v);
   });
 }
-const CSS_DOC = `body{font-family:Arial,Helvetica,sans-serif;color:#222;font-size:13px;line-height:1.5;margin:28px}h1,h2,h3{color:#1b3a5c}
+// Documentos gerados: papel timbrado oficial (cabeçalho, marca d'água e rodapé repetem em cada página)
+const CSS_DOC = `@page{size:A4;margin:0}*{box-sizing:border-box}html,body{margin:0}
+  body{font-family:Helvetica,Arial,sans-serif;color:#252e35;font-size:12.5px;line-height:1.55;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  h1,h2,h3{color:#252e35;line-height:1.25}h2{font-size:16px}table{border-collapse:collapse}td,th{vertical-align:top}
+  .tb-cab{position:fixed;top:0;left:0;width:210mm;height:30.7mm;background:url(%BASE%doc-cabecalho.jpg) 0 0/100% 100% no-repeat}
+  .tb-cab img{position:absolute;left:20mm;top:8.5mm;width:53.9mm}
+  .tb-marca{position:fixed;left:96.3mm;top:186mm;width:137.6mm;opacity:1;z-index:-1}
+  .tb-rod{position:fixed;left:0;bottom:0;width:210mm;height:22mm}
+  .tb-rod .t{position:absolute;left:20mm;right:20mm;top:3mm;font-size:7.5pt;color:#6b7378;line-height:1.55}
+  .tb-rod .t b{color:#252e35;letter-spacing:.9mm;margin-right:2mm}.tb-rod .t i{font-style:normal;color:#dda936;margin:0 2mm}
+  .tb-rod .barra{position:absolute;left:0;bottom:0;width:210mm;height:5.8mm;background:url(%BASE%doc-rodape.jpg) 0 0/100% 100% no-repeat}
+  .tb-pag{width:100%}.tb-pag>thead td{height:44mm}.tb-pag>tfoot td{height:30mm}.tb-pag>tbody>tr>td{padding:0 20mm}
+  .tb-of{text-align:right;font-size:7.5pt;font-weight:bold;color:#dda936;letter-spacing:1.5mm;margin:-6mm 0 4mm}.tb-of span{color:#252e35;letter-spacing:0;margin-left:2mm}
+  .tb-cod{font-size:8pt;color:#6b7378;margin-top:18px}
+  @media screen{body{background:#e9ecee}.tb-pag{background:#fff;width:210mm;margin:0 auto}.tb-cab,.tb-rod{left:50%;transform:translateX(-105mm)}.tb-marca{display:none}}`;
+function paginaDocumento(titulo, corpoHtml, ctx, codigo) {
+  const base = location.origin + location.pathname.replace(/[^/]*$/, '');
+  const e = ctx.empresa || {};
+  const nome = esc((e.nome_fantasia || e.razao_social || 'Verbo Logística').toUpperCase());
+  const l1 = [e.cnpj && 'CNPJ ' + e.cnpj, e.endereco].filter(Boolean).map(esc), l2 = [e.site, e.email, e.telefone].filter(Boolean).map(esc);
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>${esc(titulo)}</title><style>${CSS_DOC.replaceAll('%BASE%', base)}</style></head><body>
+    <div class="tb-cab"><img src="${base}doc-logo.png" alt=""></div><img class="tb-marca" src="${base}doc-marca.png" alt="">
+    <div class="tb-rod"><div class="t"><b>${nome}</b>${l1.map(t => `<i>|</i>${t}`).join('')}<br>${l2.join('<i>|</i>')}</div><div class="barra"></div></div>
+    <table class="tb-pag"><thead><tr><td></td></tr></thead><tfoot><tr><td></td></tr></tfoot><tbody><tr><td>
+      <div class="tb-of">CORRESPONDÊNCIA OFICIAL<span>${esc(ctx.responsavel?.cargo || '')}</span></div>
+      ${corpoHtml}${codigo ? `<div class="tb-cod">${esc(codigo)}</div>` : ''}</td></tr></tbody></table></body></html>`;
+}
+// Relatórios (tabelas largas): página simples, em paisagem
+const CSS_REL = `body{font-family:Arial,Helvetica,sans-serif;color:#222;font-size:13px;line-height:1.5;margin:28px}h1,h2,h3{color:#1b3a5c}
   table{border-collapse:collapse}td,th{vertical-align:top}.cab{display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #1b3a5c;padding-bottom:8px;margin-bottom:18px}
   .cab img{height:44px}.rod{margin-top:30px;border-top:1px solid #ccc;padding-top:6px;font-size:10px;color:#777}@media print{body{margin:14mm}}`;
-function paginaDocumento(titulo, corpoHtml, ctx, codigo) {
+function paginaRelatorio(titulo, corpoHtml, ctx) {
   const logo = location.origin + location.pathname.replace(/[^/]*$/, '') + 'logo.png';
-  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>${esc(titulo)}</title><style>${CSS_DOC}</style></head><body>
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>${esc(titulo)}</title><style>@page{size:landscape}${CSS_REL}</style></head><body>
     <div class="cab"><img src="${logo}" alt=""><div style="text-align:right;font-size:11px">${esc(ctx.empresa?.razao_social || '')}${ctx.empresa?.cnpj ? '<br>CNPJ ' + esc(ctx.empresa.cnpj) : ''}</div></div>
-    ${corpoHtml}<div class="rod">${esc(codigo || '')} · gerado em ${dataHoraBR(new Date().toISOString())} por ${esc(estado.usuario.nome)} · Verbo Gestão</div></body></html>`;
+    ${corpoHtml}<div class="rod">gerado em ${dataHoraBR(new Date().toISOString())} por ${esc(estado.usuario.nome)} · Verbo Gestão</div></body></html>`;
 }
 function abrirParaImprimir(html) {
   const w = window.open('', '_blank'); if (!w) return aviso('Libere as janelas pop-up para gerar o PDF.', true);
@@ -88,16 +119,25 @@ async function gerarDocumento(modelo, colaboradorId = null, extra = {}) {
     lacunas = lacunasDoModelo(xml);
   }
   const cols = await api.listar('v_colaboradores_basico', 'select=id,nome,matricula,cargo&order=nome').catch(() => []);
+  const emps = await empresasL().catch(() => []);
   const r = await modal(`<form><h2>Gerar: ${esc(modelo.titulo)}</h2><div class="form">
+      ${emps.length ? `<label class="campo largo">CNPJ que emite o documento<select name="empresa">${emps.map(e => `<option value="${e.id}">${esc(rotEmpresa(e))}</option>`).join('')}</select></label>
+      <label class="campo">Responsável (${esc(SETOR_MODELO_EMP[modelo.setor] || modelo.setor || 'setor')})<input name="r_nome"></label>
+      <label class="campo">Cargo<input name="r_cargo"></label><label class="campo">CPF<input name="r_cpf" inputmode="numeric"></label><label class="campo">E-mail<input name="r_email" type="email"></label>` : ''}
       <label class="campo largo">Colaborador<select name="colab"><option value="">Nenhum (preencher à mão)</option>
         ${cols.map(c => `<option value="${c.id}" ${c.id === colaboradorId ? 'selected' : ''}>${esc(c.nome)}${c.cargo ? ' · ' + esc(c.cargo) : ''}</option>`).join('')}</select></label>
       ${lacunas.map((l, i) => `<label class="campo largo">${esc(l)}<input name="l_${i}"></label>`).join('')}
       ${!lacunas.length ? '<p class="muted largo">Este modelo não tem lacunas: os dados vêm do cadastro.</p>' : ''}</div>
     <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button>
-      ${ehWord ? '<button class="btn prim" value="docx">Gerar Word (.docx)</button>' : '<button class="btn" value="doc">Baixar Word</button><button class="btn prim" value="pdf">Gerar PDF</button>'}</div></form>`);
+      ${ehWord ? '<button class="btn prim" value="docx">Gerar Word (.docx)</button>' : '<button class="btn" value="doc">Baixar Word</button><button class="btn prim" value="pdf">Gerar PDF</button>'}</div></form>`, {
+    aoAbrir: raiz => { const f = $('form', raiz); if (!f.empresa) return;
+      const sinc = () => { const e = emps.find(x => x.id === f.empresa.value), rp = respDoSetor(e, modelo.setor);
+        f.r_nome.value = rp?.nome || estado.usuario.nome || ''; f.r_cargo.value = rp?.cargo || ''; f.r_cpf.value = rp?.cpf ? fmtCPF(rp.cpf) : ''; f.r_email.value = rp?.email || ''; };
+      f.empresa.addEventListener('change', sinc); sinc(); } });
   if (!r) return;
   try {
-    const ctx = Object.assign(await contextoDocumento(r.colab || null), extra);
+    const empSel = emps.find(e => e.id === r.empresa) || null;
+    const ctx = Object.assign(await contextoDocumento(r.colab || null, empSel, empSel ? { nome: r.r_nome, cargo: r.r_cargo, cpf: soDigitos(r.r_cpf), email: r.r_email } : null), extra);
     const respostas = Object.fromEntries(lacunas.map((l, i) => [l, r['l_' + i]]));
     const nomeArq = `${modelo.codigo ? modelo.codigo + ' ' : ''}${modelo.titulo}${ctx.colaborador ? ' - ' + ctx.colaborador.nome : ''}`.replace(/[\\/:*?"<>|]/g, '');
     if (ehWord) {
@@ -140,7 +180,7 @@ rota('/modelos', async tela => {
   $('#novo-html')?.addEventListener('click', () => formModelo(null, 'preenchivel', setor));
 });
 
-const CAMPOS_AJUDA = 'colaborador.nome, colaborador.cpf, colaborador.rg, colaborador.matricula, colaborador.cargo, colaborador.cbo, colaborador.setor, colaborador.data_admissao, colaborador.data_nascimento, colaborador.endereco, colaborador.telefone, colaborador.cnh_numero, colaborador.cnh_categoria, colaborador.cnh_validade, colaborador.pis, colaborador.dados_bancarios, empresa.razao_social, empresa.cnpj, empresa.endereco, empresa.cidade, usuario.nome, hoje, hoje_extenso, lista_documentos_admissionais';
+const CAMPOS_AJUDA = 'colaborador.nome, colaborador.cpf, colaborador.rg, colaborador.matricula, colaborador.cargo, colaborador.cbo, colaborador.setor, colaborador.data_admissao, colaborador.data_nascimento, colaborador.endereco, colaborador.telefone, colaborador.cnh_numero, colaborador.cnh_categoria, colaborador.cnh_validade, colaborador.pis, colaborador.dados_bancarios, empresa.razao_social, empresa.cnpj, empresa.endereco, empresa.cidade, responsavel.nome, responsavel.cargo, responsavel.cpf, responsavel.email, usuario.nome, hoje, hoje_extenso, lista_documentos_admissionais';
 async function formModelo(m = null, formato = null, setorIni = '') {
   formato = m?.formato || formato;
   const anexo = m && formato === 'arquivo' ? await htmlAnexos('modelo', m.id) : '';
@@ -199,7 +239,7 @@ async function exportarPDF(table, titulo, subtitulo) {
   const corpo = `<h2>${esc(titulo)}</h2>${subtitulo ? `<p style="color:#666">${esc(subtitulo)}</p>` : ''}
     <table style="width:100%;font-size:11px" border="1" cellpadding="5"><thead><tr style="background:#eef2f6">${linhas[0].map(h => `<th style="text-align:left">${esc(h)}</th>`).join('')}</tr></thead>
     <tbody>${linhas.slice(1).map(l => `<tr>${l.map(v => `<td>${esc(v)}</td>`).join('')}</tr>`).join('')}</tbody></table><p style="color:#666;font-size:11px">${linhas.length - 1} linha(s)</p>`;
-  abrirParaImprimir(paginaDocumento(titulo, corpo, ctx, '').replace('<style>', '<style>@page{size:landscape}'));
+  abrirParaImprimir(paginaRelatorio(titulo, corpo, ctx));
 }
 // Coloca os botões "Excel" e "PDF" em cima de cada tabela da tela
 function ferramentasExportacao(tela) {

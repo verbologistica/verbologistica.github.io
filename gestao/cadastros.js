@@ -49,11 +49,6 @@ const CADASTROS = {
              ['tem_validade', 'Tem validade (gera alerta de vencimento)', 'bool', false, false], ['validade_meses', 'Validade padrão (meses)', 'numero'],
              ['ordem', 'Ordem na lista', 'numero'], ['orientacao', 'Orientação ao colaborador', 'textoLongo']],
     colunas: ['nome', 'categoria', 'exigido_admissao', 'validade_meses'] },
-  empresa: { titulo: 'Dados da empresa (usados nos documentos gerados)', ordem: 'razao_social', edita: () => tem('administrador'),
-    campos: [['razao_social', 'Razão social', 'texto', true], ['nome_fantasia', 'Nome fantasia'], ['cnpj', 'CNPJ'], ['inscricao_estadual', 'Inscrição estadual'],
-             ['endereco', 'Endereço completo'], ['cidade', 'Cidade'], ['uf', 'UF', 'lista', false, ['AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO']],
-             ['telefone', 'Telefone'], ['email', 'E-mail'], ['responsavel_rh', 'Responsável pelo RH (assina os documentos)']],
-    colunas: ['razao_social', 'cnpj', 'cidade', 'responsavel_rh'] },
 };
 
 async function valorExibido(campo, v) {
