@@ -639,15 +639,18 @@ async function pdfTimbrado({ setor, numero, destinatario = [], assunto, corpo, a
   const W = 210, ML = 20, MR = 190, TOPO = 44, BASE = 268;
   const COR = { texto: [37, 46, 53], cinza: [107, 115, 120], ouro: [221, 169, 54], verde: [2, 101, 77], linha: [214, 220, 224] };
   const cor = c => doc.setTextColor(...COR[c]);
-  const espacado = (txt, x, y, opts = {}) => { doc.setCharSpace(opts.esp ?? 1.1); doc.text(txt, x, y, opts); doc.setCharSpace(0); };
+  // texto com letras espaçadas (desenha letra a letra; devolve a largura)
+  const largEsp = (txt, esp) => [...txt].reduce((w, ch) => w + doc.getTextWidth(ch) + esp, 0) - esp;
+  const espacado = (txt, x, y, opts = {}) => { const esp = opts.esp ?? 1.1; let px = opts.align === 'right' ? x - largEsp(txt, esp) : x;
+    for (const ch of txt) { doc.text(ch, px, y); px += doc.getTextWidth(ch) + esp; } return largEsp(txt, esp); };
   const moldura = () => {
     doc.addImage(marca, 'PNG', 96.3, 186, 137.6, 82.5);
     doc.addImage(cab, 'JPEG', 0, 0, W, 30.7);
     doc.addImage(logo, 'PNG', ML, 8.5, 53.9, 14.8);
     doc.addImage(rod, 'JPEG', 0, 291.3, W, 5.8);
     // rodapé institucional
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); cor('texto'); espacado('VERBO LOGÍSTICA', ML, 279.6, { esp: 0.9 });
-    let x = ML + doc.getTextWidth('VERBO LOGÍSTICA') + 14 * 0.9 + 2.5;
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); cor('texto');
+    let x = ML + espacado('VERBO LOGÍSTICA', ML, 279.6, { esp: 0.9 }) + 2.5;
     const parte = (t, y) => { doc.setFont('helvetica', 'normal'); cor('ouro'); doc.text('|', x, y); x += 3; cor('cinza'); doc.text(t, x, y); x += doc.getTextWidth(t) + 2.5; };
     doc.setFontSize(7.5); parte('CNPJ 39.606.766/0001-50', 279.6); parte('Av. Manuel Alves Barbosa, Jandaia III, Birigui/SP, CEP 16.203-231', 279.6);
     x = ML; cor('cinza'); doc.text('www.verbologistica.com.br', x, 283.3); x += doc.getTextWidth('www.verbologistica.com.br') + 2.5;
@@ -657,12 +660,12 @@ async function pdfTimbrado({ setor, numero, destinatario = [], assunto, corpo, a
   moldura();
   doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); cor('ouro');
   const seT = (setor || '').trim(); doc.setFontSize(8); const wSet = doc.getTextWidth(seT);
-  doc.setFontSize(7.5); espacado('CORRESPONDÊNCIA OFICIAL', MR - wSet - 4, 37, { align: 'right', esp: 1.6 });
+  doc.setFontSize(7.5); espacado('CORRESPONDÊNCIA OFICIAL', MR - wSet - 4, 37, { align: 'right', esp: 1.5 });
   doc.setFontSize(8); cor('texto'); doc.text(seT, MR, 37, { align: 'right' });
   const hoje = new Date(); doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); cor('cinza');
   doc.text(`Birigui/SP, ${hoje.getDate()} de ${MESES_DOC[hoje.getMonth()]} de ${hoje.getFullYear()}`, MR, 46, { align: 'right' });
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); cor('ouro'); espacado('DOCUMENTO Nº', ML, 57, { esp: 1.4 });
-  doc.setFontSize(9.5); cor('texto'); doc.text(numero, ML + 31, 57);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); cor('ouro'); const wDoc = espacado('DOCUMENTO Nº', ML, 57, { esp: 1.3 });
+  doc.setFontSize(9.5); cor('texto'); doc.text(numero, ML + wDoc + 4, 57);
   let y = 67;
   destinatario.forEach(([t, estilo]) => { doc.setFont('helvetica', estilo === 'b' ? 'bold' : 'normal'); doc.setFontSize(estilo === 'b' ? 11 : 10); cor(estilo === 'b' ? 'texto' : 'cinza'); doc.text(t, ML, y); y += 5.4; });
   y += 4; doc.setFont('helvetica', 'bold'); doc.setFontSize(11); cor('texto'); doc.text(`Assunto: ${assunto}`, ML, y);
