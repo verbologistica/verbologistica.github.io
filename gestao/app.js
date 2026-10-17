@@ -352,6 +352,7 @@ const MENU = [
   // [nome, rota, perfis (null = todos), ícone, pendência, sub-item]  ·  ['grupo', nome, ícone]  ·  ['sub', título da seção]
   ['Início', '#/inicio', null, 'inicio'],
   ['Aprovações', '#/aprovacoes', null, 'aprovar', 'aprovar'],
+  ['Planos de ação', '#/planos', null, 'bandeira', 'acoes_pendentes'],
   ['grupo', 'Meu espaço', 'usuario'],
   ['Meus reembolsos', '#/reembolsos', null, 'recibo', 'devolvidos', true],
   ['Meus adiantamentos', '#/adiantamentos', null, 'dinheiro', null, true],
@@ -484,15 +485,26 @@ function htmlMenu(pend, melhor, celular = false) {
   const link = i => i[0] === 'sub' ? `<div class="mg-sub">${esc(i[1])}</div>`
     : `<a href="${i[1]}" class="${i[1] === melhor ? 'ativo' : ''} ${i[5] ? 'sub-item' : ''}" data-busca="${esc(i[0].toLowerCase())}"><span class="mi">${esc(i[0])}</span>${i[4] && pend[i[4]] ? `<span class="tag amarelo">${pend[i[4]]}</span>` : ''}</a>`;
   const busca = `<div class="menu-busca"><input type="search" placeholder="Buscar no menu…" aria-label="Buscar no menu" autocomplete="off"></div>`;
-  return busca + grupos.filter(g => g.itens.some(i => i[0] !== 'sub')).map(g => {
-    if (!g.nome) return `<div class="menu-topo">${g.itens.map(link).join('')}</div>`;
+  const PESSOAIS = ['Meu espaço', 'Biblioteca'];
+  const vis = grupos.filter(g => g.itens.some(i => i[0] !== 'sub'));
+  let html = busca, abriuPessoal = false, fechouPessoal = false;
+  vis.forEach(g => {
+    const pessoal = PESSOAIS.includes(g.nome);
+    if (pessoal && !abriuPessoal) { html += '<div class="menu-pessoal">'; abriuPessoal = true; }
+    if (!pessoal && g.nome && abriuPessoal && !fechouPessoal) { html += '</div><div class="menu-rotulo">Setores</div>'; fechouPessoal = true; }
+    html += grupoHtml(g);
+  });
+  if (abriuPessoal && !fechouPessoal) html += '</div>';
+  return html;
+  function grupoHtml(g) {
+    if (!g.nome) return `<div class="menu-topo menu-destaque">${g.itens.map(link).join('')}</div>`;
     const temAtivo = g.itens.some(i => i[1] === melhor);
     const aberto = temAtivo || abertos.includes(g.nome);
     const soma = g.itens.reduce((x, i) => x + (i[4] && pend[i[4]] ? pend[i[4]] : 0), 0);
     return `<div class="mg ${aberto ? 'aberto' : ''}" data-g="${esc(g.nome)}">
       <button type="button" class="mg-tit" aria-expanded="${aberto}"><span class="mi">${esc(g.nome)}</span><span class="mg-dir">${soma && !aberto ? `<span class="tag amarelo">${soma}</span>` : ''}<span class="mg-seta"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></span></span></button>
       <div class="mg-itens">${g.itens.map(link).join('')}</div></div>`;
-  }).join('');
+  }
 }
 function ligarMenu(raiz) {
   const bx = raiz.querySelector('.menu-busca input');
@@ -513,6 +525,7 @@ function ligarMenu(raiz) {
 async function desenharCasca() {
   const pend = {};
   try { (await api.rpc('minhas_pendencias')).forEach(p => (pend[p.tipo] = Number(p.quantidade))); } catch {}
+  try { pend.acoes_pendentes = (await api.rpc('minhas_acoes')).length; } catch {}
   estado.pendencias = pend;
   const atual = location.hash || '#/inicio';
   const melhor = menu().filter(i => i[0] !== 'grupo' && (atual === i[1] || atual.startsWith(i[1] + '/') || atual.startsWith(i[1] + '?'))).sort((a, b) => b[1].length - a[1].length)[0]?.[1];
@@ -935,31 +948,85 @@ function htmlMinhasAcoes(acs) {
   if (!acs.length) return '';
   const atr = acs.filter(a => a.prazo && a.prazo < hojeISO()).length;
   return `<div class="cartao minhas-acoes" id="minhas-acoes"><div class="topo" style="margin:0 0 8px"><div><h2 style="margin:0">${ico('bandeira')} Minhas ações pendentes</h2>
-      <p class="muted" style="margin:2px 0 0">${acs.length} pendente(s)${atr ? ` · <b class="txt-verm">${atr} atrasada(s)</b>` : ''}</p></div></div>
+      <p class="muted" style="margin:2px 0 0">${acs.length} pendente(s)${atr ? ` · <b class="txt-verm">${atr} atrasada(s)</b>` : ''}</p></div><a class="btn peq" href="#/planos">Planos de ação</a></div>
     <ul class="ma-lista">${acs.map(a => { const [pt, pc] = prazoTxt(a.prazo); const [st, sc] = ST_ACAO_TXT[a.status] || [a.status, ''];
       return `<li class="${pc}"><div class="ma-txt"><b>${esc(a.descricao)}</b><span class="muted">${esc(a.origem)}${a.criado_por ? ' · por ' + esc(a.criado_por) : ''}</span></div>
         <div class="ma-prazo"><span>${a.prazo ? 'Prazo ' + dataBR(a.prazo) : 'Sem prazo'}</span><span class="ma-pt ${pc}">${pt}</span></div>
         <span class="tag ${sc}">${st}</span><button class="btn prim peq" data-acao="${a.modulo}:${a.id}">Abrir ação</button></li>`; }).join('')}</ul></div>`;
 }
+const TAB_ACAO = { ssma: 'ssma_acoes', qual: 'qual_acoes', geral: 'acoes_gerais' };
+async function abrirAcao(a) {
+  const tabela = TAB_ACAO[a.modulo];
+  const gestor = tem('administrador', 'diretoria');
+  const podeEditar = a.modulo === 'geral' && (a.criado_por_id === estado.usuario.id || gestor);
+  const ehResp = a.responsavel_id === estado.usuario.id;
+  const linkMod = a.modulo === 'ssma' ? (telaPermitida('/ssma/acoes') ? '#/ssma/acoes' : '') : a.modulo === 'qual' && a.nc_id && telaPermitida('/qualidade/nc') ? '#/qualidade/nc/ver/' + a.nc_id : '';
+  const us = podeEditar ? (await usuarios().catch(() => [])).filter(u => u.ativo) : [];
+  const [pt] = prazoTxt(a.prazo);
+  const r = await modal(`<form><h2>Ação</h2>
+    ${podeEditar ? `<div class="form">
+        <label class="campo largo">O que fazer<textarea name="descricao" rows="2" required>${esc(a.descricao)}</textarea></label>
+        <label class="campo">Responsável<select name="resp" required>${opcoes(us, null, u => u.nome, a.responsavel_id, 'Selecione…')}</select></label>
+        <label class="campo">Prazo<input type="date" name="prazo" value="${a.prazo || ''}"></label></div>`
+      : `<div class="ma-det"><p><b>${esc(a.descricao)}</b></p><p class="muted">${esc(a.origem)}${a.responsavel ? ' · ' + esc(a.responsavel) : ''}${a.criado_por ? ' · aberta por ' + esc(a.criado_por) : ''} · ${a.prazo ? 'prazo ' + dataBR(a.prazo) + ' (' + pt + ')' : 'sem prazo'}</p></div>`}
+    <div class="form" style="margin-top:12px">
+      <label class="campo">Situação<select name="status">${['aberta', 'em_andamento', 'concluida', ...(podeEditar ? ['cancelada'] : [])].map(k => `<option value="${k}" ${k === a.status ? 'selected' : ''}>${ST_ACAO_TXT[k][0]}</option>`).join('')}</select></label>
+      <label class="campo largo">O que foi feito<textarea name="evidencia" rows="3">${esc(a.evidencia || '')}</textarea></label></div>
+    ${linkMod ? `<p class="muted"><a href="${linkMod}" data-fechar>Ver no módulo de ${a.modulo === 'ssma' ? 'Segurança' : 'Qualidade'}</a></p>` : ''}
+    <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button>${podeEditar || ehResp || gestor ? '<button class="btn prim">Salvar</button>' : ''}</div></form>`,
+    { validar: d => d.status === 'concluida' && !d.evidencia?.trim() ? 'Para concluir, descreva a evidência de que a ação foi feita.' : null });
+  if (!r) return false;
+  const dados = { status: r.status, evidencia: r.evidencia?.trim() || null };
+  if (podeEditar) Object.assign(dados, { descricao: r.descricao.trim(), responsavel_id: r.resp, prazo: r.prazo || null });
+  try { await api.alterar(tabela, `id=eq.${a.id}`, dados); aviso(r.status === 'concluida' ? 'Ação concluída.' : 'Ação atualizada.'); return true; } catch (err) { falha(err); return false; }
+}
 function ligarMinhasAcoes(tela, acs) {
   $$('[data-acao]', tela).forEach(b => (b.onclick = async () => {
     const [mod, id] = b.dataset.acao.split(':'); const a = acs.find(x => x.id === id && x.modulo === mod); if (!a) return;
-    const tabela = mod === 'ssma' ? 'ssma_acoes' : 'qual_acoes';
-    const linkMod = mod === 'ssma' ? (telaPermitida('/ssma/acoes') ? '#/ssma/acoes' : '') : a.nc_id && telaPermitida('/qualidade/nc') ? '#/qualidade/nc/ver/' + a.nc_id : '';
-    const [pt] = prazoTxt(a.prazo);
-    const r = await modal(`<form><h2>Ação do plano de ação</h2>
-      <div class="ma-det"><p><b>${esc(a.descricao)}</b></p><p class="muted">${esc(a.origem)}${a.criado_por ? ' · lançada por ' + esc(a.criado_por) : ''} · ${a.prazo ? 'prazo ' + dataBR(a.prazo) + ' (' + pt + ')' : 'sem prazo'}</p></div>
-      <div class="form">
-        <label class="campo">Situação<select name="status">${['aberta', 'em_andamento', 'concluida'].map(k => `<option value="${k}" ${k === a.status ? 'selected' : ''}>${ST_ACAO_TXT[k][0]}</option>`).join('')}</select></label>
-        <label class="campo largo">O que foi feito<textarea name="evidencia" rows="3">${esc(a.evidencia || '')}</textarea></label></div>
-      ${linkMod ? `<p class="muted"><a href="${linkMod}" data-fechar>Ver no módulo de ${mod === 'ssma' ? 'Segurança' : 'Qualidade'}</a></p>` : ''}
-      <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Salvar</button></div></form>`,
-      { validar: d => d.status === 'concluida' && !d.evidencia?.trim() ? 'Para concluir, descreva a evidência de que a ação foi feita.' : null });
-    if (!r) return;
-    try { await api.alterar(tabela, `id=eq.${id}`, { status: r.status, evidencia: r.evidencia?.trim() || null });
-      aviso(r.status === 'concluida' ? 'Ação concluída. 👍' : 'Andamento salvo.'); navegar(); } catch (err) { falha(err); }
+    if (await abrirAcao(a)) navegar();
   }));
 }
+
+// ===================== Planos de ação (todos) =====================
+rota('/planos', async tela => {
+  const gestor = tem('administrador', 'diretoria');
+  const esc_ = estado.params.get('ver') || 'minhas';
+  const escopo = esc_ === 'todas' && !gestor ? 'minhas' : esc_;
+  const abertas = estado.params.get('sit') === 'abertas';
+  const acs = await api.rpc('planos_acao', { p_escopo: escopo, p_abertas: abertas }).catch(err => { falha(err); return []; });
+  const ABAS = [['minhas', 'No meu nome'], ['criadas', 'Que eu abri'], ...(gestor ? [['todas', 'Todas']] : [])];
+  const atr = acs.filter(a => a.prazo && a.prazo < hojeISO() && ['aberta', 'em_andamento'].includes(a.status)).length;
+  const url = m => '#/planos?' + new URLSearchParams({ ver: escopo, sit: abertas ? 'abertas' : 'todas', ...m }).toString();
+  tela.innerHTML = `
+    <div class="topo"><div><h1>Planos de ação</h1><p class="sub">${acs.length} ação(ões)${atr ? ` · <b class="txt-verm">${atr} atrasada(s)</b>` : ''}</p></div>
+      <div class="acoes"><button class="btn prim" id="nova-acao">+ Nova ação</button></div></div>
+    <div class="abas">${ABAS.map(([k, t]) => `<a href="${url({ ver: k })}" class="${k === escopo ? 'ativa' : ''}">${t}</a>`).join('')}</div>
+    <form class="filtros" id="f-pl"><select name="sit"><option value="todas">Todas</option><option value="abertas" ${abertas ? 'selected' : ''}>Em aberto</option></select></form>
+    <div class="cartao">${acs.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Ação</th><th>Origem</th>${escopo === 'minhas' ? '' : '<th>Responsável</th>'}<th>Prazo</th><th>Situação</th><th></th></tr></thead><tbody>
+      ${acs.map((a, i) => { const [pt, pc] = prazoTxt(a.prazo); const fim = ['concluida', 'cancelada'].includes(a.status); const [st, sc] = ST_ACAO_TXT[a.status] || [a.status, ''];
+        return `<tr class="clicavel" data-i="${i}"${fAttr('origem', a.origem.split(' · ').pop())}${fAttr('resp', a.responsavel)}${fAttr('data', a.prazo)}${fAttr('busca', [a.descricao, a.origem, a.responsavel, a.evidencia].filter(Boolean).join(' '))}>
+          <td data-r="Ação"><b>${esc(a.descricao)}</b>${a.evidencia ? `<div class="muted">${esc(a.evidencia)}</div>` : ''}</td>
+          <td data-r="Origem" class="nowrap">${esc(a.origem)}</td>${escopo === 'minhas' ? '' : `<td data-r="Responsável">${esc(a.responsavel || '—')}</td>`}
+          <td data-r="Prazo" class="nowrap">${a.prazo ? dataBR(a.prazo) : '—'}${!fim && a.prazo ? `<div class="ma-pt ${pc}">${pt}</div>` : ''}</td>
+          <td data-r="Situação"><span class="tag ${!fim && pc === 'atr' ? 'vermelho' : sc}">${!fim && pc === 'atr' ? 'Atrasada' : st}</span></td>
+          <td class="nowrap"><button class="btn peq" data-i="${i}">Abrir</button></td></tr>`; }).join('')}
+      </tbody></table></div>` : `<div class="vazio">${escopo === 'minhas' ? 'Nenhuma ação no seu nome.' : 'Nenhuma ação.'}</div>`}</div>`;
+  $('#f-pl').onchange = e => { location.hash = url({ sit: e.target.value }); };
+  $$('tr[data-i]', tela).forEach(tr => (tr.onclick = async () => { if (await abrirAcao(acs[Number(tr.dataset.i)])) navegar(); }));
+  filtroLocal(tela, { itens: 'tbody tr[data-i]', antes: $$('.cartao', tela).at(-1), campos: [{ k: 'origem', rotulo: 'Origem' }, ...(escopo === 'minhas' ? [] : [{ k: 'resp', rotulo: 'Responsável' }])], periodo: true, rotuloPeriodo: 'Prazo' });
+  $('#nova-acao').onclick = async () => {
+    const us = (await usuarios().catch(() => [])).filter(u => u.ativo);
+    const r = await modal(`<form><h2>Nova ação</h2><div class="form">
+      <label class="campo largo">O que fazer<textarea name="descricao" rows="2" required></textarea></label>
+      <label class="campo">Assunto / setor<input name="assunto" list="pl-assuntos" placeholder="Ex.: Financeiro"><datalist id="pl-assuntos">${['Financeiro', 'Compras', 'Operação', 'Manutenção', 'Almoxarifado', 'RH', 'DP', 'Segurança', 'Qualidade', 'Administrativo'].map(x => `<option>${x}</option>`).join('')}</datalist></label>
+      <label class="campo">Responsável<select name="resp" required>${opcoes(us, null, u => u.nome, estado.usuario.id, 'Selecione…')}</select></label>
+      <label class="campo">Prazo<input type="date" name="prazo" value="${somaDias(hojeISO(), 7)}" required></label></div>
+      <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Criar ação</button></div></form>`);
+    if (!r) return;
+    try { await api.inserir('acoes_gerais', { descricao: r.descricao.trim(), assunto: r.assunto?.trim() || null, responsavel_id: r.resp, prazo: r.prazo });
+      aviso(r.resp === estado.usuario.id ? 'Ação criada.' : 'Ação criada e responsável avisado.'); location.hash = url({ ver: r.resp === estado.usuario.id ? 'minhas' : 'criadas' }); navegar(); } catch (err) { falha(err); }
+  };
+});
 
 // ===================== Início: resumo financeiro da gestão =====================
 const MESES_AB = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
@@ -1006,7 +1073,7 @@ function filtroLocal(tela, { itens, antes, campos = [], busca = true, periodo = 
   const todos = els();
   if (!todos.length) return null;
   const chave = 'filtro:' + location.hash.split('?')[0] + ':' + itens;
-  let salvo = {}; try { salvo = JSON.parse(sessionStorage.getItem(chave) || '{}'); } catch { /* sem storage */ }
+  const salvo = {};   // a tela sempre abre mostrando tudo; quem quiser algo específico filtra
   const usados = campos.map(c => ({ ...c, valores: [...new Set(todos.map(e => e.dataset['f' + c.k[0].toUpperCase() + c.k.slice(1)]).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR')) }))
     .filter(c => c.valores.length > 1 || salvo[c.k]);
   const barra = document.createElement('div');
@@ -1033,7 +1100,8 @@ function filtroLocal(tela, { itens, antes, campos = [], busca = true, periodo = 
       if (ok) { n++; total += Number(d.fValor || 0); }
     }
     const ativo = Object.keys(f).length > 0;
-    $('.filtro-resumo', barra).innerHTML = ativo ? `<b>${n}</b> de ${lista.length} · ${brl(total)}` : `${lista.length} item(ns) · ${brl(total)}`;
+    const temV = lista.some(e => e.dataset.fValor != null);
+    $('.filtro-resumo', barra).innerHTML = (ativo ? `<b>${n}</b> de ${lista.length}` : `${lista.length} item(ns)`) + (temV ? ` · ${brl(total)}` : '');
     $$('table', tela).forEach(t => { if ($$('tbody tr', t).some(tr => lista.includes(tr))) { const tf = $('tfoot', t); if (tf) tf.hidden = ativo; } });
     aoMudar?.(n);
   };

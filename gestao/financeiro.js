@@ -29,7 +29,7 @@ async function listaTitulos(tela, tipo) {
   const aba = tipo === 'pagar' ? (estado.params.get('aba') || 'variaveis') : 'todas';
   if (tipo === 'pagar') await api.rpc('gerar_contas_fixas').catch(() => 0);   // lança os meses das contas fixas (não duplica)
   if (aba === 'fixas') return listaFixas(tela);
-  const st = estado.params.get('status') || 'abertas';
+  const st = estado.params.get('status') || 'todas';
   const faixa = estado.params.get('faixa') || '';
   // período (vencimento): padrão = mês atual; "tudo" = sem período; links de faixa (Início) abrem sem período
   const mesIni = hojeISO().slice(0, 8) + '01', mesFim = somaDias(somaMeses(mesIni, 1), -1);

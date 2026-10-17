@@ -60,7 +60,7 @@ rota('/operacao', async tela => {
 
 // ===================== Viagens =====================
 rota('/operacao/viagens', async tela => {
-  const st = estado.params.get('status') || 'abertas', q = (estado.params.get('q') || '').toLowerCase();
+  const st = estado.params.get('status') || 'todas', q = (estado.params.get('q') || '').toLowerCase();
   let vs = await api.listar('viagens', `ativo=eq.true${st === 'abertas' ? '&status=in.(planejada,em_transito)' : st === 'todas' ? '' : '&status=eq.' + st}&select=*,cl:clientes(nome),eq:equipamentos(codigo_frota),m:colaboradores(nome)&order=saida_prevista.desc.nullslast,criado_em.desc&limit=400`);
   if (q) vs = vs.filter(v => [v.numero, v.origem, v.destino, v.cl?.nome, v.m?.nome, v.eq?.codigo_frota, v.documentos].join(' ').toLowerCase().includes(q));
   tela.innerHTML = `

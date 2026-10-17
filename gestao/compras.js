@@ -34,7 +34,7 @@ function tabelaReq(linhas, comSolic = true) {
 rota('/compras/requisicoes', async tela => {
   // todos consultam as requisições e o andamento; só quem abriu edita
   const todas = true;
-  const st = estado.params.get('status') || 'abertas';
+  const st = estado.params.get('status') || 'todas';
   const filtro = { abertas: 'status=in.(rascunho,aguardando_cotacao,em_cotacao,aguardando_aprovacao,aprovada,pedido_emitido,faturada,entregue)', a_cotar: 'status=in.(aguardando_cotacao,em_cotacao)',
                    concluidas: 'status=in.(recebida,reprovada,cancelada)', todas: 'status=neq.cancelada' }[st] || 'status=neq.cancelada';
   const minhas = estado.params.get('minhas') === '1';
@@ -212,7 +212,7 @@ function tabelaItens(itens, rotuloValor = 'Valor unit.') {
 
 // ---------- Cotações ----------
 rota('/compras/cotacoes', async tela => {
-  const st = estado.params.get('status') || 'abertas';
+  const st = estado.params.get('status') || 'todas';
   const filtro = { abertas: 'status=in.(aberta,aguardando_aprovacao)', aprovadas: 'status=eq.aprovada', todas: 'status=neq.cancelada' }[st] || 'status=neq.cancelada';
   const [aCotar, cots] = await Promise.all([
     ehComprador() ? listarReq('status=eq.aguardando_cotacao&order=urgencia.desc,criado_em') : [],
@@ -400,7 +400,7 @@ const tagEntregaPed = p => p.status === 'cancelado' ? '' : p.ent === 'completa' 
 
 rota('/compras/pedidos', async tela => {
   const soAlmox = tem('almoxarifado') && !tem('administrador', 'comprador', 'financeiro') && !veTudo();
-  const st = estado.params.get('status') || (soAlmox ? 'a_receber' : lancaDocFiscal() ? 'abertos' : 'todos');
+  const st = estado.params.get('status') || 'todos';
   const filtroSt = { abertos: 'status=in.(emitido,faturado,entregue,parcialmente_recebido)', a_faturar: 'status=in.(emitido,entregue,parcialmente_recebido)',
     a_receber: 'status=in.(emitido,faturado,parcialmente_recebido)', concluidos: 'status=eq.recebido', todos: 'status=neq.cancelado' }[st] || 'status=neq.cancelado';
   const [ps0, forns] = await Promise.all([api.listar('pedidos', `select=*,req:requisicoes(numero,justificativa),fats:pedido_faturamentos(status),recs:recebimentos(entrega_completa,cancelado_em,status)&${filtroSt}&order=criado_em.desc&limit=500`), fornecedores()]);

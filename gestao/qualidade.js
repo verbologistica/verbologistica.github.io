@@ -118,7 +118,7 @@ rota('/qualidade/documentos/ver/:id', async (tela, id) => {
 
 // ===================== Não conformidades =====================
 rota('/qualidade/nc', async tela => {
-  const st = estado.params.get('status') || 'abertas';
+  const st = estado.params.get('status') || 'todas';
   const ns = await api.listar('qual_nc', `ativo=eq.true${st === 'abertas' ? '&status=not.in.(encerrada,cancelada)' : st === 'todas' ? '' : '&status=eq.' + st}&select=*,u:usuarios!qual_nc_responsavel_id_fkey(nome),s:setores(nome)&order=detectada_em.desc&limit=300`);
   tela.innerHTML = `<div class="topo"><div><h1>Não conformidades</h1><p class="sub">${ns.length} registro(s)</p></div><a class="btn prim" href="#/qualidade/nc/nova">+ Registrar</a></div>
     <form class="filtros" id="filtros"><select name="status"><option value="abertas">Em tratamento</option>${Object.entries(ST_NC).map(([k, [t]]) => `<option value="${k}" ${k === st ? 'selected' : ''}>${t}</option>`).join('')}<option value="todas" ${st === 'todas' ? 'selected' : ''}>Todas</option></select><button class="btn">Filtrar</button></form>

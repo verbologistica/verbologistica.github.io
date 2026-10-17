@@ -33,7 +33,7 @@ rota('/adiantamentos', async tela => {
 
 // ---------- Adiantamentos (Financeiro) ----------
 rota('/financeiro/adiantamentos', async tela => {
-  const st = estado.params.get('status') || 'abertos';
+  const st = estado.params.get('status') || 'todos';
   const filtro = { abertos: 'status=in.(aguardando_aprovacao,aprovado,pago,prestando_contas,devolvido)', acertados: 'status=eq.acertado', todos: 'status=neq.cancelado' }[st];
   const ls = await api.listar('adiantamentos', `${SELECT_ADT}&${filtro}&order=criado_em.desc&limit=500`);
   const emAberto = ls.filter(a => ['pago', 'prestando_contas'].includes(a.status));

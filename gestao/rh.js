@@ -58,7 +58,7 @@ function tabelaDocsRH(ds) {
 
 // ---------- Colaboradores ----------
 rota('/rh/colaboradores', async tela => {
-  const st = estado.params.get('status') || 'quadro', setor = estado.params.get('setor') || '', q = (estado.params.get('q') || '').toLowerCase();
+  const st = estado.params.get('status') || 'todos', setor = estado.params.get('setor') || '', q = (estado.params.get('q') || '').toLowerCase();
   const filtro = { quadro: 'status=in.(em_admissao,ativo,ferias,afastado,aviso_previo)', candidatos: 'status=eq.candidato', desligados: 'status=eq.desligado', todos: 'status=neq.x' }[st];
   const [cs, ss, cgs] = await Promise.all([api.listar('colaboradores', `select=id,matricula,nome,cpf,status,setor_id,cargo_id,telefone,data_admissao,cnh_categoria,cnh_validade,usuario_id&ativo=eq.true&${filtro}${setor && setor !== '-' ? '&setor_id=eq.' + setor : ''}&order=nome`), setoresL(), cargosL()]);
   const ls = cs.filter(c => !q || [c.nome, c.matricula, c.cpf].join(' ').toLowerCase().includes(q.replace(/[.\-]/g, '')) || c.nome.toLowerCase().includes(q));
@@ -355,7 +355,7 @@ async function painelAdmissao(box, c, adm, adms, cargo, cgs, faltam) {
 }
 
 rota('/rh/admissoes', async tela => {
-  const st = estado.params.get('status') || 'em_andamento';
+  const st = estado.params.get('status') || 'todas';
   const adms = await api.listar('admissoes', `select=*,colab:colaboradores(id,nome),cargo:cargos(nome),etapas:admissao_etapas(status)&${st === 'todas' ? 'status=neq.x' : 'status=eq.' + st}&order=data_prevista`);
   tela.innerHTML = `
     <div class="topo"><div><h1>Admissões</h1><p class="sub">${adms.length} processo(s)</p></div>${editaRH() ? '<a class="btn prim" href="#/rh/colaboradores/novo">+ Novo candidato</a>' : ''}</div>
@@ -369,7 +369,7 @@ rota('/rh/admissoes', async tela => {
 });
 
 rota('/rh/documentos', async tela => {
-  const faixa = estado.params.get('faixa') || 'proximos';
+  const faixa = estado.params.get('faixa') || 'todos';
   const ds = await api.listar('v_docs_colaborador_vencimento', `${faixa === 'vencidos' ? 'faixa=eq.vencido' : faixa === 'todos' ? 'faixa=neq.x' : 'faixa=in.(vencido,vence_30,vence_60)'}&order=vencimento`);
   tela.innerHTML = `
     <div class="topo"><div><h1>Documentos dos colaboradores</h1><p class="sub">CNH, ASO, toxicológico, cursos e demais documentos com validade</p></div></div>

@@ -193,7 +193,7 @@ rota('/reembolsos/ver/:id', async (tela, id) => {
 
 // ---------- Gestão (Financeiro) ----------
 rota('/financeiro/reembolsos', async tela => {
-  const st = estado.params.get('status') || 'abertos';
+  const st = estado.params.get('status') || 'todos';
   const filtroSt = { abertos: 'status=in.(aguardando_aprovacao,aprovado,em_pagamento,devolvido)', aprovado: 'status=eq.aprovado&forma_custeio=eq.reembolso',
                      pago: 'status=eq.pago', todos: 'status=neq.cancelado', cancelados: 'status=eq.cancelado' }[st] || 'status=neq.cancelado';
   const ini = estado.params.get('de') || '', fim = estado.params.get('ate') || '';

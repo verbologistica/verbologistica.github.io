@@ -88,12 +88,12 @@ async function modeloPorCodigo(codigo) { return api.um('modelos_documentos', `co
 
 // ===================== Ocorrências disciplinares =====================
 rota('/rh/disciplinar', async tela => {
-  const st = estado.params.get('status') || 'aplicada';
-  const [os, cs] = await Promise.all([api.listar('ocorrencias_disciplinares', `select=*,colab:colaboradores(id,nome)&status=eq.${st}&order=data_aplicacao.desc`), cargosL()]);
+  const st = estado.params.get('status') || 'todas';
+  const [os, cs] = await Promise.all([api.listar('ocorrencias_disciplinares', `select=*,colab:colaboradores(id,nome)${st === 'todas' ? '' : '&status=eq.' + st}&order=data_aplicacao.desc`), cargosL()]);
   tela.innerHTML = `
     <div class="topo"><div><h1>Ocorrências disciplinares</h1><p class="sub">${os.length} registro(s)</p></div>${editaRH() ? '<a class="btn prim" href="#/rh/disciplinar/nova">+ Registrar ocorrência</a>' : ''}</div>
     ${avisoLei('gradacao')}
-    <form class="filtros" id="filtros"><select name="status"><option value="aplicada" ${st === 'aplicada' ? 'selected' : ''}>Aplicadas</option><option value="cancelada" ${st === 'cancelada' ? 'selected' : ''}>Canceladas</option></select><button class="btn">Filtrar</button></form>
+    <form class="filtros" id="filtros"><select name="status"><option value="todas">Todas</option><option value="aplicada" ${st === 'aplicada' ? 'selected' : ''}>Aplicadas</option><option value="cancelada" ${st === 'cancelada' ? 'selected' : ''}>Canceladas</option></select><button class="btn">Filtrar</button></form>
     <div class="cartao">${os.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Nº</th><th>Colaborador</th><th>Medida</th><th>Fato</th><th>Aplicada</th><th>Motivo</th></tr></thead><tbody>
       ${os.map(o => `<tr class="clicavel" onclick="location.hash='#/rh/colaboradores/ver/${o.colab?.id}?aba=disciplinar'"><td data-r="Nº">${esc(o.numero || '')}</td><td data-r="Colaborador">${esc(o.colab?.nome || '')}</td>
         <td data-r="Medida">${tagMedida(o.medida)}${o.dias_suspensao ? ` ${o.dias_suspensao} dia(s)` : ''}</td><td data-r="Fato">${dataBR(o.data_fato)}</td><td data-r="Aplicada">${dataBR(o.data_aplicacao)}</td><td data-r="Motivo">${esc(o.motivo)}</td></tr>`).join('')}
@@ -193,7 +193,7 @@ ABAS_RH_EXTRA.disciplinar = async (box, c) => {
 
 // ===================== Desligamento =====================
 rota('/rh/desligamentos', async tela => {
-  const st = estado.params.get('status') || 'em_andamento';
+  const st = estado.params.get('status') || 'todos';
   const ds = await api.listar('desligamentos', `select=*,colab:colaboradores(id,nome),etapas:desligamento_etapas(status)&${st === 'todos' ? 'status=neq.x' : 'status=eq.' + st}&order=data_desligamento`);
   tela.innerHTML = `
     <div class="topo"><div><h1>Desligamentos</h1><p class="sub">${ds.length} processo(s)</p></div></div>
@@ -466,7 +466,7 @@ ABAS_RH_EXTRA.avaliacoes = async (box, c) => {
 const ST_VAGA = { aberta: ['Aberta', 'azul'], em_selecao: ['Em seleção', 'amarelo'], suspensa: ['Suspensa', ''], preenchida: ['Preenchida', 'verde'], cancelada: ['Cancelada', ''] };
 const ETAPAS_SEL = { triagem: 'Triagem de currículo', entrevista_rh: 'Entrevista RH', entrevista_gestor: 'Entrevista com gestor', teste_pratico: 'Teste prático (direção / técnico)', aprovado: 'Aprovado', reprovado: 'Reprovado', desistiu: 'Desistiu', contratado: 'Contratado' };
 rota('/rh/recrutamento', async tela => {
-  const st = estado.params.get('status') || 'abertas';
+  const st = estado.params.get('status') || 'todas';
   const [vs, cgs, ss] = await Promise.all([api.listar('vagas', `select=*,cands:vaga_candidatos(etapa)&${st === 'abertas' ? 'status=in.(aberta,em_selecao,suspensa)' : 'status=neq.x'}&order=criado_em.desc`), cargosL(), setoresL()]);
   tela.innerHTML = `
     <div class="topo"><div><h1>Recrutamento e seleção</h1><p class="sub">${vs.length} vaga(s)</p></div><div class="acoes"><a class="btn" href="#/rh/talentos">Banco de talentos</a>${editaRH() ? '<button class="btn prim" id="nova-vaga">+ Abrir vaga</button>' : ''}</div></div>

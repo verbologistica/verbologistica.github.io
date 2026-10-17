@@ -236,7 +236,7 @@ async function formAcao(origem, origemId, us, x = null) {
     aviso('Ação salva.'); navegar(); } catch (err) { falha(err); }
 }
 rota('/ssma/acoes', async tela => {
-  const st = estado.params.get('status') || 'abertas';
+  const st = estado.params.get('status') || 'todas';
   const [as, us] = await Promise.all([api.listar('ssma_acoes', `ativo=eq.true${st === 'abertas' ? '&status=in.(aberta,em_andamento)' : ''}&select=*,u:usuarios(nome)&order=prazo.nullslast`), usuarios()]);
   const ORIG = { acidente: ['Acidente', '#/ssma/acidentes/ver/'], inspecao: ['Inspeção', '#/ssma/inspecoes/ver/'], dds: ['DDS', '#/ssma/dds'], avulsa: ['Avulsa', null] };
   tela.innerHTML = `<div class="topo"><div><h1>Plano de ação</h1><p class="sub">${as.length} ação(ões)</p></div>${editaSSMA() ? '<button class="btn prim" id="nova">+ Ação</button>' : ''}</div>
