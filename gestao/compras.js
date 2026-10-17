@@ -296,7 +296,8 @@ rota('/compras/cotacoes/ver/:id', async (tela, id) => {
         <label class="campo">Telefone<input name="nf_tel"></label><label class="campo">E-mail<input name="nf_email" type="email"></label></div>
       <label class="campo">Valor total (R$)<input name="valor" inputmode="decimal" required value="${p.valor_total ? Number(p.valor_total).toFixed(2).replace('.', ',') : ''}"></label>
       <label class="campo">Prazo de entrega (dias)<input name="prazo" inputmode="numeric" value="${p.prazo_entrega_dias ?? ''}"></label>
-      <label class="campo">Condição de pagamento<input name="cond" value="${esc(p.condicao_pagamento || '')}" placeholder="Ex.: 30 dias boleto · à vista Pix"></label>
+      <label class="campo">Condição de pagamento<select name="cond"><option value="">Selecione…</option>${[...new Set([...CONDICOES_PAG, ...(p.condicao_pagamento ? [p.condicao_pagamento] : [])])].map(t => `<option ${t === p.condicao_pagamento ? 'selected' : ''}>${esc(t)}</option>`).join('')}<option value="__outra">Outra…</option></select></label>
+      <label class="campo" id="cond-outra" hidden>Qual condição?<input name="cond_outra" placeholder="Ex.: Boleto 30/45/60 dias"></label>
       <label class="campo">Validade da proposta<input type="date" name="validade" value="${p.validade || ''}"></label>
       <label class="campo largo">O que está incluso (marca, modelo, frete)<input name="itens" value="${esc(p.itens_descricao || '')}"></label>
       <label class="campo largo">Observação<input name="obs" value="${esc(p.observacao || '')}"></label>
@@ -304,6 +305,7 @@ rota('/compras/cotacoes/ver/:id', async (tela, id) => {
       ${p.id ? '' : '<label class="check largo"><input type="checkbox" name="verbal"> Orçamento por telefone/WhatsApp sem documento (explique na observação)</label>'}</div>
       <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Salvar</button></div></form>`, {
       aoAbrir: raiz => { const f = $('form', raiz); f.forn.onchange = () => { $('#novo-forn', raiz).hidden = f.forn.value !== 'novo'; };
+        f.cond.addEventListener('change', () => { $('#cond-outra', raiz).hidden = f.cond.value !== '__outra'; });
         f.nf_doc.addEventListener('input', async () => { f.nf_doc.value = mascaraDoc(f.nf_doc.value); const d = soDigitos(f.nf_doc.value);
           if (d.length === 14 && cnpjValido(d)) try { const r = await consultarCNPJ(d); f.nf_nome.value = r.razao_social || f.nf_nome.value;
             if (r.ddd_telefone_1 && !f.nf_tel.value) f.nf_tel.value = fmtTel(r.ddd_telefone_1); if (r.email && !f.nf_email.value) f.nf_email.value = r.email.toLowerCase(); } catch {} }); },
@@ -317,7 +319,7 @@ rota('/compras/cotacoes/ver/:id', async (tela, id) => {
       const [nf] = await api.inserir('fornecedores', { razao_social: d.nf_nome, documento: soDigitos(d.nf_doc) || null, telefone: soDigitos(d.nf_tel) || null, email: d.nf_email || null });
       forn = nf.id; await fornecedores(true);
     }
-    const dados = { fornecedor_id: forn, valor_total: num(d.valor), prazo_entrega_dias: d.prazo ? parseInt(d.prazo, 10) : null, condicao_pagamento: d.cond || null,
+    const dados = { fornecedor_id: forn, valor_total: num(d.valor), prazo_entrega_dias: d.prazo ? parseInt(d.prazo, 10) : null, condicao_pagamento: (d.cond === '__outra' ? d.cond_outra : d.cond) || null,
                     validade: d.validade || null, itens_descricao: d.itens || null, observacao: d.obs || null };
     let pid = p.id;
     if (pid) await api.alterar('cotacao_propostas', `id=eq.${pid}`, dados);
@@ -518,7 +520,9 @@ rota('/compras/pedidos/ver/:id', async (tela, id) => {
     };
     const prazoForn = forn?.prazo_faturamento_dias;
     const prazo = prazoForn != null ? prazoForn : /(\d+)\s*d/i.test(p.condicao_pagamento || '') ? Number(p.condicao_pagamento.match(/(\d+)\s*d/i)[1]) : /vista/i.test(p.condicao_pagamento || '') ? 0 : 30;
-    const venc1 = somaDias(hojeISO(), prazo);
+    const parcP = parcelasCond(p.condicao_pagamento);
+    const multi = parcP.length > 1;
+    const venc1 = somaDias(hojeISO(), multi ? parcP[0] : prazo);
     const res = await modal(`<form><h2>Documentos fiscais do pedido ${esc(p.numero)}</h2>
       <p class="muted">Lance a nota fiscal, o boleto e os demais documentos da compra. A conta a pagar vai pronta para o Financeiro. ${entregue ? '<b>O produto já foi recebido pelo almoxarifado.</b>' : 'O recebimento do produto é confirmado depois, pelo Almoxarifado.'}</p><div class="form">
       <label class="campo">Tipo de documento<select name="tipo">${['NF', 'NFS-e', 'Cupom fiscal', 'Recibo', 'Fatura', 'Outro'].map(t => `<option ${t === 'NF' ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
@@ -530,9 +534,10 @@ rota('/compras/pedidos/ver/:id', async (tela, id) => {
       <div class="largo muted">${prazoForn != null ? `Prazo de faturamento do fornecedor: <b>${prazoForn ? prazoForn + ' dias' : 'à vista'}</b> — o vencimento já vem calculado a partir da emissão (altere só em caso extraordinário).` : `Fornecedor sem prazo no cadastro: vencimento pela condição do pedido (${esc(p.condicao_pagamento || '30 dias')}).`}</div>
       <div class="largo conferencia" id="conf"></div>
       <label class="campo largo" id="div-campo" hidden>O que mudou em relação ao pedido? (obrigatório)<textarea name="div" rows="2"></textarea></label>
-      <label class="campo">Parcelas<input name="n" inputmode="numeric" value="1"></label>
+      <label class="campo">Condição de pagamento<select name="cond" data-unico><option value="">Manual</option>${[...new Set([...CONDICOES_PAG, ...(p.condicao_pagamento ? [p.condicao_pagamento] : [])])].map(t => `<option ${t === p.condicao_pagamento ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></label>
+      <label class="campo">Parcelas<input name="n" inputmode="numeric" value="${multi ? parcP.length : 1}"></label>
       <label class="campo">1º vencimento<input type="date" name="venc" value="${venc1}"></label>
-      <label class="campo">Intervalo (dias)<input name="int" inputmode="numeric" value="30"></label>
+      <label class="campo">Intervalo (dias)<input name="int" inputmode="numeric" value="${multi ? parcP[1] - parcP[0] : 30}"></label>
       <div class="largo" id="parcelas"></div>
       <label class="campo largo" id="campo-linha">Linha digitável do boleto (opcional)<input name="linha" inputmode="numeric" placeholder="Só os números"></label>
       <label class="campo largo">Observação<input name="obs"></label>
@@ -551,6 +556,8 @@ rota('/compras/pedidos/ver/:id', async (tela, id) => {
             <span class="nowrap">${k + 1}ª</span><input type="date" class="pv" value="${x.vencimento}" aria-label="Vencimento ${k + 1}"><input class="pval" inputmode="decimal" value="${x.valor.toFixed(2).replace('.', ',')}" aria-label="Valor ${k + 1}" style="width:120px"></div>`).join('') : '';
         };
         ['valor', 'n', 'venc', 'int'].forEach(k => f[k].addEventListener('input', sinc));
+        f.cond.addEventListener('change', () => { const ps = parcelasCond(f.cond.value); if (!ps.length) return;
+          f.n.value = ps.length; f.venc.value = somaDias(f.data.value, ps[0]); f.int.value = ps.length > 1 ? ps[1] - ps[0] : 30; f.avista.checked = ps[0] === 0; sinc(); });
         const forma = () => { const b = f.forma.value === 'Boleto'; $('#campo-linha', raiz).hidden = !b; $('#campo-boleto', raiz).hidden = !b; };
         f.forma.addEventListener('change', forma); forma();
         f.avista.addEventListener('change', () => { f.venc.value = f.avista.checked ? f.data.value : somaDias(f.data.value, prazo || 30); if (f.avista.checked) f.n.value = 1; sinc(); });
@@ -726,28 +733,44 @@ async function pdfSolicitacaoCotacao(r, itens) {
   });
 }
 
-// Pedido para enviar ao fornecedor (imprimir ou salvar em PDF)
-function imprimirPedido(p, forn, itens, r) {
-  const w = window.open('', '_blank');
-  if (!w) return aviso('Libere as janelas pop-up para imprimir.', true);
-  const total = itens.reduce((s, i) => s + Number(i.quantidade) * Number(i.valor_unitario), 0);
-  w.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Pedido ${esc(p.numero)}</title>
-    <style>body{font-family:Arial,sans-serif;color:#222;margin:32px;font-size:13px}h1{font-size:20px;margin:0}table{width:100%;border-collapse:collapse;margin-top:16px}
-    th,td{border:1px solid #ccc;padding:6px 8px;text-align:left}td.n,th.n{text-align:right}.cab{display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #1b3a5c;padding-bottom:10px}
-    .bl{margin-top:14px}.muted{color:#666}img{height:48px}</style></head><body>
-    <div class="cab"><img src="${location.origin + location.pathname.replace(/[^/]*$/, '')}logo.png" alt="Verbo Logística"><div style="text-align:right"><h1>Pedido de compra ${esc(p.numero)}</h1><div class="muted">Emitido em ${dataBR(p.criado_em)}</div></div></div>
-    <div class="bl"><b>Fornecedor:</b> ${esc(nomeForn(forn))}${forn?.telefone ? ' · ' + esc(forn.telefone) : ''}</div>
-    <div class="bl"><b>Condição de pagamento:</b> ${esc(p.condicao_pagamento || '—')} · <b>Previsão de entrega:</b> ${p.previsao_entrega ? dataBR(p.previsao_entrega) : '—'}</div>
-    ${r?.justificativa ? `<div class="bl"><b>Referência:</b> ${esc(r.justificativa)}</div>` : ''}
-    <table><thead><tr><th>Descrição</th><th class="n">Qtd.</th><th>Unid.</th><th class="n">Valor unit.</th><th class="n">Total</th></tr></thead><tbody>
-    ${itens.map(i => `<tr><td>${esc(i.descricao)}</td><td class="n">${Number(i.quantidade).toLocaleString('pt-BR')}</td><td>${esc(i.unidade)}</td><td class="n">${brl(i.valor_unitario)}</td><td class="n">${brl(Number(i.quantidade) * Number(i.valor_unitario))}</td></tr>`).join('')}
-    </tbody><tfoot><tr><td colspan="4"><b>Total do pedido</b></td><td class="n"><b>${brl(p.valor_total)}</b></td></tr></tfoot></table>
-    ${Math.abs(total - Number(p.valor_total)) > 0.05 ? '<p class="muted">Valores unitários aproximados a partir do total da proposta aprovada.</p>' : ''}
-    <p class="bl muted">Favor informar o número deste pedido na nota fiscal.</p>
-    <script>window.onload=()=>setTimeout(()=>window.print(),300)<\/script></body></html>`);
-  w.document.close();
+// Pedido de compra no papel timbrado (PDF para o fornecedor). Valor unitário só aparece se foi informado.
+async function pdfPedido(p, forn, itens, r) {
+  const u = estado.usuario || {};
+  const comUnit = itens.some(i => Number(i.valor_unitario) > 0);
+  const linhas = itens.map((i, k) => [String(k + 1), i.descricao || '', Number(i.quantidade || 0).toLocaleString('pt-BR'), i.unidade || '',
+    ...(comUnit ? [Number(i.valor_unitario) > 0 ? brl(i.valor_unitario) : '—', Number(i.valor_unitario) > 0 ? brl(Number(i.quantidade) * Number(i.valor_unitario)) : '—'] : [])]);
+  linhas.push([{ content: 'Total do pedido', colSpan: comUnit ? 5 : 3, styles: { fontStyle: 'bold', halign: 'left' } }, { content: brl(p.valor_total), colSpan: 1, styles: { fontStyle: 'bold', halign: 'right' } }]);
+  const cab = ['Item', 'Descrição', 'Qtd.', 'Unid.', ...(comUnit ? ['Valor unit.', 'Total'] : [])];
+  const colunas = comUnit ? { 0: { cellWidth: 12, halign: 'center' }, 2: { cellWidth: 16, halign: 'right' }, 3: { cellWidth: 16, halign: 'center' }, 4: { cellWidth: 28, halign: 'right' }, 5: { cellWidth: 30, halign: 'right' } }
+    : { 0: { cellWidth: 13, halign: 'center' }, 2: { cellWidth: 22, halign: 'right' }, 3: { cellWidth: 34, halign: 'center' } };
+  const parc = parcelasCond(p.condicao_pagamento);
+  const vParc = parc.length > 1 ? parc.map((d, k) => { const base = Math.floor(Number(p.valor_total) * 100 / parc.length) / 100; return k === parc.length - 1 ? Number(p.valor_total) - base * (parc.length - 1) : base; }) : [];
+  await pdfTimbrado({
+    setor: 'Compras', numero: p.numero, arquivo: `Pedido de compra ${p.numero}.pdf`,
+    destinatario: [['Ao(À) Fornecedor(a)'], [forn?.razao_social || '—', 'b'], [[forn?.documento ? 'CNPJ ' + fmtDoc(forn.documento) : '', forn?.telefone ? 'Tel. ' + forn.telefone : ''].filter(Boolean).join(' · ')]],
+    assunto: `Pedido de compra — ${p.numero}`,
+    corpo: [
+      'Prezado(a) Senhor(a),',
+      `Confirmamos a compra dos itens relacionados abaixo${r?.justificativa ? ` (${r.justificativa})` : ''}, conforme proposta aprovada.`,
+      { tabela: { cab, linhas, colunas } },
+      { negrito: 'Condições' },
+      { lista: [`Pagamento: ${p.condicao_pagamento || '—'}${vParc.length ? ' — ' + vParc.map((v, k) => `${parc[k]} dias: ${brl(v)}`).join('; ') : ''}.`,
+        `Previsão de entrega: ${p.previsao_entrega ? dataBR(p.previsao_entrega) : 'a combinar'}.`,
+        'Local de entrega: Av. Manuel Alves Barbosa, Jandaia III, Birigui/SP, CEP 16.203-231.',
+        `Informar o número ${p.numero} na nota fiscal e no boleto.`] },
+      'Ficamos à disposição para qualquer esclarecimento.',
+    ],
+    assinatura: [[u.nome || 'Compras', 'b'], ['Compras | VERBO LOGÍSTICA']],
+  });
 }
-
+function imprimirPedido(p, forn, itens, r) { return pdfPedido(p, forn, itens, r).catch(falha); }
+// "Boleto 30/60/90 dias" -> [30,60,90]; "30 dias" -> [30]; à vista -> [0]
+function parcelasCond(c) {
+  c = String(c || ''); if (/vista/i.test(c)) return [0];
+  const m = c.match(/\d+(\s*[\/,e]\s*\d+)*/); if (!m) return [];
+  return m[0].split(/\s*[\/,e]\s*/).map(Number).filter(n => n >= 0);
+}
+const CONDICOES_PAG = ['À vista (Pix)', 'À vista (boleto)', 'Boleto 15 dias', 'Boleto 28 dias', 'Boleto 30 dias', 'Boleto 30/60 dias', 'Boleto 30/60/90 dias', 'Boleto 30/60/90/120 dias', 'Boleto 28/56/84 dias', 'Cartão de crédito', 'Transferência 30 dias'];
 
 // ----- Linha do tempo da requisição (quem pediu acompanha cada etapa) -----
 // Documentos fiscais e recebimento do produto são etapas separadas e podem acontecer em qualquer ordem.
