@@ -227,6 +227,8 @@ async function verTitulo(tela, id, tipo) {
       api.listar('recebimentos', `pedido_id=eq.${t.origem_id}&cancelado_em=is.null&status=neq.cancelado&order=data_recebimento`).catch(() => [])]);
     if (ped) receb = { ped, completo: rs.some(x => x.entrega_completa), parcial: rs.length > 0, data: rs.length ? rs[rs.length - 1].data_recebimento : null, div: rs.find(x => x.entrega_completa && x.divergencia)?.divergencia };
   }
+  const ctD = t.origem === 'recorrente' && t.origem_id ? await api.um('contas_recorrentes', `id=eq.${t.origem_id}`).catch(() => null) : null;
+  const ehDiaria = ctD?.tipo === 'diaria';
   const pessoa = t.forn?.razao_social || t.cli?.nome || t.colab?.nome || t.favorecido_nome || '—';
   const pix = t.forn?.chave_pix || t.colab?.chave_pix;
   const origens = { reembolso: 'Reembolso', avulso: 'Lançamento avulso', legado: tipo === 'pagar' ? 'Compra anterior ao sistema' : 'Venda anterior ao sistema', pedido: 'Pedido de compra', recorrente: 'Conta fixa mensal (contrato do fornecedor)', fechamento: 'Fatura do posto (abastecimentos)', adiantamento: 'Adiantamento', folha: 'Folha de pagamento' };
@@ -236,6 +238,7 @@ async function verTitulo(tela, id, tipo) {
         ${editaFin() && t.status !== 'cancelado' && baixas.length ? '<button class="btn perigo" id="estornar">Estornar pagamento</button>' : ''}
         <button class="btn" onclick="history.back()">Voltar</button></div></div>
     ${t.status === 'previsto' ? `<div class="cartao fr-aviso-prev">${ico('relogio')} <span><b>${tipo === 'pagar' ? 'Previsão de gasto' : 'Receita prevista'}</b></span></div>` : ''}
+    ${ehDiaria ? cartaoDiarias(t, ctD, ps) : ''}
     ${tipo === 'pagar' && t.status !== 'cancelado' ? cartaoPagamento(t, ps) : ''}
     <div class="cartao"><div class="form">
       <div><div class="muted">${T.pessoa}</div><b>${esc(pessoa)}</b>${(t.cli?.documento || t.forn?.documento) ? `<div class="muted">${esc(fmtDoc(t.cli?.documento || t.forn?.documento))}</div>` : ''}${tipo === 'pagar' ? '' : t.forn ? (dadosPagamento(t.forn) ? `<div class="muted" style="white-space:pre-line">${esc(dadosPagamento(t.forn))}</div>` : '') : pix ? `<div class="muted">Pix: ${esc(pix)}</div>` : ''}</div>
@@ -381,7 +384,7 @@ async function listaFixas(tela) {
   const pagas = ps.filter(p => p.status === 'paga'), abertas = ps.filter(p => p.status !== 'paga');
   const linha = p => `<tr data-t="${p.titulo_id}"${fAttr('pessoa', nome(p))}${fAttr('valor', p.valor)}><td data-r="Vence" class="nowrap">${dataBR(p.vencimento)}</td><td data-r="Fornecedor"><b>${esc(nome(p))}</b><div class="muted">${esc(p.descricao || '')}</div></td>
     <td data-r="Valor" class="num"><b>${brl(p.valor)}</b></td><td data-r="Situação">${p.status === 'paga' ? '<span class="tag verde">Pago</span>' : tag(p.status, p.vencida)}</td>
-    <td data-r="">${p.status !== 'paga' && editaFin() ? `<button class="btn ok peq" data-pagar="${p.id}">Confirmar pagamento</button>` : ''} <a class="btn peq" href="#/financeiro/pagar/ver/${p.titulo_id}">Abrir</a></td></tr>`;
+    <td data-r="">${p.status === 'prevista' && /\(diárias\)/.test(p.descricao || '') ? `<button class="btn prim peq" data-fd="${p.titulo_id}">Fechar diárias</button>` : p.status !== 'paga' && editaFin() ? `<button class="btn ok peq" data-pagar="${p.id}">Confirmar pagamento</button>` : ''} <a class="btn peq" href="#/financeiro/pagar/ver/${p.titulo_id}">Abrir</a></td></tr>`;
   tela.innerHTML = `
     <div class="topo"><div><h1>Contas a pagar</h1><p class="sub">Fornecedores com valor fixo em data fixa: o sistema lança a conta de cada mês sozinho — aqui você só confirma o pagamento.</p></div>
       ${editaFin() ? '<div class="acoes"><a class="btn" href="#/cadastros/fornecedores">Cadastrar/alterar contrato fixo</a></div>' : ''}</div>
@@ -392,15 +395,16 @@ async function listaFixas(tela) {
       <div class="cartao kpi"><div class="n">${brl(ps.reduce((a, p) => a + Number(p.valor), 0))}</div><div class="r">contas fixas de ${mesAb2(mes)} (${ps.length})</div></div>
       <div class="cartao kpi"><div class="n">${brl(pagas.reduce((a, p) => a + Number(p.valor_pago), 0))}</div><div class="r">já pago (${pagas.length})</div></div>
       <div class="cartao kpi ${abertas.some(p => p.vencida) ? 'alerta' : ''}"><div class="n">${brl(abertas.reduce((a, p) => a + Number(p.saldo), 0))}</div><div class="r">falta confirmar (${abertas.length})</div></div>
-      <div class="cartao kpi"><div class="n">${brl(ativos.reduce((a, c) => a + Number(c.valor), 0))}</div><div class="r">${ativos.length} contrato(s) fixo(s) ativo(s) / mês</div></div></div>
+      <div class="cartao kpi"><div class="n">${brl(ativos.filter(c => c.tipo !== 'diaria').reduce((a, c) => a + Number(c.valor), 0))}</div><div class="r">${ativos.filter(c => c.tipo !== 'diaria').length} contrato(s) mensal(is) ativo(s)${ativos.some(c => c.tipo === 'diaria') ? ` + ${ativos.filter(c => c.tipo === 'diaria').length} por diária` : ''}</div></div></div>
     ${atras.length ? `<div class="cartao" style="border-left:4px solid var(--vermelho)"><h2>⚠️ Meses anteriores sem pagamento confirmado (${atras.length})</h2><div class="tabela-wrap"><table class="responsiva"><tbody>${atras.map(linha).join('')}</tbody></table></div>
       <p class="muted">Se já foi pago, confirme o pagamento com a data certa. Se o mês não era devido, abra a conta e cancele.</p></div>` : ''}
     <div class="cartao"><h2>${mesAb2(mes)}</h2>${ps.length ? `<div class="tabela-wrap"><table class="responsiva" id="t-fixas"><thead><tr><th>Vence</th><th>Fornecedor / serviço</th><th class="num">Valor</th><th>Situação</th><th></th></tr></thead><tbody>${ps.map(linha).join('')}</tbody></table></div>`
       : '<div class="vazio">Nenhuma conta fixa neste mês.</div>'}</div>
-    <div class="cartao"><h2>Contratos fixos</h2>${cts.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Fornecedor</th><th>Serviço</th><th class="num">Valor mensal</th><th>Dia</th><th>Desde</th><th>Até</th><th>Próximo vencimento</th></tr></thead><tbody>
-      ${cts.map(c => `<tr class="clicavel" onclick="location.hash='#/cadastros/fornecedores/ver/${c.fornecedor_id}'"${c.ativo ? '' : ' style="opacity:.55"'}><td data-r="Fornecedor"><b>${esc(c.fornecedor)}</b></td><td data-r="Serviço">${esc(c.descricao)}</td><td data-r="Valor mensal" class="num">${brl(c.valor)}</td>
+    <div class="cartao"><h2>Contratos fixos</h2>${cts.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Fornecedor</th><th>Serviço</th><th class="num">Valor</th><th>Dia</th><th>Desde</th><th>Até</th><th>Próximo vencimento</th></tr></thead><tbody>
+      ${cts.map(c => `<tr class="clicavel" onclick="location.hash='#/cadastros/fornecedores/ver/${c.fornecedor_id}'"${c.ativo ? '' : ' style="opacity:.55"'}><td data-r="Fornecedor"><b>${esc(c.fornecedor)}</b></td><td data-r="Serviço">${esc(c.descricao)}</td><td data-r="Valor" class="num">${brl(c.valor)}${c.tipo === 'diaria' ? ` / diária${c.dias_semana?.length ? `<div class="muted">${c.dias_semana.map(d => DIAS_SEM[d]).join(', ')}</div>` : ''}` : ''}</td>
         <td data-r="Dia">dia ${c.dia_vencimento}</td><td data-r="Desde">${dataBR(c.inicio)}</td><td data-r="Até">${c.fim ? dataBR(c.fim) + (c.ativo ? '' : ' <span class="tag">Encerrado</span>') : '<span class="muted">sem prazo</span>'}</td><td data-r="Próximo vencimento">${dataBR(c.proximo_vencimento) || '—'}</td></tr>`).join('')}</tbody></table></div>`
       : '<div class="vazio">Nenhum contrato fixo. No cadastro do fornecedor, marque "Valor fixo mensal" e informe o valor e o dia do vencimento.</div>'}</div>`;
+  $$('[data-fd]', tela).forEach(b => (b.onclick = () => fecharDiariasModal(b.dataset.fd)));
   $('#f-mes').onchange = e => { location.hash = '#/financeiro/pagar?aba=fixas&mes=' + e.target.value; };
   $$('[data-m]', tela).forEach(b => (b.onclick = () => { location.hash = '#/financeiro/pagar?aba=fixas&mes=' + somaMeses(ini, Number(b.dataset.m)).slice(0, 7); }));
   $$('[data-pagar]', tela).forEach(b => (b.onclick = async () => { const p = [...ps, ...atras].find(x => x.id === b.dataset.pagar);
@@ -536,3 +540,60 @@ rota('/financeiro/verificar', async tela => {
     <div class="cartao"><h2>Contas a pagar e a receber (${ts.length})</h2>${tabela('Favorecido', ts.map(t => linha(TIPO[t.tipo].rota + '/ver/' + t.id, t.numero, t.favorecido_nome || '', t.descricao || '', t.valor_total, t.observacoes)))}</div>
     <div class="cartao"><h2>Reembolsos (${rs.length})</h2>${tabela('Colaborador', rs.map(r => linha('#/reembolsos/ver/' + r.id, r.numero, nomeColab(r), descrTxt(r), r.valor, r.observacoes)))}</div>`;
 });
+
+// ---------- Fornecedor por diária: fechamento do mês ----------
+const DIAS_SEM = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
+function diasDoContrato(ct, comp) {
+  const ini = comp.slice(0, 7) + '-01', fim = somaDias(somaMeses(ini, 1), -1), dias = [];
+  for (let d = ini > ct.inicio ? ini : ct.inicio; d <= fim && (!ct.fim || d <= ct.fim); d = somaDias(d, 1)) {
+    const dow = new Date(d + 'T12:00:00').getDay();
+    if (!ct.dias_semana?.length || ct.dias_semana.includes(dow)) dias.push(d);
+  }
+  return dias;
+}
+function cartaoDiarias(t, ct, ps) {
+  const fd = t.fechamento_diarias, dias = diasDoContrato(ct, t.competencia), pago = ps.some(p => Number(p.valor_pago) > 0);
+  const podeFechar = (editaFin() || ct.responsavel_id === estado.usuario.id) && t.status !== 'cancelado' && !pago;
+  const regra = `${brl(ct.valor)} por diária${ct.dias_semana?.length ? ' · ' + ct.dias_semana.map(d => DIAS_SEM[d]).join(', ') : ' · todos os dias'}`;
+  return `<div class="cartao" style="border-left:4px solid var(--ouro)"><div class="topo" style="margin:0 0 6px"><div><h2 style="margin:0">Diárias de ${mesBR2(t.competencia)}</h2><p class="muted" style="margin:2px 0 0">${regra}</p></div>
+      ${podeFechar ? `<button class="btn ${fd ? '' : 'prim'}" id="fechar-diarias">${fd ? 'Refazer fechamento' : 'Fechar diárias do mês'}</button>` : ''}</div>
+    ${fd ? `<div class="form"><div><div class="muted">Dias no mês</div><b>${fd.dias_mes}</b></div><div><div class="muted">Descontados</div><b>${fd.descontos.length}</b></div>
+        <div><div class="muted">Extras</div><b>${fd.extras || 0}</b></div><div><div class="muted">Cobrados</div><b>${fd.dias_cobrados} × ${brl(fd.diaria)} = ${brl(t.valor_total)}</b></div>
+        ${fd.descontos.length ? `<div class="largo"><div class="muted">Dias sem serviço</div>${fd.descontos.map(x => `${dataBR(x.dia)} — ${esc(x.motivo)}`).join('<br>')}</div>` : ''}
+        ${fd.obs ? `<div class="largo"><div class="muted">Observação</div>${esc(fd.obs)}</div>` : ''}
+        <div class="largo muted">Conferido por ${esc(fd.por)} em ${dataHoraBR(fd.em)}</div></div>`
+      : `<p style="margin:0">Previsão: <b>${dias.length} diárias × ${brl(ct.valor)} = ${brl(dias.length * Number(ct.valor))}</b>. O valor final sai no fechamento: desmarque os dias sem serviço e informe extras, se houver.</p>`}</div>`;
+}
+const mesBR2 = iso => { const [a, m] = iso.split('-'); return `${['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'][+m - 1]}/${a}`; };
+document.addEventListener('click', e => { const b = e.target.closest('#fechar-diarias'); if (b) { const id = (location.hash.match(/\/ver\/([^/?]+)/) || [])[1]; if (id) fecharDiariasModal(id); } });
+async function fecharDiariasModal(tituloId) {
+  const t = await api.um('titulos', `id=eq.${tituloId}`); if (!t) return;
+  const ct = await api.um('contas_recorrentes', `id=eq.${t.origem_id}`); if (!ct) return aviso('Contrato não encontrado.', true);
+  const dias = diasDoContrato(ct, t.competencia), fd = t.fechamento_diarias, desc = new Map((fd?.descontos || []).map(x => [x.dia, x.motivo]));
+  const r = await modal(`<form><h2>Fechar diárias · ${mesBR2(t.competencia)}</h2>
+    <p class="muted">${esc(t.descricao)} · ${brl(ct.valor)} por diária. Desmarque os dias em que o serviço <b>não</b> foi prestado e informe o motivo.</p>
+    <div class="fd-grade" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px;margin:8px 0">
+      ${dias.map(d => `<label class="check" style="margin:0"><input type="checkbox" name="d_${d}" ${desc.has(d) ? '' : 'checked'}> ${DIAS_SEM[new Date(d + 'T12:00:00').getDay()]} ${dataBR(d).slice(0, 5)}</label>`).join('')}</div>
+    <div id="fd-motivos"></div>
+    <div class="form"><label class="campo">Diárias extras (fora da escala)<input name="extras" type="number" min="0" value="${fd?.extras || 0}"></label>
+      <label class="campo largo">Observação${'' }<input name="obs" value="${esc(fd?.obs || '')}" placeholder="Obrigatória se houver diárias extras"></label></div>
+    <p><b id="fd-tot"></b></p>
+    <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Confirmar fechamento</button></div></form>`, {
+    aoAbrir: raiz => {
+      const f = $('form', raiz);
+      const sinc = () => {
+        const off = dias.filter(d => !f['d_' + d].checked), box = $('#fd-motivos', raiz);
+        const atuais = Object.fromEntries($$('input[name^=m_]', box).map(i => [i.name, i.value]));
+        box.innerHTML = off.length ? `<div class="form">${off.map(d => `<label class="campo largo">Motivo — ${dataBR(d)}<input name="m_${d}" required value="${esc(atuais['m_' + d] ?? desc.get(d) ?? '')}" placeholder="Ex.: fornecedor não compareceu, feriado, chuva"></label>`).join('')}</div>` : '';
+        const cob = dias.length - off.length + (parseInt(f.extras.value, 10) || 0);
+        $('#fd-tot', raiz).textContent = `${cob} diária(s) × ${brl(ct.valor)} = ${brl(cob * Number(ct.valor))}`;
+      };
+      f.addEventListener('change', e => { if (e.target.name?.startsWith('d_')) sinc(); });
+      f.extras.addEventListener('input', sinc); sinc();
+    },
+    validar: d => (parseInt(d.extras, 10) || 0) > 0 && !d.obs?.trim() ? 'Explique as diárias extras na observação.' : null });
+  if (!r) return;
+  const descontos = dias.filter(d => !r['d_' + d]).map(d => ({ dia: d, motivo: (r['m_' + d] || '').trim() }));
+  try { const x = await api.rpc('fechar_diarias', { p_titulo: tituloId, p_descontos: descontos, p_extras: parseInt(r.extras, 10) || 0, p_obs: r.obs || null });
+    aviso(`Diárias fechadas: ${x.cobrados} × ${brl(ct.valor)} = ${brl(x.valor)}.`); navegar(); } catch (err) { falha(err); }
+}
