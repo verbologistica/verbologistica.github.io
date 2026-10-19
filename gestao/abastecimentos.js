@@ -349,7 +349,7 @@ async function modalCorrigirAbast(a) {
     <label class="campo largo">Motorista (cadastro)<select name="pessoa">${pessoas.map(p => `<option value="${p.v}" ${p.sel ? 'selected' : ''}>${esc(p.t)}</option>`).join('')}</select>
       <span class="muted">No app: "${esc(a.motorista_nome || '')}". Ao trocar, os próximos lançamentos com esse nome também vão para a pessoa escolhida.</span></label>
     <label class="campo">Placa<input name="placa" value="${esc(a.placa || '')}"></label>
-    <label class="campo">Posto<select name="posto_id"><option value="">${esc(a.posto || '—')} (como está)</option>${forn.map(f => `<option value="${f.id}" ${f.id === a.posto_id ? 'selected' : ''}>${esc((f.nome_fantasia || f.razao_social) + (f.documento ? ' · ' + fmtDoc(f.documento) : ''))}</option>`).join('')}</select></label>
+    <label class="campo">Posto<select name="posto_id"><option value="">${esc(a.posto || '—')} (como está)</option>${forn.map(f => `<option value="${f.id}" ${f.id === a.posto_id ? 'selected' : ''}>${esc(rotForn(f))}</option>`).join('')}</select></label>
     <label class="campo">Combustível<select name="combustivel">${[...new Set([a.combustivel, ...COMBUST].filter(Boolean))].map(c => `<option ${c === a.combustivel ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>
     <label class="campo">Litros<input name="litros" inputmode="decimal" value="${n2(a.litros, 3)}"></label>
     <label class="campo">Valor (R$)<input name="valor" inputmode="decimal" value="${n2(a.valor_total)}"></label>

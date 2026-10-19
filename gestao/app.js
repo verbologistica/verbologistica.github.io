@@ -1172,6 +1172,12 @@ function filtroOu(partes) {
   return 'or=(' + partes.map(conv).join(',') + ')';
 }
 const semAcento = t => String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+// busca tolerante: todas as palavras digitadas, em qualquer ordem, sem acento; números também casam sem pontuação (CNPJ/CPF)
+function casaBusca(texto, termo) {
+  const t = semAcento(termo); if (!t) return true;
+  const base = semAcento(texto), dig = String(texto || '').replace(/\D/g, '');
+  return t.split(/\s+/).every(p => base.includes(p) || (/\d/.test(p) && p.replace(/\D/g, '').length >= 3 && dig.includes(p.replace(/\D/g, ''))));
+}
 
 // ===================== Listas suspensas com busca digitando (todas as do sistema) =====================
 // Cada <select> ganha um campo onde se digita parte do texto; a lista mostra só o que combina.
@@ -1201,7 +1207,7 @@ function comboSelect(sel) {
     if (baixo < 200 && r.top > baixo) { lista.style.top = ''; lista.style.bottom = (innerHeight - r.top + 4) + 'px'; } else { lista.style.bottom = ''; lista.style.top = (r.bottom + 4) + 'px'; } };
   const desenhar = filtro => {
     const t = semAcento(filtro);
-    vis = [...sel.options].map((o, i) => ({ o, i })).filter(({ o }) => !o.disabled || o.value === '' ).filter(({ o }) => !t || semAcento(o.text).includes(t));
+    vis = [...sel.options].map((o, i) => ({ o, i })).filter(({ o }) => !o.disabled || o.value === '' ).filter(({ o }) => !t || casaBusca(o.text + ' ' + (o.dataset.busca || ''), filtro));
     lista.innerHTML = vis.length ? vis.map(({ o, i }, k) => `<div class="cb-op ${i === sel.selectedIndex ? 'sel' : ''} ${o.value === '' ? 'cb-vazio' : ''}" data-k="${k}" role="option">${esc(o.text)}</div>`).join('')
       : '<div class="cb-nada">Nada encontrado</div>';
     ativo = t ? 0 : Math.max(0, vis.findIndex(v => v.i === sel.selectedIndex)); marcar(); };
@@ -1332,7 +1338,7 @@ function filtroLocal(tela, { itens, antes, campos = [], busca = true, periodo = 
       const d = e.dataset;
       const ok = usados.every(c => !f[c.k] || f[c.k].includes(d['f' + c.k[0].toUpperCase() + c.k.slice(1)]))
         && (!f.de || (d.fData || '') >= f.de) && (!f.ate || (d.fData || '9999') <= f.ate)
-        && (!q || (d.fBusca || e.innerText).toLowerCase().includes(q));
+        && (!q || casaBusca(d.fBusca || e.innerText, q));
       e.hidden = !ok;
       if (!ok) $$('input[type=checkbox]', e).forEach(c => { c.checked = false; });
       if (ok) { n++; total += Number(d.fValor || 0); }
@@ -1350,7 +1356,7 @@ function filtroLocal(tela, { itens, antes, campos = [], busca = true, periodo = 
   $$('.flm', barra).forEach(m => {
     const pan = $('.flm-pan', m), q = $('.flm-q', m);
     $('.flm-btn', m).onclick = e => { e.stopPropagation(); const abrir = pan.hidden; $$('.flm-pan', barra).forEach(p => (p.hidden = true)); pan.hidden = !abrir; if (abrir) { q.value = ''; $$('.flm-op', m).forEach(o => (o.hidden = false)); q.focus(); } };
-    q.addEventListener('input', e => { e.stopPropagation(); const t = semAcento(q.value); $$('.flm-op', m).forEach(o => (o.hidden = !!t && !semAcento(o.textContent).includes(t))); });
+    q.addEventListener('input', e => { e.stopPropagation(); const t = semAcento(q.value); $$('.flm-op', m).forEach(o => (o.hidden = !!t && !casaBusca(o.textContent, q.value))); });
     q.addEventListener('keydown', e => { if (e.key === 'Escape') pan.hidden = true; if (e.key === 'Enter') { e.preventDefault(); const vis = $$('.flm-op', m).filter(o => !o.hidden); if (vis.length === 1) { const c = $('input', vis[0]); c.checked = !c.checked; aplicar(); } } });
     $('[data-flm-todos]', m).onclick = () => { $$('.flm-op', m).filter(o => !o.hidden).forEach(o => ($('input', o).checked = true)); aplicar(); };
     $('[data-flm-limpar]', m).onclick = () => { $$('.flm-op input', m).forEach(c => (c.checked = false)); aplicar(); };

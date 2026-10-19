@@ -93,8 +93,7 @@ function rotasParceiros(tabela) {
     const inativos = estado.params.get('inativos') === '1';
     const busca = (estado.params.get('q') || '').toLowerCase();
     let ls = await api.listar(tabela, `select=*&order=${P.nome}${inativos ? '' : '&ativo=eq.true'}`);
-    if (busca) ls = ls.filter(x => [x[P.nome], x.nome_fantasia, x.cidade, (x.categorias || []).join(' ')].join(' ').toLowerCase().includes(busca)
-                                   || (soDigitos(busca) && (x.documento || '').includes(soDigitos(busca))));
+    if (busca) ls = ls.filter(x => casaBusca([x[P.nome], x.nome_fantasia, x.cidade, (x.categorias || []).join(' '), x.documento].join(' '), busca));
     tela.innerHTML = `
       <div class="topo"><div><h1>${P.titulo}</h1><p class="sub">${ls.length} cadastro(s)</p></div>
         <div class="acoes"><a class="btn" href="#/cadastros/${tabela}${inativos ? '' : '?inativos=1'}">${inativos ? 'Ocultar inativos' : 'Mostrar inativos'}</a>
