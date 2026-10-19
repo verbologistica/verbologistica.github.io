@@ -56,7 +56,7 @@ async function listaTitulos(tela, tipo) {
   const atrasTot = soma(atrasAnt, 'saldo');
   const [planoC, ccsT] = await Promise.all([contas().catch(() => []), centros().catch(() => [])]);
   const nomeConta = id => planoC.find(c => c.id === id)?.nome, nomeCC = id => ccsT.find(c => c.id === id)?.nome;
-  const ORIG_T = { reembolso: 'Reembolso', adiantamento: 'Adiantamento', pedido: 'Pedido de compra', fechamento: 'Fechamento de fornecedor', fatura_cartao: 'Fatura de cartão', recorrente: 'Conta fixa', avulso: 'Lançamento avulso', legado: 'Anterior ao sistema' };
+  const ORIG_T = { reembolso: 'Reembolso', adiantamento: 'Adiantamento', pedido: 'Pedido de compra', fechamento: 'Fechamento de fornecedor', fatura_cartao: 'Fatura de cartão', recorrente: 'Conta fixa', avulso: 'Lançamento avulso', legado: 'Anterior ao sistema', folha: 'Folha de pagamento' };
   const pessoas = porId(tipo === 'pagar' ? await fornecedores() : await clientes());
   const nome = p => (tipo === 'pagar' ? pessoas[p.fornecedor_id]?.razao_social : pessoas[p.cliente_id]?.nome) || p.favorecido_nome || '—';
   const pesBusca = p => { const x = pessoas[tipo === 'pagar' ? p.fornecedor_id : p.cliente_id]; return x ? [x.nome_fantasia, x.documento, x.documento && fmtDoc(x.documento)].filter(Boolean).join(' ') : ''; };
@@ -229,7 +229,7 @@ async function verTitulo(tela, id, tipo) {
   }
   const pessoa = t.forn?.razao_social || t.cli?.nome || t.colab?.nome || t.favorecido_nome || '—';
   const pix = t.forn?.chave_pix || t.colab?.chave_pix;
-  const origens = { reembolso: 'Reembolso', avulso: 'Lançamento avulso', legado: tipo === 'pagar' ? 'Compra anterior ao sistema' : 'Venda anterior ao sistema', pedido: 'Pedido de compra', recorrente: 'Conta fixa mensal (contrato do fornecedor)', fechamento: 'Fatura do posto (abastecimentos)', adiantamento: 'Adiantamento' };
+  const origens = { reembolso: 'Reembolso', avulso: 'Lançamento avulso', legado: tipo === 'pagar' ? 'Compra anterior ao sistema' : 'Venda anterior ao sistema', pedido: 'Pedido de compra', recorrente: 'Conta fixa mensal (contrato do fornecedor)', fechamento: 'Fatura do posto (abastecimentos)', adiantamento: 'Adiantamento', folha: 'Folha de pagamento' };
   tela.innerHTML = `
     <div class="topo"><div><h1>${esc(t.numero)} · ${esc(pessoa)}</h1><p class="sub">${tagTitulo(t.status, false, tipo)} · ${esc(t.descricao || '')}</p></div>
       <div class="acoes">${editaFin() && t.status !== 'cancelado' ? `<a class="btn prim" href="${T.rota}/editar/${id}">Editar</a>` : ''}${editaFin() && t.status === 'previsto' && t.origem !== 'fechamento' ? '<button class="btn ok" id="conf-prev">Confirmar como conta</button>' : ''}${editaFin() && ['aberto', 'aprovado'].includes(t.status) && !baixas.length ? '<button class="btn" id="virar-prev">Transformar em previsão</button>' : ''}${editaFin() && !['pago', 'cancelado'].includes(t.status) && !baixas.length ? '<button class="btn perigo" id="cancelar">Cancelar conta</button>' : ''}
@@ -310,12 +310,12 @@ async function verTitulo(tela, id, tipo) {
 // Dados para pagamento do favorecido (sem sair da conta): conta bancária, Pix, boleto da parcela, com botões de copiar
 function cartaoPagamento(t, ps) {
   const f = t.forn, colab = t.colab;
-  const contas = (Array.isArray(f?.dados_bancarios) ? f.dados_bancarios : []).slice().sort((a, b) => (b.principal ? 1 : 0) - (a.principal ? 1 : 0));
+  const contas = (Array.isArray(f?.dados_bancarios) && f.dados_bancarios.length ? f.dados_bancarios : Array.isArray(t.dados_pagamento) ? t.dados_pagamento : []).slice().sort((a, b) => (b.principal ? 1 : 0) - (a.principal ? 1 : 0));
   const prox = ps.find(p => ['aberta', 'aprovada'].includes(p.status)) || ps.find(p => p.status === 'prevista');
   const cp = (v, rot = 'Copiar') => v ? `<button type="button" class="btn peq dp-cp" data-copiar="${esc(String(v))}" title="${rot}">${ico('copiar')}<span>${rot}</span></button>` : '';
   const item = (rot, val, copiavel = val, extra = '') => val ? `<div class="dp-it"><span class="dp-r">${rot}</span><span class="dp-v">${esc(String(val))}${extra}</span>${copiavel ? cp(copiavel) : ''}</div>` : '';
   const nomeFav = f?.razao_social || colab?.nome || t.favorecido_nome;
-  const docFav = f?.documento;
+  const docFav = f?.documento || (Array.isArray(t.dados_pagamento) ? t.dados_pagamento[0]?.titular_documento : null);
   let corpo = '';
   corpo += `<div class="dp-bloco"><h3>Favorecido</h3>${item('Nome', nomeFav)}${docFav ? item(docFav.replace(/\D/g, '').length > 11 ? 'CNPJ' : 'CPF', fmtDoc(docFav), docFav.replace(/\D/g, '')) : ''}
     ${f?.prazo_faturamento_dias != null ? item('Prazo', f.prazo_faturamento_dias ? f.prazo_faturamento_dias + ' dias (faturamento)' : 'À vista', '') : ''}</div>`;

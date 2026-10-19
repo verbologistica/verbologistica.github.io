@@ -46,13 +46,14 @@ rota('/dp', async tela => {
 // ===================== Folha da competência =====================
 rota('/dp/folha', async tela => {
   const mes = estado.params.get('c') || hojeISO().slice(0, 7);
-  if (!editaDP() && !tem('rh', 'diretoria')) { tela.innerHTML = '<div class="cartao vazio">Sem permissão.</div>'; return; }
+  if (!editaDP() && !tem('rh', 'diretoria', 'financeiro')) { tela.innerHTML = '<div class="cartao vazio">Sem permissão.</div>'; return; }
   let comp = (await api.listar('dp_competencias', `competencia=eq.${mes}-01`))[0];
   if (!comp && editaDP()) { await competenciaAtual(mes); comp = (await api.listar('dp_competencias', `competencia=eq.${mes}-01`))[0]; }
   if (!comp) { tela.innerHTML = '<div class="cartao vazio">Competência não aberta.</div>'; return; }
   const [ls, rubs, pend] = await Promise.all([api.listar('dp_lancamentos', `competencia_id=eq.${comp.id}&ativo=eq.true&select=*,c:colaboradores(nome,matricula,salario),r:dp_rubricas(codigo,nome,tipo,unidade,base_legal)&order=criado_em`),
     rubricasDP(), api.rpc('pendencias_dp').catch(() => [])]);
   const aImportar = Number(pend.find(x => x.tipo === 'dp_a_importar')?.quantidade || 0);
+  const contasFolha = lancaFolhaFin() || tem('diretoria') ? await api.rpc('contas_da_folha', { p_competencia: comp.id }).catch(() => []) : [];
   const aberta = ['aberta', 'em_conferencia'].includes(comp.status), ed = editaDP() && aberta;
   const por = {}; ls.filter(l => l.status !== 'cancelado').forEach(l => { const x = por[l.colaborador_id] ||= { nome: l.c?.nome, mat: l.c?.matricula, sal: l.c?.salario, prov: 0, desc: 0 }; if (l.r.tipo === 'provento') x.prov += Number(l.valor || 0); if (l.r.tipo === 'desconto') x.desc += Number(l.valor || 0); });
   const ant = new Date(mes + '-15'); ant.setMonth(ant.getMonth() - 1); const prox = new Date(mes + '-15'); prox.setMonth(prox.getMonth() + 1);
@@ -61,6 +62,7 @@ rota('/dp/folha', async tela => {
       <div class="acoes"><a class="btn" href="#/dp/folha?c=${ant.toISOString().slice(0, 7)}">◀ ${mesBR(ant.toISOString().slice(0, 7))}</a><a class="btn" href="#/dp/folha?c=${prox.toISOString().slice(0, 7)}">${mesBR(prox.toISOString().slice(0, 7))} ▶</a>
         ${ed ? `<button class="btn ${aImportar ? 'prim' : ''}" id="importar">Trazer pendências dos setores${aImportar ? ` (${aImportar})` : ''}</button><button class="btn" id="novo">+ Lançamento</button>
           <button class="btn" id="aprovar">Aprovar selecionados</button><button class="btn" id="fechar">Fechar competência</button>` : ''}
+        ${lancaFolhaFin() ? `<button class="btn ${['fechada', 'enviada'].includes(comp.status) ? 'prim' : ''}" id="lancar-fin">${contasFolha.length ? 'Relançar no Financeiro' : 'Lançar no Financeiro'}</button>` : ''}
         ${editaDP() && comp.status === 'fechada' ? '<button class="btn prim" id="enviada">Marcar como enviada à contabilidade</button>' : ''}${tem('administrador') && !aberta ? '<button class="btn" id="reabrir">Reabrir</button>' : ''}</div></div>
     ${ls.some(l => l.r.tipo === 'desconto' && l.status === 'pendente' && !l.juridico_aprovado) ? '<div class="cartao alerta-obs">⚖️ Há descontos <b>sem confirmação do jurídico</b>. Eles só podem ser aprovados depois dessa confirmação.</div>' : ''}
     <div class="cartao"><h2>Lançamentos</h2>${ls.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>${ed ? '<input type="checkbox" id="todos">' : ''}</th><th>Colaborador</th><th>Rubrica</th><th class="num">Ref.</th><th class="num">Valor</th><th>Origem</th><th>Jurídico</th><th>Situação</th><th></th></tr></thead><tbody>
@@ -74,7 +76,12 @@ rota('/dp/folha', async tela => {
         return `<tr><td data-r="Colaborador"><b>${esc(x.nome || '')}</b></td><td data-r="Matrícula">${esc(x.mat || '')}</td><td data-r="Salário" class="num">${x.sal ? brl(x.sal) : '—'}</td><td data-r="Proventos" class="num">${brl(x.prov)}</td><td data-r="Descontos" class="num">${brl(x.desc)}</td>
         <td data-r="% descontos" class="num">${pct == null ? '—' : pct > 30 ? `<span class="tag vermelho" title="Descontos altos: confira com o jurídico (art. 462 e art. 82 CLT)">${pct.toFixed(0)}%</span>` : pct.toFixed(0) + '%'}</td></tr>`; }).join('')}</tbody></table></div>
       <p class="muted">Use ⬇ Excel para enviar a prévia à contabilidade. INSS, IRRF e FGTS são calculados pela contabilidade.</p></div>` : ''}
+    ${contasFolha.length ? `<div class="cartao"><h2>No Financeiro (contas a pagar desta folha)</h2><div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Favorecido</th><th>Descrição</th><th>Vencimento</th><th class="num">Valor</th><th>Situação</th></tr></thead><tbody>
+      ${contasFolha.map(x => `<tr${veTudo() ? ` class="clicavel" onclick="location.hash='#/financeiro/pagar/ver/${x.titulo_id}'"` : ''}><td data-r="Favorecido"><b>${esc(x.favorecido || '')}</b></td><td data-r="Descrição">${esc(x.descricao || '')}</td>
+        <td data-r="Vencimento">${dataBR(x.vencimento)}</td><td data-r="Valor" class="num">${brl(x.valor)}</td><td data-r="Situação">${Number(x.pago) >= Number(x.valor) - 0.005 ? '<span class="tag verde">Pago</span>' : Number(x.pago) > 0 ? '<span class="tag amarelo">Pago em parte</span>' : '<span class="tag azul">A pagar</span>'}</td></tr>`).join('')}
+      </tbody><tfoot><tr><td colspan="3">Total</td><td class="num"><b>${brl(contasFolha.reduce((t, x) => t + Number(x.valor), 0))}</b></td><td></td></tr></tfoot></table></div></div>` : ''}
     ${avisoLei('desconto_folha')}`;
+  $('#lancar-fin')?.addEventListener('click', () => lancarFolhaFinanceiro(comp, mes, contasFolha));
   $('#importar')?.addEventListener('click', async () => { try { const n = await api.rpc('dp_importar_pendencias', { p_comp: comp.id }); aviso(n ? `${n} lançamento(s) trazido(s). Revise e aprove.` : 'Nada novo para trazer.'); navegar(); } catch (err) { falha(err); } });
   $('#novo')?.addEventListener('click', () => formLancamento(comp, rubs));
   $$('[data-ed]', tela).forEach(b => b.onclick = () => formLancamento(comp, rubs, ls.find(l => l.id === b.dataset.ed)));
@@ -251,4 +258,79 @@ if (typeof ABAS_RH_EXTRA !== 'undefined' && ABAS_RH_EXTRA.desligamento) {
     box.insertAdjacentHTML('beforeend', '<div class="acoes" style="margin-top:10px"><button class="btn" id="sim-resc">🧮 Simular verbas rescisórias</button></div>');
     $('#sim-resc', box).onclick = () => simularRescisao(c);
   };
+}
+
+// ===================== Folha → Financeiro (contas a pagar) =====================
+const lancaFolhaFin = () => tem('administrador', 'dp', 'financeiro');
+// n-ésimo dia útil do mês (seg–sex; feriados não considerados)
+function diaUtil(ano, mes0, n) { const d = new Date(ano, mes0, 1); let k = 0; while (true) { if (d.getDay() % 6) { k++; if (k === n) break; } d.setDate(d.getDate() + 1); } return d.toISOString().slice(0, 10); }
+// dia fixo; caindo no fim de semana, antecipa para o dia útil anterior (FGTS, DCTFWeb)
+function diaFixoAntecipa(ano, mes0, dia) { const d = new Date(ano, mes0, dia); while (!(d.getDay() % 6)) d.setDate(d.getDate() - 1); return d.toISOString().slice(0, 10); }
+
+async function lancarFolhaFinanceiro(comp, mes, anteriores = []) {
+  const [cs, planoC, ccs] = await Promise.all([
+    api.listar('colaboradores', 'select=id,nome,cpf,salario,status,banco,agencia,conta,pix_chave,centro_custo_id,cargo:cargos(nome,motorista)&ativo=eq.true&status=not.in.(candidato,desligado)&order=nome').catch(() => []),
+    contas().catch(() => []), centros().catch(() => [])]);
+  const [a, m] = mes.split('-').map(Number);           // competência; pagamento no mês seguinte
+  const vSal = diaUtil(m === 12 ? a + 1 : a, m === 12 ? 0 : m, 5), v20 = diaFixoAntecipa(m === 12 ? a + 1 : a, m === 12 ? 0 : m, 20);
+  const contaPor = cod => planoC.find(c => c.codigo === cod)?.id || '';
+  const cMot = contaPor('3.6'), cAdm = contaPor('4.6');
+  const contasOpt = sel => `<option value="">—</option>${planoC.filter(c => c.ativo !== false && c.aceita_lancamento !== false).map(c => `<option value="${c.id}" ${c.id === sel ? 'selected' : ''}>${esc(c.codigo + ' ' + c.nome)}</option>`).join('')}`;
+  const ccOpt = sel => `<option value="">—</option>${ccs.filter(c => c.ativo !== false).map(c => `<option value="${c.id}" ${c.id === sel ? 'selected' : ''}>${esc(c.nome)}</option>`).join('')}`;
+  const ant = id => anteriores.find(x => x.colaborador_id === id);
+  const valTxt = v => v ? Number(v).toFixed(2).replace('.', ',') : '';
+  const guiasAnt = anteriores.filter(x => !x.colaborador_id);
+  const GUIAS = guiasAnt.length ? guiasAnt.map(g => ({ desc: g.descricao.split(' · ')[0], fav: g.favorecido, venc: g.vencimento, valor: g.valor, conta: g.conta_id, cc: g.centro_custo_id }))
+    : [{ desc: 'FGTS', fav: 'Caixa (FGTS Digital)', venc: v20, conta: cAdm }, { desc: 'INSS e IRRF (DCTFWeb)', fav: 'Receita Federal', venc: v20, conta: cAdm }];
+  const linhaGuia = (g = {}) => `<tr class="fg-guia"><td data-r="Guia"><input name="g_desc" value="${esc(g.desc || '')}" placeholder="Ex.: Pensão alimentícia"></td>
+      <td data-r="Favorecido"><input name="g_fav" value="${esc(g.fav || '')}"></td><td data-r="Vencimento"><input type="date" name="g_venc" value="${g.venc || v20}"></td>
+      <td data-r="Valor"><input name="g_val" inputmode="decimal" style="width:110px" value="${valTxt(g.valor)}" placeholder="R$"></td>
+      <td data-r="Conta"><select name="g_conta" data-unico>${contasOpt(g.conta || cAdm)}</select></td><td data-r="Centro de custo"><select name="g_cc" data-unico>${ccOpt(g.cc)}</select></td>
+      <td><button type="button" class="btn peq g-rem" title="Remover">✕</button></td></tr>`;
+  const r = await modal(`<form><h2>Folha de ${mesBR(mes)} → contas a pagar</h2>
+    <p class="muted">Use os valores do resumo da contabilidade. Salários: uma conta por colaborador, paga por transferência com os dados bancários do cadastro. Guias: uma conta para cada.${anteriores.length ? ' <b>Os lançamentos anteriores desta folha serão substituídos.</b>' : ''}</p>
+    <div class="form"><label class="campo">Vencimento dos salários<input type="date" name="venc_sal" value="${anteriores.find(x => x.colaborador_id)?.vencimento || vSal}"></label>
+      <div class="campo" style="align-self:end"><span class="muted">Padrão: 5º dia útil do mês seguinte</span></div></div>
+    <h3>Salário líquido por colaborador</h3>
+    <div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Colaborador</th><th>Dados bancários</th><th>Líquido (R$)</th><th>Conta do plano</th><th>Centro de custo</th></tr></thead><tbody>
+      ${cs.map(c => `<tr class="fg-col" data-id="${c.id}"><td data-r="Colaborador"><b>${esc(c.nome)}</b><div class="muted">${esc(c.cargo?.nome || '')}</div></td>
+        <td data-r="Dados bancários">${c.pix_chave || (c.banco && c.conta) ? `<span class="muted">${esc(c.pix_chave ? 'Pix ' + c.pix_chave : `Bco ${c.banco} · Ag ${c.agencia || '—'} · CC ${c.conta}`)}</span>` : '<span class="tag amarelo">sem dados bancários</span>'}</td>
+        <td data-r="Líquido"><input name="v_${c.id}" inputmode="decimal" style="width:120px" value="${valTxt(ant(c.id)?.valor)}" placeholder="0,00"></td>
+        <td data-r="Conta"><select name="c_${c.id}" data-unico>${contasOpt(ant(c.id)?.conta_id || (c.cargo?.motorista ? cMot : cAdm))}</select></td>
+        <td data-r="Centro de custo"><select name="cc_${c.id}" data-unico>${ccOpt(ant(c.id)?.centro_custo_id || c.centro_custo_id)}</select></td></tr>`).join('')}
+    </tbody><tfoot><tr><td colspan="2">Total líquido</td><td id="fg-tot-sal" class="num"></td><td colspan="2"></td></tr></tfoot></table></div>
+    <h3>Guias e outros pagamentos da folha</h3>
+    <div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Guia</th><th>Favorecido</th><th>Vencimento</th><th>Valor</th><th>Conta do plano</th><th>Centro de custo</th><th></th></tr></thead>
+      <tbody id="fg-guias">${GUIAS.map(linhaGuia).join('')}</tbody></table></div>
+    <button type="button" class="btn peq" id="fg-mais">+ Guia / pagamento</button>
+    <div class="form"><label class="campo largo">Observação (vai em todas as contas)<input name="obs" placeholder="Ex.: conforme resumo da contabilidade de 05/11"></label></div>
+    <p><b>Total da folha no Financeiro: <span id="fg-tot"></span></b></p>
+    <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Lançar contas a pagar</button></div></form>`, {
+    aoAbrir: raiz => {
+      $('.modal', raiz).classList.add('modal-largo');
+      const somar = () => { const sal = $$('.fg-col input', raiz).reduce((t, i) => t + (num(i.value) || 0), 0), gu = $$('[name=g_val]', raiz).reduce((t, i) => t + (num(i.value) || 0), 0);
+        $('#fg-tot-sal', raiz).textContent = brl(sal); $('#fg-tot', raiz).textContent = brl(sal + gu); };
+      const ligar = () => { $$('.g-rem', raiz).forEach(b => (b.onclick = () => { b.closest('tr').remove(); somar(); })); $$('input', raiz).forEach(i => i.addEventListener('input', somar)); };
+      $('#fg-mais', raiz).onclick = () => { $('#fg-guias', raiz).insertAdjacentHTML('beforeend', linhaGuia({})); ligar(); if (typeof combosEm === 'function') combosEm($('#fg-guias', raiz)); };
+      ligar(); somar();
+      raiz._lerGuias = () => $$('tr.fg-guia', raiz).map(tr => ({ descricao: $('[name=g_desc]', tr).value.trim(), favorecido: $('[name=g_fav]', tr).value.trim(), vencimento: $('[name=g_venc]', tr).value,
+        valor: num($('[name=g_val]', tr).value) || 0, conta_id: $('[name=g_conta]', tr).value || null, centro_custo_id: $('[name=g_cc]', tr).value || null }));
+      window._fgRaiz = raiz;
+    },
+    validar: d => { const g = window._fgRaiz?._lerGuias?.() || []; if (window._fgRaiz) window._fgRaiz._guias = g;
+      if (!cs.some(c => num(d['v_' + c.id]) > 0) && !g.some(x => x.valor > 0)) return 'Informe ao menos um valor.';
+      if (cs.some(c => num(d['v_' + c.id]) > 0) && !d.venc_sal) return 'Informe o vencimento dos salários.';
+      const gi = g.find(x => x.valor > 0 && (!x.descricao || !x.vencimento)); if (gi) return 'Cada guia com valor precisa de descrição e vencimento.';
+      return null; } });
+  const guias = window._fgRaiz?._guias || []; delete window._fgRaiz;
+  if (!r) return;
+  const itens = [
+    ...cs.filter(c => num(r['v_' + c.id]) > 0).map(c => ({ colaborador_id: c.id, descricao: 'Salário', valor: num(r['v_' + c.id]), vencimento: r.venc_sal,
+      conta_id: r['c_' + c.id] || null, centro_custo_id: r['cc_' + c.id] || null })),
+    ...guias.filter(g => g.valor > 0)];
+  const tot = itens.reduce((t, x) => t + x.valor, 0);
+  if (!await confirmar(`Lançar ${itens.length} conta(s) a pagar, total ${brl(tot)}?`, { botao: 'Lançar' })) return;
+  try { const x = await api.rpc('gerar_contas_folha', { p_competencia: comp.id, p_itens: itens, p_obs: r.obs || null });
+    aviso(`${x.contas} conta(s) lançada(s) no Financeiro · ${brl(x.total)}${x.substituidas ? ` (${x.substituidas} anterior(es) substituída(s))` : ''}.`); navegar(); }
+  catch (err) { falha(err); }
 }
