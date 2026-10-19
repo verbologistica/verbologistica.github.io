@@ -214,7 +214,7 @@ async function formParceiro(tela, tabela, x = null) {
           <label class="campo largo">Serviço / descrição *<input name="fx_desc" value="${esc(ct?.descricao || '')}" placeholder="Ex.: Aluguel do galpão, Internet, Honorários contábeis"></label>
           <label class="campo"><span id="lbl-fx-valor">Valor mensal (R$) *</span><input name="fx_valor" inputmode="decimal" value="${ct ? Number(ct.valor).toFixed(2).replace('.', ',') : ''}"></label>
           <label class="campo"><span id="lbl-fx-dia">Vence todo dia *</span><input name="fx_dia" type="number" min="1" max="31" value="${ct?.dia_vencimento ?? ''}" placeholder="1 a 31"></label>
-          <label class="campo">Cobrar a partir de *<input type="date" name="fx_inicio" value="${ct?.inicio || hojeISO().slice(0, 8) + '01'}"></label>
+          <label class="campo"><span id="lbl-fx-ini">Cobrar a partir de *</span><input type="date" name="fx_inicio" value="${ct?.inicio || hojeISO().slice(0, 8) + '01'}"></label>
           <label class="campo">Serviço até (cancelamento)<input type="date" name="fx_fim" value="${ct?.fim || ''}"></label>
           <label class="campo">Centro de custo<select name="fx_cc">${opcoes((ccsP || []).filter(c => c.ativo || c.id === ct?.centro_custo_id), null, c => c.nome, ct?.centro_custo_id || (ccsP || []).find(c => c.codigo === 'GERAL')?.id, null)}</select></label>
           <div class="largo fx-diaria"><div class="muted" style="margin-bottom:4px">Dias de trabalho (deixe todos desmarcados se for todos os dias)</div><div class="chips">
@@ -241,7 +241,8 @@ async function formParceiro(tela, tabela, x = null) {
   const mostraCobranca = () => {
     const cob = $('[name=cobranca]:checked', f)?.value, fixo = ['fixa_mensal', 'diaria'].includes(cob), dia = cob === 'diaria';
     if ($('#box-fixo')) { $('#box-fixo').hidden = !fixo; $$('.fx-diaria', f).forEach(el => (el.hidden = !dia)); $$('.fx-mensal', f).forEach(el => (el.hidden = dia));
-      $('#lbl-fx-valor').textContent = dia ? 'Valor da diária (R$) *' : 'Valor mensal (R$) *'; $('#lbl-fx-dia').textContent = dia ? 'Vence todo dia (do mês seguinte) *' : 'Vence todo dia *'; }
+      $('#lbl-fx-valor').textContent = dia ? 'Valor da diária (R$) *' : 'Valor mensal (R$) *'; $('#lbl-fx-dia').textContent = dia ? 'Vence todo dia (do mês seguinte) *' : 'Vence todo dia *';
+      $('#lbl-fx-ini').textContent = dia ? 'Início do serviço (1º dia de trabalho) *' : 'Primeiro vencimento a partir de *'; }
     $('#campo-prazo-outro').hidden = f.prazo_sel.value !== 'outro';
   };
   f.addEventListener('change', e => { if (['cobranca', 'prazo_sel'].includes(e.target.name)) { if (e.target.name === 'prazo_sel' && e.target.value !== 'outro') f.prazo.value = e.target.value; mostraCobranca(); } });
