@@ -314,12 +314,14 @@ rota('/financeiro/fundo', async tela => {
       <label class="campo">Saiu de<select name="conta" required>${bs.filter(b => b.tipo !== 'fundo_fixo').map(b => `<option value="${b.id}" ${b.tipo === 'corrente' ? 'selected' : ''}>${esc(b.nome)}</option>`).join('')}</select></label>
       <label class="campo">Forma<select name="forma">${FORMAS_DIN.map(x => `<option>${x}</option>`).join('')}</select></label>
       <label class="campo largo">Observação<input name="obs" placeholder="Ex.: reposição das despesas de 01 a 15/10"></label>
+      <p class="muted largo">Gera uma conta a pagar já paga, em nome de ${esc(fundo.responsavel_nome || 'responsável do fundo')}, como a abertura do fundo.</p>
       <label class="campo largo">Comprovante (obrigatório, exceto dinheiro)<input type="file" name="arquivos" accept="image/*,application/pdf" multiple></label></div>
       <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn ok">Repor</button></div></form>`,
       { validar: d => !(num(d.valor) > 0) ? 'Informe o valor.' : d.forma !== 'Dinheiro' && !d.arquivos.length ? 'Anexe o comprovante. Só dinheiro dispensa comprovante.' : null });
     if (!r) return;
-    try { const mov = await api.rpc('repor_fundo', { p_data: r.data, p_valor: num(r.valor), p_conta_origem: r.conta, p_forma: r.forma, p_obs: r.obs || null });
-          await anexar('reposicao', mov, r.arquivos); aviso('Reposição registrada.'); navegar(); } catch (err) { falha(err); }
+    try { const res = await api.rpc('repor_fundo_conta', { p_data: r.data, p_valor: num(r.valor), p_conta_origem: r.conta, p_forma: r.forma, p_obs: r.obs || null });
+          if (r.arquivos?.length) await anexarEm([['baixa', res.baixa_id], ['titulo', res.titulo_id], ['reposicao', res.movimento_id]], r.arquivos, 'Comprovante da reposição');
+          aviso(`Reposição registrada · conta a pagar ${res.numero} (paga).`); navegar(); } catch (err) { falha(err); }
   });
 });
 
