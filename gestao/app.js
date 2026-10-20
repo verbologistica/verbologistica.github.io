@@ -983,7 +983,7 @@ async function pessoasAcao() {
   return _pessoasAcao;
 }
 const pessoaRef = p => { const o = { nome: p.nome }; if (p.usuario_id) o.usuario_id = p.usuario_id; else if (p.colaborador_id) o.colaborador_id = p.colaborador_id; else o.externo = true; if (p.email) o.email = p.email; return o; };
-const chavePessoa = p => p.usuario_id ? 'u:' + p.usuario_id : p.colaborador_id ? 'c:' + p.colaborador_id : 'x:' + semAcento(p.nome || '');
+const chaveSelPessoa = p => p.usuario_id ? 'u:' + p.usuario_id : p.colaborador_id ? 'c:' + p.colaborador_id : 'x:' + semAcento(p.nome || '');
 const nomesPessoas = l => (l || []).map(p => p.nome + (p.externo ? ' (externo)' : '')).join(', ');
 const lerPessoas = v => { try { const a = JSON.parse(v || '[]'); return Array.isArray(a) ? a : []; } catch { return []; } };
 const htmlSelPessoas = (name, sel = [], ph = 'Buscar pessoa…') => `<div class="selpes" data-selpes="${name}"><input type="hidden" name="${name}" value="${esc(JSON.stringify(sel || []))}">
@@ -997,8 +997,8 @@ function ligarSelPessoas(raiz, pessoas) {
     const desenhar = () => { chips.innerHTML = sel.map((p, i) => `<span class="selpes-chip${p.externo ? ' ext' : ''}">${esc(p.nome)}${p.externo ? ' <small>externo</small>' : p.colaborador_id ? ' <small>RH</small>' : ''}<button type="button" data-tira="${i}" title="Tirar">✕</button></span>`).join(''); };
     const fechar = () => { lista.hidden = true; };
     const mostrar = () => {
-      const t = q.value.trim(), ja = new Set(sel.map(chavePessoa));
-      achados = pessoas.filter(p => !ja.has(chavePessoa(p)) && casaBusca(p.nome + ' ' + (p.info || '') + ' ' + (p.email || ''), t)).slice(0, 40);
+      const t = q.value.trim(), ja = new Set(sel.map(chaveSelPessoa));
+      achados = pessoas.filter(p => !ja.has(chaveSelPessoa(p)) && casaBusca(p.nome + ' ' + (p.info || '') + ' ' + (p.email || ''), t)).slice(0, 40);
       lista.innerHTML = achados.map((p, i) => `<div class="selpes-op" data-op="${i}"><b>${esc(p.nome)}</b><span class="muted">${esc(p.info || '')}</span></div>`).join('')
         + `<div class="selpes-op ext" data-ext>+ Pessoa externa${t ? `: <b>${esc(t)}</b>` : '…'}</div>`;
       lista.hidden = false;
