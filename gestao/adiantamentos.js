@@ -262,6 +262,13 @@ rota('/financeiro/fundo', async tela => {
     api.listar('reembolsos', `select=id,valor&forma_custeio=eq.fundo_fixo&status=in.(aguardando_aprovacao,devolvido)`),
     api.listar('contas_bancarias', 'select=*&ativo=eq.true&order=nome')]);
   const saldo = Number(saldoV?.saldo || 0);
+  // pessoa de cada movimento (quem fez a despesa / recebeu o adiantamento)
+  const idsDe = ent => [...new Set(movs.filter(m => m.entidade === ent && m.entidade_id).map(m => m.entidade_id))];
+  const [rmbP, adtP] = await Promise.all([
+    idsDe('reembolso').length ? api.listar('reembolsos', `select=id,colaborador_nome,colab:usuarios(nome)&id=${lista(idsDe('reembolso'))}`).catch(() => []) : [],
+    idsDe('adiantamento').length ? api.listar('adiantamentos', `select=id,colaborador_nome,colab:usuarios(nome)&id=${lista(idsDe('adiantamento'))}`).catch(() => []) : []]);
+  const pessoaDe = {}; [...rmbP, ...adtP].forEach(x => { pessoaDe[x.id] = x.colab?.nome || x.colaborador_nome || ''; });
+  const pessoaMov = m => pessoaDe[m.entidade_id] || (['transferencia', 'reposicao'].includes(m.origem) ? fundo.responsavel_nome || '' : '');
   const comColab = adts.reduce((s, a) => s + Number(a.valor), 0);
   const aAprovar = pendFundo.reduce((s, r) => s + Number(r.valor), 0);
   // indicadores do período (ou de todo o histórico, sem filtro)
@@ -289,15 +296,15 @@ rota('/financeiro/fundo', async tela => {
     ${adts.length ? `<div class="cartao"><h2>Adiantamentos em aberto</h2>${tabelaAdts(adts)}</div>` : ''}
     <div class="cartao"><div class="topo" style="margin:0 0 8px"><h2 style="margin:0">Extrato do fundo</h2>
       <form class="filtros" id="filtros" style="margin:0"><input type="date" name="de" value="${de}" aria-label="De"><input type="date" name="ate" value="${ate}" aria-label="Até"><button class="btn peq">Filtrar</button></form></div>
-      ${movs.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Data</th><th>Tipo</th><th>Descrição</th><th class="num">Entrada</th><th class="num">Saída</th>${comSaldo ? '<th class="num">Saldo</th>' : ''}</tr></thead><tbody>
-      ${movs.map(m => `<tr data-mov="1"${fAttr('tipo', ORIGEM[m.origem] || m.origem)}${fAttr('data', m.data)}${fAttr('valor', m.valor)}${fAttr('busca', m.descricao)} ${m.entidade === 'reembolso' ? `class="clicavel" onclick="location.hash='#/reembolsos/ver/${m.entidade_id}'"` : m.entidade === 'adiantamento' ? `class="clicavel" onclick="location.hash='#/adiantamentos/ver/${m.entidade_id}'"` : ''}>
-        <td data-r="Data" class="nowrap">${dataBR(m.data)}</td><td data-r="Tipo">${esc(ORIGEM[m.origem] || m.origem)}</td><td data-r="Descrição">${esc(m.descricao || '')}</td>
+      ${movs.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Data</th><th>Tipo</th><th>Pessoa</th><th>Descrição</th><th class="num">Entrada</th><th class="num">Saída</th>${comSaldo ? '<th class="num">Saldo</th>' : ''}</tr></thead><tbody>
+      ${movs.map(m => `<tr data-mov="1"${fAttr('tipo', ORIGEM[m.origem] || m.origem)}${fAttr('pessoa', pessoaMov(m) || '—')}${fAttr('data', m.data)}${fAttr('valor', m.valor)}${fAttr('busca', [m.descricao, pessoaMov(m)].filter(Boolean).join(' '))} ${m.entidade === 'reembolso' ? `class="clicavel" onclick="location.hash='#/reembolsos/ver/${m.entidade_id}'"` : m.entidade === 'adiantamento' ? `class="clicavel" onclick="location.hash='#/adiantamentos/ver/${m.entidade_id}'"` : ''}>
+        <td data-r="Data" class="nowrap">${dataBR(m.data)}</td><td data-r="Tipo">${esc(ORIGEM[m.origem] || m.origem)}</td><td data-r="Pessoa">${esc(pessoaMov(m) || '—')}</td><td data-r="Descrição">${esc(m.descricao || '')}</td>
         <td data-r="Entrada" class="num">${m.valor > 0 ? brl(m.valor) : ''}</td><td data-r="Saída" class="num">${m.valor < 0 ? brl(-m.valor) : ''}</td>${comSaldo ? `<td data-r="Saldo" class="num"><b>${brl(acum += Number(m.valor))}</b></td>` : ''}</tr>`).join('')}
-      </tbody><tfoot><tr><td colspan="3">Movimento do período</td><td class="num">${brl(movs.filter(m => m.valor > 0).reduce((s, m) => s + Number(m.valor), 0))}</td><td class="num">${brl(-movs.filter(m => m.valor < 0).reduce((s, m) => s + Number(m.valor), 0))}</td>${comSaldo ? `<td class="num">${brl(saldo)}</td>` : ''}</tr></tfoot></table></div>`
+      </tbody><tfoot><tr><td colspan="4">Movimento do período</td><td class="num">${brl(movs.filter(m => m.valor > 0).reduce((s, m) => s + Number(m.valor), 0))}</td><td class="num">${brl(-movs.filter(m => m.valor < 0).reduce((s, m) => s + Number(m.valor), 0))}</td>${comSaldo ? `<td class="num">${brl(saldo)}</td>` : ''}</tr></tfoot></table></div>`
       : '<div class="vazio">Sem movimentos no período.</div>'}</div>`;
   $('#filtros').onsubmit = e => { e.preventDefault(); const d = formDados(e.target);
     location.hash = '#/financeiro/fundo?' + new URLSearchParams(Object.entries(d).filter(([, v]) => v)).toString(); };
-  filtroLocal(tela, { itens: 'tbody tr[data-mov]', antes: $('.tabela-wrap', tela), campos: [{ k: 'tipo', rotulo: 'Tipo' }] });
+  filtroLocal(tela, { itens: 'tbody tr[data-mov]', antes: $('.tabela-wrap', tela), campos: [{ k: 'pessoa', rotulo: 'Pessoa' }, { k: 'tipo', rotulo: 'Tipo' }] });
   $('#repor')?.addEventListener('click', async () => {
     const r = await modal(`<form><h2>Repor o Fundo Fixo</h2><div class="form">
       <label class="campo">Data<input type="date" name="data" value="${hojeISO()}" required></label>
