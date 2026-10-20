@@ -52,14 +52,12 @@ rota('/financeiro/adiantamentos', async tela => {
 
 // ---------- Novo adiantamento ----------
 rota('/adiantamentos/novo', async tela => {
-  const [users, pessoas, ccs] = await Promise.all([editaFin() ? usuarios() : [], editaFin() ? pessoasSemLogin() : [], centros()]);
+  const [listaPes, ccs] = await Promise.all([editaFin() ? pessoasFin() : [], centros()]);
   const ccPadrao = estado.usuario.centro_custo_id || ccs.find(c => c.codigo === 'GERAL')?.id;
   tela.innerHTML = `
     <div class="topo"><div><h1>${editaFin() ? 'Novo adiantamento' : 'Pedir adiantamento'}</h1><p class="sub">Depois de aprovado, o Financeiro entrega o valor. A prestação de contas vence ${5} dias após o retorno.</p></div></div>
     <form class="cartao form" id="f-adt">
-      ${editaFin() ? `<label class="campo">Colaborador<select name="quem" required><option value="">Selecione…</option>
-        <optgroup label="Com acesso ao sistema">${users.filter(u => u.ativo).map(u => `<option value="u:${u.id}">${esc(u.nome)}</option>`).join('')}</optgroup>
-        ${pessoas.length ? `<optgroup label="Sem acesso (cadastro interno)">${pessoas.map(p => `<option value="p:${p.id}">${esc(p.nome)}</option>`).join('')}</optgroup>` : ''}</select></label>` : ''}
+      ${editaFin() ? htmlPessoaFin(listaPes, '') : ''}
       <label class="campo">Valor (R$)<input name="valor" inputmode="decimal" required placeholder="0,00"></label>
       <label class="campo largo">Motivo<input name="motivo" required placeholder="Ex.: viagem Guararapes × Três Lagoas, combustível e alimentação"></label>
       <label class="campo">Data de saída<input type="date" name="data_saida" value="${hojeISO()}"></label>
@@ -68,15 +66,16 @@ rota('/adiantamentos/novo', async tela => {
       <div class="largo acoes"><button class="btn prim">Enviar para aprovação</button><a class="btn" href="javascript:history.back()">Cancelar</a></div>
     </form>`;
   const f = $('#f-adt');
+  ligarPessoaFin(f);
   f.onsubmit = async e => {
     e.preventDefault();
     const d = formDados(f); const v = num(d.valor);
     if (!v || v <= 0) return aviso('Informe o valor.', true);
     const q = d.quem || 'u:' + estado.usuario.id;
-    const pessoa = q.startsWith('p:') ? pessoas.find(p => 'p:' + p.id === q) : null;
     await ocupado(e.submitter, async () => {
       try {
-        const [a] = await api.inserir('adiantamentos', { colaborador_id: pessoa ? null : q.slice(2), pessoa_sem_login_id: pessoa?.id || null, colaborador_nome: pessoa?.nome || null,
+        const quemDados = await resolverPessoaFin(q, d.quem_nome, listaPes);
+        const [a] = await api.inserir('adiantamentos', { ...quemDados,
           valor: v, motivo: d.motivo, data_saida: d.data_saida || null, data_retorno: d.data_retorno || null, centro_custo_id: d.cc || null, status: 'aguardando_aprovacao' });
         aviso(`Adiantamento ${a.numero} enviado para aprovação.`); location.hash = '#/adiantamentos/ver/' + a.id;
       } catch (err) { falha(err); }

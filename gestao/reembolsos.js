@@ -8,6 +8,34 @@ const FORMAS_PAGTO = ['Dinheiro', 'Pix', 'Cartão de débito', 'Cartão de créd
 const CUSTEIO = { reembolso: 'Reembolso', adiantamento: 'Adiantamento', fundo_fixo: 'Fundo Fixo' };
 const tagCusteio = r => r.forma_custeio && r.forma_custeio !== 'reembolso' ? ` <span class="tag azul">${CUSTEIO[r.forma_custeio]}</span>` : '';
 const pessoasSemLogin = f => cad('pessoas_sem_login', 'select=id,nome,usuario_id&order=nome', f);
+// Pessoa do reembolso/adiantamento: colaboradores do RH + usuários fora do RH + outras pessoas + externo (mesmo padrão dos planos de ação)
+async function pessoasFin() {
+  if (estado.cache._pessoasFin) return estado.cache._pessoasFin;
+  let l = await api.rpc('pessoas_para_reembolso').catch(() => null);
+  if (!l) { const [us, ps] = await Promise.all([usuarios(), pessoasSemLogin()]);
+    l = [...us.filter(u => u.ativo).map(u => ({ grupo: '2', nome: u.nome, chave: 'u:' + u.id })), ...ps.map(p => ({ grupo: '3', nome: p.nome, chave: 'p:' + p.id }))]; }
+  const vistos = new Set(); l = l.filter(p => !vistos.has(p.chave) && vistos.add(p.chave));
+  return (estado.cache._pessoasFin = l);
+}
+const GRUPOS_PES = { 1: 'Colaboradores (RH)', 2: 'Usuários sem cadastro no RH', 3: 'Outras pessoas' };
+const htmlPessoaFin = (lista, sel, { disabled = false } = {}) => `<label class="campo">Colaborador<select name="quem" required ${disabled ? 'disabled' : ''}><option value="">Selecione…</option>
+    ${Object.entries(GRUPOS_PES).map(([g, rot]) => { const ps = lista.filter(p => p.grupo === g); return ps.length ? `<optgroup label="${rot}">${ps.map(p => `<option value="${esc(p.chave)}" data-busca="${esc(p.info || '')}" ${p.chave === sel ? 'selected' : ''}>${esc(p.nome)}${p.info ? ' · ' + esc(p.info) : ''}</option>`).join('')}</optgroup>` : ''; }).join('')}
+    <optgroup label="Outra pessoa"><option value="x:novo">+ Pessoa externa…</option></optgroup></select></label>
+  <label class="campo" data-externo hidden>Nome da pessoa externa<input name="quem_nome" placeholder="Nome completo"></label>`;
+function ligarPessoaFin(f) {
+  const s = f.quem; if (!s) return; const c = f.querySelector('[data-externo]');
+  const at = () => { const ext = s.value === 'x:novo'; c.hidden = !ext; f.quem_nome.required = ext; };
+  s.addEventListener('change', at); at();
+}
+// devolve os campos da pessoa para gravar (cria o cadastro interno para colaborador sem login ou externo)
+async function resolverPessoaFin(q, nomeExterno, lista) {
+  if (q === 'x:novo') { const r = await api.rpc('pessoa_reembolso', { p_colaborador: null, p_nome: nomeExterno }); estado.cache._pessoasFin = null;
+    return { colaborador_id: null, pessoa_sem_login_id: r.pessoa_sem_login_id, colaborador_nome: r.nome }; }
+  if (q.startsWith('c:')) { const r = await api.rpc('pessoa_reembolso', { p_colaborador: q.slice(2), p_nome: null }); estado.cache._pessoasFin = null;
+    return r.colaborador_id ? { colaborador_id: r.colaborador_id, pessoa_sem_login_id: null, colaborador_nome: null } : { colaborador_id: null, pessoa_sem_login_id: r.pessoa_sem_login_id, colaborador_nome: r.nome }; }
+  if (q.startsWith('p:')) return { colaborador_id: null, pessoa_sem_login_id: q.slice(2), colaborador_nome: (lista || []).find(p => p.chave === q)?.nome || null };
+  return { colaborador_id: q.slice(2), pessoa_sem_login_id: null, colaborador_nome: null };
+}
 const descrTxt = r => r.descricao || r.fornecedor_nome || '';
 const categoriaTxt = r => r.conta ? `${r.conta.nome}${r.categoria_outros ? ' — ' + r.categoria_outros : ''}` : (r.categoria || '—');
 
@@ -47,7 +75,7 @@ rota('/reembolsos', async tela => {
 
 // ---------- Novo / editar ----------
 async function formReembolso(tela, r = null) {
-  const [ccs, users, vs, pessoas] = await Promise.all([centros(), editaFin() ? usuarios() : [], veiculos(), editaFin() ? pessoasSemLogin() : []]);
+  const [ccs, vs, listaPes] = await Promise.all([centros(), veiculos(), editaFin() ? pessoasFin() : []]);
   const adtParam = estado.params.get('adt');
   const adtFixo = adtParam ? await api.um('adiantamentos', `id=eq.${adtParam}`) : null;
   const custeioIni = r?.forma_custeio || (adtFixo ? 'adiantamento' : estado.params.get('custeio')) || 'reembolso';
@@ -60,9 +88,7 @@ async function formReembolso(tela, r = null) {
     <div class="topo"><div><h1>${r ? 'Corrigir lançamento ' + esc(r.numero) : custeioIni === 'reembolso' ? 'Lançar reembolso' : custeioIni === 'fundo_fixo' ? 'Lançar despesa do Fundo Fixo' : 'Lançar despesa da prestação de contas'}</h1>
       <p class="sub">Anexe a foto ou o PDF do comprovante.</p></div></div>
     <form class="cartao form" id="f-reemb">
-      ${editaFin() && !r ? `<label class="campo">Colaborador<select name="quem" required ${adtFixo ? 'disabled' : ''}><option value="">Selecione…</option>
-          <optgroup label="Com acesso ao sistema">${users.filter(u => u.ativo).map(u => `<option value="u:${u.id}" ${'u:' + u.id === quemIni ? 'selected' : ''}>${esc(u.nome)}</option>`).join('')}</optgroup>
-          ${pessoas.length ? `<optgroup label="Sem acesso (cadastro interno)">${pessoas.map(p => `<option value="p:${p.id}" ${'p:' + p.id === quemIni ? 'selected' : ''}>${esc(p.nome)}</option>`).join('')}</optgroup>` : ''}</select></label>` : ''}
+      ${editaFin() && !r ? htmlPessoaFin(listaPes, quemIni, { disabled: !!adtFixo }) : ''}
       <label class="campo">Como foi pago?<select name="forma_custeio" ${adtFixo ? 'disabled' : ''}>
           <option value="reembolso" ${custeioIni === 'reembolso' ? 'selected' : ''}>Do próprio bolso (quero ser reembolsado)</option>
           <option value="adiantamento" ${custeioIni === 'adiantamento' ? 'selected' : ''}>Com adiantamento recebido (prestação de contas)</option>
@@ -89,6 +115,7 @@ async function formReembolso(tela, r = null) {
       <div class="largo acoes"><button class="btn prim">${r ? 'Reenviar para aprovação' : 'Enviar para aprovação'}</button><a class="btn" href="#/reembolsos">Cancelar</a></div>
     </form>`;
   const f = $('#f-reemb');
+  ligarPessoaFin(f);
   const mostrarOutros = () => { $('#campo-outros').hidden = !contaOutros.includes(f.conta_id.value); };
   f.conta_id.onchange = mostrarOutros; mostrarOutros();
   const quem = () => adtFixo ? quemIni : (f.quem ? f.quem.value : (r ? (r.colaborador_id ? 'u:' + r.colaborador_id : 'p:' + r.pessoa_sem_login_id) : 'u:' + estado.usuario.id));
@@ -121,9 +148,8 @@ async function formReembolso(tela, r = null) {
         let id;
         if (r) { await api.alterar('reembolsos', `id=eq.${r.id}`, dados); id = r.id; }
         else {
-          const pessoa = q.startsWith('p:') ? pessoas.find(p => 'p:' + p.id === q) : null;
-          const [novo] = await api.inserir('reembolsos', { ...dados, colaborador_id: pessoa ? null : q.slice(2),
-            pessoa_sem_login_id: pessoa?.id || null, colaborador_nome: pessoa?.nome || null }); id = novo.id; }
+          const quemDados = await resolverPessoaFin(q, d.quem_nome, listaPes);
+          const [novo] = await api.inserir('reembolsos', { ...dados, ...quemDados }); id = novo.id; }
         await anexar('reembolso', id, d.arquivos);
         aviso(r ? 'Reembolso reenviado.' : 'Reembolso enviado para aprovação.');
         location.hash = adtId ? '#/adiantamentos/ver/' + adtId : '#/reembolsos/ver/' + id;
