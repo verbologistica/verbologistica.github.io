@@ -450,7 +450,6 @@ const MENU = [
   ['Painel do SSMA', '#/ssma', P_SSMA, 'painel', 'cat_pendente', true],
   ['Acidentes e CAT', '#/ssma/acidentes', [...P_SSMA, 'operacao', 'manutencao'], 'saude', 'acidentes_abertos', true],
   ['ASO e exames', '#/ssma/aso', P_SSMA, 'estetoscopio', 'aso_vencendo', true],
-  ['Plano de ação', '#/ssma/acoes', [...P_SSMA, 'operacao', 'manutencao', 'almoxarifado'], 'alvo', 'ssma_acoes_atrasadas', true],
   ['Inspeções', '#/ssma/inspecoes', [...P_SSMA, 'operacao', 'manutencao'], 'busca', null, true],
   ['DDS', '#/ssma/dds', [...P_SSMA, 'operacao', 'manutencao'], 'megafone', null, true],
   ['Extintores', '#/ssma/extintores', [...P_SSMA, 'operacao', 'manutencao'], 'extintor', 'extintores_vencendo', true],
@@ -896,7 +895,7 @@ rota('/inicio', async tela => {
       ${tem('administrador', 'manutencao', 'operacao') && p.manut_parados ? `<a class="cartao kpi alerta" href="#/manut"><div class="n">${p.manut_parados}</div><div class="r">equipamento(s) parado(s) em manutenção</div></a>` : ''}
       ${tem('administrador', 'ssma', 'rh') && p.cat_pendente ? `<a class="cartao kpi alerta" href="#/ssma/acidentes"><div class="n">${p.cat_pendente}</div><div class="r">CAT pendente (prazo: 1º dia útil após o acidente)</div></a>` : ''}
       ${tem('administrador', 'ssma') && p.aso_vencendo ? `<a class="cartao kpi alerta" href="#/ssma/aso?sit=pendentes"><div class="n">${p.aso_vencendo}</div><div class="r">ASO vencido, vencendo ou faltando</div></a>` : ''}
-      ${p.ssma_acoes_atrasadas ? `<a class="cartao kpi alerta" href="#/ssma/acoes"><div class="n">${p.ssma_acoes_atrasadas}</div><div class="r">ação(ões) de segurança atrasada(s)</div></a>` : ''}
+      ${p.ssma_acoes_atrasadas ? `<a class="cartao kpi alerta" href="#/planos?ver=todas"><div class="n">${p.ssma_acoes_atrasadas}</div><div class="r">ação(ões) de segurança atrasada(s)</div></a>` : ''}
       ${tem('administrador', 'operacao') && p.multas_indicar ? `<a class="cartao kpi alerta" href="#/operacao/ocorrencias?tipo=multa"><div class="n">${p.multas_indicar}</div><div class="r">multa(s) para indicar o condutor (prazo de 30 dias)</div></a>` : ''}
       ${tem('administrador', 'operacao') && p.jornada_alertas ? `<a class="cartao kpi alerta" href="#/operacao/jornadas?alertas=1"><div class="n">${p.jornada_alertas}</div><div class="r">jornada(s) de motorista com alerta (Lei 13.103)</div></a>` : ''}
       ${p.abast_alertas ? `<a class="cartao kpi alerta" href="#/operacao/abastecimentos"><div class="n">${p.abast_alertas}</div><div class="r">abastecimento(s) com alerta para conferir</div></a>` : ''}
@@ -1044,7 +1043,7 @@ async function abrirAcao(a) {
   const gestor = tem('administrador', 'diretoria');
   const podeEditar = a.modulo === 'geral' && (a.criado_por_id === estado.usuario.id || gestor);
   const ehResp = ehRespAcao(a);
-  const linkMod = a.modulo === 'ssma' ? (telaPermitida('/ssma/acoes') ? '#/ssma/acoes' : '') : a.modulo === 'qual' && a.nc_id && telaPermitida('/qualidade/nc') ? '#/qualidade/nc/ver/' + a.nc_id : '';
+  const linkMod = a.modulo === 'ssma' ? '' : a.modulo === 'qual' && a.nc_id && telaPermitida('/qualidade/nc') ? '#/qualidade/nc/ver/' + a.nc_id : '';
   const [pes, hist] = await Promise.all([podeEditar ? pessoasAcao() : [],
     api.listar('acao_repactuacoes', `modulo=eq.${a.modulo}&acao_id=eq.${a.id}&order=criado_em&select=prazo_anterior,prazo_novo,motivo,criado_em,u:usuarios(nome)`).catch(() => [])]);
   const [pt] = prazoTxt(a.prazo);
@@ -1172,7 +1171,8 @@ rota('/planos', async tela => {
   const gestor = tem('administrador', 'diretoria');
   const ver = estado.params.get('ver') || 'minhas';
   const abertas = !temTodos(pLista('sit', 'todas'));
-  const ABAS = [['minhas', 'No meu nome'], ['criadas', 'Que eu abri'], ['planos', 'Reuniões, auditorias e outros'], ...(gestor ? [['todas', 'Todas as ações']] : [])];
+  const veTodas = gestor || tem('ssma', 'qualidade');
+  const ABAS = [['minhas', 'No meu nome'], ['criadas', 'Que eu abri'], ['planos', 'Reuniões, auditorias e outros'], ...(veTodas ? [['todas', gestor ? 'Todas as ações' : 'Todas as ações do meu setor']] : [])];
   const url = m => '#/planos?' + new URLSearchParams({ ver, ...m }).toString();
   const topo = (sub) => `<div class="topo"><div><h1>Planos de ação</h1><p class="sub">${sub}</p></div>
       <div class="acoes"><button class="btn" id="lancar-acoes">+ Ações em plano existente</button><button class="btn prim" id="novo-plano">+ Novo plano</button></div></div>
@@ -1190,7 +1190,7 @@ rota('/planos', async tela => {
     $$('tr[data-p]', tela).forEach(tr => (tr.onclick = () => (location.hash = '#/planos/ver/' + tr.dataset.p)));
     filtroLocal(tela, { itens: 'tbody tr[data-p]', antes: $$('.cartao', tela).at(-1), campos: [{ k: 'origem', rotulo: 'Origem' }, { k: 'setor', rotulo: 'Setor' }], periodo: true, rotuloPeriodo: 'Data' });
   } else {
-    const escopo = ver === 'todas' && !gestor ? 'minhas' : ver;
+    const escopo = ver === 'todas' && !veTodas ? 'minhas' : ver;
     const acs = await api.rpc('planos_acao', { p_escopo: escopo, p_abertas: abertas }).catch(err => { falha(err); return []; });
     const atr = acs.filter(a => a.prazo && a.prazo < hojeISO() && ['aberta', 'em_andamento'].includes(a.status)).length;
     tela.innerHTML = `${topo(`${acs.length} ação(ões)${atr ? ` · <b class="txt-verm">${atr} atrasada(s)</b>` : ''}`)}

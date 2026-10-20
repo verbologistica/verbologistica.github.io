@@ -61,14 +61,14 @@ rota('/ssma', async tela => {
       <a class="cartao kpi ${p.cat_pendente ? 'alerta' : ''}" href="#/ssma/acidentes"><div class="n">${p.cat_pendente || 0}</div><div class="r">CAT pendente</div></a>
       <a class="cartao kpi ${p.aso_vencendo ? 'alerta' : ''}" href="#/ssma/aso?sit=pendentes"><div class="n">${p.aso_vencendo || 0}</div><div class="r">ASO vencido, vencendo ou faltando</div></a>
       <a class="cartao kpi ${p.tox_vencendo ? 'alerta' : ''}" href="#/ssma/aso?sit=tox"><div class="n">${p.tox_vencendo || 0}</div><div class="r">motorista(s) com toxicológico a fazer</div></a>
-      <a class="cartao kpi ${p.ssma_acoes_atrasadas ? 'alerta' : ''}" href="#/ssma/acoes"><div class="n">${p.ssma_acoes_atrasadas || 0}</div><div class="r">ações atrasadas (de ${acs.length} abertas)</div></a>
+      <a class="cartao kpi ${p.ssma_acoes_atrasadas ? 'alerta' : ''}" href="#/planos?ver=todas"><div class="n">${p.ssma_acoes_atrasadas || 0}</div><div class="r">ações atrasadas (de ${acs.length} abertas)</div></a>
       <a class="cartao kpi ${p.extintores_vencendo ? 'alerta' : ''}" href="#/ssma/extintores"><div class="n">${p.extintores_vencendo || 0}</div><div class="r">extintor(es) vencendo em 30 dias</div></a>
       <div class="cartao kpi"><div class="n">${doAno.length}</div><div class="r">ocorrências em ${ano} (${doAno.filter(a => a.tipo === 'quase_acidente').length} quase-acidentes)</div></div>
     </div>
     <div class="grade" style="grid-template-columns:repeat(auto-fit,minmax(340px,1fr))">
       <div class="cartao"><h2>Acidentes em aberto</h2>${cats.length ? `<ul class="lista-simples">${cats.map(a => `<li class="clicavel" onclick="location.hash='#/ssma/acidentes/ver/${a.id}'"><span><b>${esc(a.numero)}</b> ${esc(a.c?.nome || TIPO_ACI[a.tipo])}<div class="muted">${dataHoraBR(a.data_hora)} · ${esc(TIPO_ACI[a.tipo])}</div></span>
         <span>${a.cat_necessaria && !a.cat_numero ? `<span class="tag vermelho">CAT até ${dataBR(a.cat_prazo)}</span>` : ''} ${tagSt(ST_ACI, a.status)}</span></li>`).join('')}</ul>` : '<div class="vazio">Nenhum acidente em aberto.</div>'}</div>
-      <div class="cartao"><h2>Plano de ação</h2>${acs.length ? `<ul class="lista-simples">${acs.slice(0, 12).map(a => `<li><span>${esc(a.descricao)}<div class="muted">${esc(a.u?.nome || 'sem responsável')}${a.prazo ? ' · prazo ' + dataBR(a.prazo) : ''}</div></span>${a.prazo && a.prazo < hojeISO() ? '<span class="tag vermelho">Atrasada</span>' : tagSt(ST_ACAO, a.status)}</li>`).join('')}</ul><a class="btn peq" href="#/ssma/acoes">Ver todas</a>` : '<div class="vazio">Nenhuma ação aberta.</div>'}</div>
+      <div class="cartao"><h2>Plano de ação</h2>${acs.length ? `<ul class="lista-simples">${acs.slice(0, 12).map(a => `<li><span>${esc(a.descricao)}<div class="muted">${esc(a.u?.nome || 'sem responsável')}${a.prazo ? ' · prazo ' + dataBR(a.prazo) : ''}</div></span>${a.prazo && a.prazo < hojeISO() ? '<span class="tag vermelho">Atrasada</span>' : tagSt(ST_ACAO, a.status)}</li>`).join('')}</ul><a class="btn peq" href="#/planos?ver=todas">Ver todas</a>` : '<div class="vazio">Nenhuma ação aberta.</div>'}</div>
     </div>
     ${avisoLei('cat', 'prevencao')}`;
 });
@@ -235,7 +235,9 @@ async function formAcao(origem, origemId, us, x = null) {
     if (x) await api.alterar('ssma_acoes', `id=eq.${x.id}`, { ...dados, status: r.status, evidencia: r.evidencia || null }); else await api.inserir('ssma_acoes', { ...dados, origem, origem_id: origemId });
     aviso('Ação salva.'); navegar(); } catch (err) { falha(err); }
 }
-rota('/ssma/acoes', async tela => {
+// a tela de ações de SSMA foi unificada em Planos de ação (links antigos continuam funcionando)
+rota('/ssma/acoes', () => { location.hash = '#/planos?ver=todas'; });
+rota('/ssma/acoes-antigo', async tela => {
   const sts = pLista('status', 'todas'), st = temTodos(sts) ? 'todas' : 'abertas';
   const [as, us] = await Promise.all([api.listar('ssma_acoes', `ativo=eq.true${st === 'abertas' ? '&status=in.(aberta,em_andamento)' : ''}&select=*,u:usuarios(nome)&order=prazo.nullslast`), usuarios()]);
   const ORIG = { acidente: ['Acidente', '#/ssma/acidentes/ver/'], inspecao: ['Inspeção', '#/ssma/inspecoes/ver/'], dds: ['DDS', '#/ssma/dds'], avulsa: ['Avulsa', null] };
@@ -301,7 +303,7 @@ rota('/ssma/inspecoes/ver/:id', async (tela, id) => {
   tela.innerHTML = `<div class="topo"><div><h1>${esc(i.numero)} · ${esc(i.tipo)}</h1><p class="sub">${esc([dataBR(i.data), i.local, i.s?.nome, i.e?.codigo_frota, i.u?.nome].filter(Boolean).join(' · '))}</p></div><a class="btn" href="#/ssma/inspecoes">Voltar</a></div>
     <div class="cartao"><ul class="lista-simples">${i.itens.map(x => `<li><span>${esc(x.item)}${x.obs ? `<div class="muted">${esc(x.obs)}</div>` : ''}</span>${x.conforme == null ? '<span class="tag">N/A</span>' : x.conforme ? '<span class="tag verde">Conforme</span>' : '<span class="tag vermelho">Não conforme</span>'}</li>`).join('')}</ul>
       ${i.observacao ? `<p style="white-space:pre-line">${esc(i.observacao)}</p>` : ''}<div id="anx-ins"></div></div>
-    <div class="cartao"><h2>Ações geradas</h2>${acs.length ? `<ul class="lista-simples">${acs.map(a => `<li><span>${esc(a.descricao)}<div class="muted">${esc(a.u?.nome || '')} · prazo ${dataBR(a.prazo)}</div></span>${tagSt(ST_ACAO, a.status)}</li>`).join('')}</ul><a class="btn peq" href="#/ssma/acoes">Atualizar no plano de ação</a>` : '<div class="vazio">Nenhuma não conformidade. 👍</div>'}</div>`;
+    <div class="cartao"><h2>Ações geradas</h2>${acs.length ? `<ul class="lista-simples">${acs.map(a => `<li><span>${esc(a.descricao)}<div class="muted">${esc(a.u?.nome || '')} · prazo ${dataBR(a.prazo)}</div></span>${tagSt(ST_ACAO, a.status)}</li>`).join('')}</ul><a class="btn peq" href="#/planos?ver=todas">Atualizar no plano de ação</a>` : '<div class="vazio">Nenhuma não conformidade. 👍</div>'}</div>`;
   $('#anx-ins').innerHTML = await htmlAnexos('ssma_inspecao', id);
 });
 
