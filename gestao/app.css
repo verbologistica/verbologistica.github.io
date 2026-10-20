@@ -789,3 +789,6 @@ td .cb, .orc-grade .cb { min-width: 120px; }
 .selpes-op.ext { color: var(--verde); font-weight: 600; }
 .ac-hist { margin: 4px 0 0; padding-left: 18px; font-size: 13px; }
 .ac-hist li { margin: 2px 0; }
+.enc { font-size: 12px; color: var(--cinza); white-space: nowrap; }
+.enc.mais { color: var(--vermelho, #b42318); }
+.enc.menos { color: var(--verde); }

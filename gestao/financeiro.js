@@ -46,10 +46,10 @@ async function listaTitulos(tela, tipo) {
   let ps = await api.listar('v_parcelas', `tipo=eq.${tipo}&${filtroSt}${fAba}${fPer}&order=vencimento,titulo_numero&limit=3000`);
   // resumo do período (todas as situações)
   const [rs, atrasAnt] = await Promise.all([
-    api.listar('v_parcelas', `select=valor,valor_pago,saldo,status,vencida&tipo=eq.${tipo}&status=neq.cancelada${fAba}${fPer}&limit=20000`).catch(() => []),
+    api.listar('v_parcelas', `select=valor,valor_pago,total_pago,encargos,saldo,status,vencida&tipo=eq.${tipo}&status=neq.cancelada${fAba}${fPer}&limit=20000`).catch(() => []),
     per ? api.listar('v_parcelas', `select=saldo&tipo=eq.${tipo}&status=in.(aberta,aprovada)${fAba}&vencimento=lt.${per.de < hojeISO() ? per.de : hojeISO()}&limit=20000`).catch(() => []) : []]);
   const soma = (arr, k) => arr.reduce((x, p) => x + Number(p[k] || 0), 0);
-  const R = { total: soma(rs, 'valor'), pago: soma(rs, 'valor_pago'), pend: soma(rs.filter(p => ['aberta', 'aprovada'].includes(p.status)), 'saldo'),
+  const R = { total: soma(rs, 'valor'), pago: soma(rs, 'total_pago'), enc: soma(rs, 'encargos'), pend: soma(rs.filter(p => ['aberta', 'aprovada'].includes(p.status)), 'saldo'),
     venc: soma(rs.filter(p => p.vencida), 'saldo'), prev: soma(rs.filter(p => p.status === 'prevista'), 'saldo'),
     nPend: rs.filter(p => ['aberta', 'aprovada'].includes(p.status)).length, nVenc: rs.filter(p => p.vencida).length, nPrev: rs.filter(p => p.status === 'prevista').length, nPago: rs.filter(p => Number(p.valor_pago) > 0).length };
   R.aVencer = R.pend - R.venc;
@@ -73,7 +73,7 @@ async function listaTitulos(tela, tipo) {
         <span class="fr-atalhos"><button type="button" class="btn peq" data-p="mes">Este mês</button><button type="button" class="btn peq" data-p="prox">Próximo mês</button><button type="button" class="btn peq" data-p="ant">Mês anterior</button><button type="button" class="btn peq" data-p="ano">Este ano</button><button type="button" class="btn peq" data-p="tudo">Todas as datas</button></span></form>
       <div class="fr-grade">
         ${kR('', R.total, tipo === 'pagar' ? 'Valor total (gasto)' : 'Valor total', `${rs.length} parcela(s)`, 'todas')}
-        ${kR('ok', R.pago, T.feito, `${R.nPago} parcela(s)`, 'pagas')}
+        ${kR('ok', R.pago, T.feito, `${R.nPago} parcela(s)${R.enc > 0 ? ` · ${brl(R.enc)} de juros/multa` : R.enc < 0 ? ` · ${brl(-R.enc)} de desconto` : ''}`, 'pagas')}
         ${kR('pend', R.pend, tipo === 'pagar' ? 'Pendente a pagar' : 'Pendente a receber', `${R.nPend} parcela(s)`, 'abertas')}
         ${kR('', R.aVencer, 'A vencer', '', 'abertas')}
         ${kR(R.venc ? 'alerta' : '', R.venc, 'Vencido', `${R.nVenc} parcela(s)`, 'abertas')}
@@ -81,7 +81,7 @@ async function listaTitulos(tela, tipo) {
       </div>
       ${atrasTot > 0 ? `<p class="fr-aviso">${ico('alerta')} Há <b>${atrasAnt.length}</b> parcela(s) vencida(s) antes deste período (${brl(atrasTot)}). <a href="${urlCom({ periodo: 'tudo', de: null, ate: null, status: 'abertas', faixa: '1_vencidos' })}">Ver</a></p>` : ''}
     </section>`;
-  const total = ps.reduce((s, p) => s + Number(pagas ? p.valor_pago : p.saldo), 0);
+  const total = ps.reduce((s, p) => s + Number(pagas ? p.total_pago : p.saldo), 0);
   const colValor = pagas ? T.feito : 'Saldo';
   tela.innerHTML = `
     <div class="topo"><div><h1>${T.titulo}</h1><p class="sub">${ps.length} parcela(s) · ${brl(total)}${aba === 'variaveis' ? ' · sem as contas fixas mensais' : ''}</p></div>
@@ -96,9 +96,9 @@ async function listaTitulos(tela, tipo) {
       <button class="btn">Filtrar</button></form>
     ${podeSel && ps.length ? `<div class="sel-barra" id="sel-barra" hidden><span id="sel-txt"></span>${st === 'abertas' ? '<button class="btn peq" id="virar-prev">Transformar em previsão</button>' : '<button class="btn ok peq" id="conf-prev">Confirmar como conta (nota/boleto chegou)</button>'}</div>` : ''}
     <div class="cartao">${ps.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr>${podeSel ? '<th class="sel-cel"><input type="checkbox" id="sel-todos" aria-label="Selecionar todos"></th>' : ''}<th>Vencimento</th><th>${T.pessoa}</th><th>Descrição</th><th>Título</th><th class="num">Valor</th><th class="num">${colValor}</th><th>Situação</th></tr></thead><tbody>
-      ${ps.map(p => `<tr class="clicavel" data-t="${p.titulo_id}"${fAttr('pessoa', nome(p))}${fAttr('tipo', ORIG_T[p.origem] || p.origem)}${fAttr('conta', nomeConta(p.conta_id))}${fAttr('cc', nomeCC(p.centro_custo_id))}${fAttr('sit', _txt(tagTitulo(p.status, p.vencida, tipo)))}${fAttr('data', p.vencimento)}${fAttr('valor', pagas ? p.valor_pago : p.saldo)}${fAttr('busca', [nome(p), pesBusca(p), p.descricao, p.titulo_numero, p.observacoes].filter(Boolean).join(' '))}>${podeSel ? `<td class="sel-cel" data-r=""><input type="checkbox" class="sel-t" value="${p.titulo_id}" aria-label="Selecionar"></td>` : ''}<td data-r="Vencimento" class="nowrap">${dataBR(p.vencimento)}</td><td data-r="${T.pessoa}">${esc(nome(p))}</td>
+      ${ps.map(p => `<tr class="clicavel" data-t="${p.titulo_id}"${fAttr('pessoa', nome(p))}${fAttr('tipo', ORIG_T[p.origem] || p.origem)}${fAttr('conta', nomeConta(p.conta_id))}${fAttr('cc', nomeCC(p.centro_custo_id))}${fAttr('sit', _txt(tagParcela(p, tipo)))}${fAttr('data', p.vencimento)}${fAttr('valor', pagas ? p.total_pago : p.saldo)}${fAttr('busca', [nome(p), pesBusca(p), p.descricao, p.titulo_numero, p.observacoes].filter(Boolean).join(' '))}>${podeSel ? `<td class="sel-cel" data-r=""><input type="checkbox" class="sel-t" value="${p.titulo_id}" aria-label="Selecionar"></td>` : ''}<td data-r="Vencimento" class="nowrap">${dataBR(p.vencimento)}</td><td data-r="${T.pessoa}">${esc(nome(p))}</td>
         <td data-r="Descrição">${temVerificar(p.observacoes) ? '<span title="A verificar">⚠️</span> ' : ''}${esc(p.descricao || '')}</td><td data-r="Título" class="nowrap">${esc(p.titulo_numero)}${p.parcela > 1 ? ` <span class="muted">${p.parcela}ª</span>` : ''}</td>
-        <td data-r="Valor" class="num">${brl(p.valor)}</td><td data-r="${colValor}" class="num"><b>${brl(pagas ? p.valor_pago : p.saldo)}</b></td><td data-r="Situação">${tagTitulo(p.status, p.vencida, tipo)}${tipo === 'pagar' && semCompIds.has(p.id) ? ' <span class="tag amarelo">Sem comprovante</span>' : ''}</td></tr>`).join('')}
+        <td data-r="Valor" class="num">${brl(p.valor)}${Number(p.encargos) ? `<div class="enc ${Number(p.encargos) > 0 ? 'mais' : 'menos'}" title="${esc(txtEncargos(p))}">${Number(p.encargos) > 0 ? '+' : '−'} ${brl(Math.abs(p.encargos))} ${Number(p.encargos) > 0 ? 'juros/multa' : 'desconto'}</div><div class="enc">${tipo === 'receber' ? 'recebido' : 'pago'} ${brl(p.total_pago)}</div>` : ''}</td><td data-r="${colValor}" class="num"><b>${brl(pagas ? p.total_pago : p.saldo)}</b></td><td data-r="Situação">${tagParcela(p, tipo)}${tipo === 'pagar' && semCompIds.has(p.id) ? ' <span class="tag amarelo">Sem comprovante</span>' : ''}</td></tr>`).join('')}
       </tbody><tfoot><tr><td colspan="${podeSel ? 6 : 5}">Total</td><td class="num">${brl(total)}</td><td></td></tr></tfoot></table></div>` : '<div class="vazio">Nenhuma conta encontrada.</div>'}</div>`;
   $('#filtros').onsubmit = e => { e.preventDefault(); const d = formDados(e.target);
     location.hash = T.rota + '?' + new URLSearchParams(Object.entries(d).filter(([, v]) => v)).toString(); };
@@ -131,6 +131,10 @@ async function listaTitulos(tela, tipo) {
     campos: [{ k: 'pessoa', rotulo: T.pessoa }, { k: 'tipo', rotulo: 'Tipo' }, { k: 'conta', rotulo: 'Conta do plano' }, { k: 'cc', rotulo: 'Centro de custo' }, { k: 'sit', rotulo: 'Situação' }] });
 }
 const tagTitulo = (s, vencida, tipo) => tipo === 'receber' && ['paga', 'pago'].includes(s) ? '<span class="tag verde">Recebida</span>' : tag(s, vencida);
+// parcela: "Paga/Recebida em atraso" quando o pagamento foi depois do vencimento
+const tagParcela = (p, tipo) => p.paga_atraso ? `<span class="tag amarelo" title="${p.data_pagamento ? (tipo === 'receber' ? 'Recebida' : 'Paga') + ' em ' + dataBR(p.data_pagamento) : ''}">${tipo === 'receber' ? 'Recebida' : 'Paga'} em atraso</span>` : tagTitulo(p.status, p.vencida, tipo);
+const txtEncargos = p => { const j = Number(p.juros || 0), m = Number(p.multa || 0), d = Number(p.desconto || 0);
+  return [j ? 'juros ' + brl(j) : '', m ? 'multa ' + brl(m) : '', d ? 'desconto ' + brl(d) : ''].filter(Boolean).join(' · '); };
 
 async function novoTitulo(tela, tipo) {
   const T = TIPO[tipo];
@@ -214,7 +218,9 @@ async function verTitulo(tela, id, tipo) {
   const t = await api.um('titulos', `id=eq.${id}&select=*,conta:plano_contas(codigo,nome),cc:centros_custo(nome),forn:fornecedores(razao_social,documento,chave_pix,dados_bancarios,boleto,prazo_faturamento_dias),cli:clientes(nome,documento),colab:usuarios(nome,chave_pix)`);
   if (!t) { tela.innerHTML = '<div class="cartao vazio">Conta não encontrada ou sem acesso.</div>'; return; }
   if (t.tipo && t.tipo !== tipo) { location.hash = TIPO[t.tipo].rota + '/ver/' + id; return; }
-  const ps = await api.listar('titulo_parcelas', `titulo_id=eq.${id}&order=parcela`);
+  const ps = t.status !== 'cancelado' ? await api.listar('v_parcelas', `titulo_id=eq.${id}&order=parcela`).catch(() => api.listar('titulo_parcelas', `titulo_id=eq.${id}&order=parcela`))
+    : await api.listar('titulo_parcelas', `titulo_id=eq.${id}&order=parcela`);
+  const encT = ps.reduce((x, p) => x + Number(p.encargos || 0), 0), pagoT = ps.reduce((x, p) => x + Number(p.total_pago ?? p.valor_pago ?? 0), 0);
   const baixas = veTudo() && ps.length ? await api.listar('baixas', `parcela_id=${lista(ps.map(p => p.id))}&cancelado_em=is.null&order=data_pagamento`) : [];
   const bs = await bancos();
   const semComp = new Set(baixas.length ? (await api.listar('v_pagamentos_sem_comprovante', `select=baixa_id&titulo_id=eq.${id}`)).map(x => x.baixa_id) : []);
@@ -242,7 +248,7 @@ async function verTitulo(tela, id, tipo) {
     ${tipo === 'pagar' && t.status !== 'cancelado' ? cartaoPagamento(t, ps) : ''}
     <div class="cartao"><div class="form">
       <div><div class="muted">${T.pessoa}</div><b>${esc(pessoa)}</b>${(t.cli?.documento || t.forn?.documento) ? `<div class="muted">${esc(fmtDoc(t.cli?.documento || t.forn?.documento))}</div>` : ''}${tipo === 'pagar' ? '' : t.forn ? (dadosPagamento(t.forn) ? `<div class="muted" style="white-space:pre-line">${esc(dadosPagamento(t.forn))}</div>` : '') : pix ? `<div class="muted">Pix: ${esc(pix)}</div>` : ''}</div>
-      <div><div class="muted">Valor total</div><b>${brl(t.valor_total)}</b></div>
+      <div><div class="muted">Valor total</div><b>${brl(t.valor_total)}</b>${encT ? `<div class="enc ${encT > 0 ? 'mais' : 'menos'}">${encT > 0 ? '+' : '−'} ${brl(Math.abs(encT))} ${encT > 0 ? 'juros/multa' : 'desconto'} · ${tipo === 'receber' ? 'recebido' : 'pago'} ${brl(pagoT)}</div>` : ''}</div>
       <div><div class="muted">Documento</div><b>${esc(t.documento || '—')}</b></div>
       <div><div class="muted">Emissão</div><b>${dataBR(t.data_emissao)}</b></div>
       <div><div class="muted">Conta</div><b>${esc(t.conta ? t.conta.codigo + ' ' + t.conta.nome : '—')}</b></div>
@@ -251,15 +257,15 @@ async function verTitulo(tela, id, tipo) {
       ${receb ? `<div><div class="muted">Pedido / recebimento do produto</div><a href="#/compras/pedidos/ver/${receb.ped.id}">${esc(receb.ped.numero)}</a> · ${receb.completo ? `<span class="tag ${receb.div ? 'vermelho' : 'verde'}">${receb.div ? 'Recebido com divergência' : 'Produto recebido'} em ${dataBR(receb.data)}</span>` : receb.parcial ? '<span class="tag amarelo">Recebido em parte</span>' : '<span class="tag amarelo">Produto ainda não chegou</span>'}</div>` : ''}
       ${blocoObservacao(t.observacoes, editaFin())}
       <div class="largo"><div class="muted">Anexos</div>${await htmlAnexos('titulo', id)}
-        ${editaFin() ? '<label class="campo" style="margin-top:8px">Incluir anexo<input type="file" id="mais" accept="image/*,application/pdf" multiple></label>' : ''}</div>
+        ${editaFin() ? '<label class="campo" style="margin-top:8px">Incluir anexo<input type="file" id="mais" multiple></label>' : ''}</div>
     </div></div>
     ${reembs.length ? `<div class="cartao"><h2>Reembolsos deste pagamento</h2><table><tbody>${reembs.map(r => `<tr class="clicavel" onclick="location.hash='#/reembolsos/ver/${r.id}'"><td>${esc(r.numero)}</td><td>${dataBR(r.data_despesa)}</td><td>${esc(r.descricao || '')}</td><td class="num">${brl(r.valor)}</td></tr>`).join('')}</tbody></table></div>` : ''}
     <div class="cartao"><h2>Parcelas</h2><div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Parcela</th><th>Vencimento</th><th class="num">Valor</th><th class="num">${T.feito}</th><th>Situação</th><th></th></tr></thead><tbody>
       ${ps.map(p => `<tr><td data-r="Parcela">${p.parcela}ª</td><td data-r="Vencimento">${dataBR(p.vencimento)}</td><td data-r="Valor" class="num">${brl(p.valor)}</td>
-        <td data-r="${T.feito}" class="num">${brl(p.valor_pago)}</td><td data-r="Situação">${tagTitulo(p.status, ['aberta', 'aprovada'].includes(p.status) && p.vencimento < hojeISO(), tipo)}</td>
+        <td data-r="${T.feito}" class="num">${brl(p.total_pago ?? p.valor_pago)}${Number(p.encargos) ? `<div class="enc">${esc(txtEncargos(p))}</div>` : ''}</td><td data-r="Situação">${tagParcela({ ...p, vencida: ['aberta', 'aprovada'].includes(p.status) && p.vencimento < hojeISO() }, tipo)}</td>
         <td>${editaFin() && ['aberta', 'aprovada'].includes(p.status) && t.status !== 'cancelado' ? `<button class="btn ok peq" data-baixa="${p.id}">${T.baixa}</button>` : ''}</td></tr>`).join('')}
     </tbody></table></div></div>
-    ${baixas.length ? `<div class="cartao"><h2>${tipo === 'pagar' ? 'Pagamentos' : 'Recebimentos'}</h2><ul class="lista-simples">${baixas.map(b => `<li style="flex-wrap:wrap"><span>${dataBR(b.data_pagamento)} · ${esc(bs.find(x => x.id === b.conta_bancaria_id)?.nome || '')}${b.forma_pagamento ? ' · ' + esc(b.forma_pagamento) : ''}${b.observacao ? ' · ' + esc(b.observacao) : ''}</span><b>${brl(Number(b.valor) + Number(b.juros) + Number(b.multa) - Number(b.desconto))}</b>
+    ${baixas.length ? `<div class="cartao"><h2>${tipo === 'pagar' ? 'Pagamentos' : 'Recebimentos'}</h2><ul class="lista-simples">${baixas.map(b => `<li style="flex-wrap:wrap"><span>${dataBR(b.data_pagamento)} · ${esc(bs.find(x => x.id === b.conta_bancaria_id)?.nome || '')}${b.forma_pagamento ? ' · ' + esc(b.forma_pagamento) : ''}${b.observacao ? ' · ' + esc(b.observacao) : ''}</span><b>${brl(Number(b.valor) + Number(b.juros) + Number(b.multa) - Number(b.desconto))}${Number(b.juros) || Number(b.multa) || Number(b.desconto) ? `<span class="enc" style="font-weight:400"> (${brl(b.valor)}${Number(b.juros) ? ' + juros ' + brl(b.juros) : ''}${Number(b.multa) ? ' + multa ' + brl(b.multa) : ''}${Number(b.desconto) ? ' − desconto ' + brl(b.desconto) : ''})</span>` : ''}</b>
       <div style="flex-basis:100%">${tipo === 'pagar' && semComp.has(b.id) ? `<span class="tag amarelo">Comprovante pendente</span>
         ${editaFin() ? `<label class="btn peq" style="margin-left:6px">Anexar comprovante<input type="file" hidden accept="image/*,application/pdf" multiple data-comp="${b.id}"></label>
         <button class="btn peq" data-din="${b.id}">Foi em dinheiro</button>` : ''}` : `<span class="muted">Comprovante:</span> ${b.forma_pagamento === 'Dinheiro' && compBaixa[b.id].includes('Sem anexos') ? '<span class="muted">pagamento em dinheiro (sem comprovante)</span>' : compBaixa[b.id]}`}</div></li>`).join('')}</ul></div>` : ''}`;
