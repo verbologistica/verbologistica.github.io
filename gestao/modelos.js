@@ -59,13 +59,13 @@ function preencherModelo(html, ctx, respostas = {}) {
 const CSS_DOC = `@page{size:A4;margin:0}*{box-sizing:border-box}html,body{margin:0}
   body{font-family:Helvetica,Arial,sans-serif;color:#252e35;font-size:12.5px;line-height:1.55;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   h1,h2,h3{color:#252e35;line-height:1.25}h2{font-size:16px}table{border-collapse:collapse}td,th{vertical-align:top}
-  .tb-cab{position:fixed;top:0;left:0;width:210mm;height:30.7mm;background:url(%BASE%doc-cabecalho.jpg) 0 0/100% 100% no-repeat}
-  .tb-cab img{position:absolute;left:20mm;top:8.5mm;width:53.9mm}
+  .tb-cab{position:fixed;top:0;left:0;width:210mm;height:30.7mm}
+  .tb-cab .fx{position:absolute;left:0;top:0;width:210mm;height:30.7mm}.tb-cab .lg{position:absolute;left:20mm;top:7.95mm;width:53.9mm;height:14.8mm}
   .tb-marca{position:fixed;left:96.3mm;top:186mm;width:137.6mm;opacity:1;z-index:-1}
   .tb-rod{position:fixed;left:0;bottom:0;width:210mm;height:22mm}
   .tb-rod .t{position:absolute;left:20mm;right:20mm;top:3mm;font-size:7.5pt;color:#6b7378;line-height:1.55}
   .tb-rod .t b{color:#252e35;letter-spacing:.9mm;margin-right:2mm}.tb-rod .t i{font-style:normal;color:#dda936;margin:0 2mm}
-  .tb-rod .barra{position:absolute;left:0;bottom:0;width:210mm;height:5.8mm;background:url(%BASE%doc-rodape.jpg) 0 0/100% 100% no-repeat}
+  .tb-rod .barra{position:absolute;left:0;bottom:0;width:210mm;height:5.8mm}
   .tb-pag{width:100%}.tb-pag>thead td{height:44mm}.tb-pag>tfoot td{height:30mm}.tb-pag>tbody>tr>td{padding:0 20mm}
   .tb-of{text-align:right;font-size:7.5pt;font-weight:bold;color:#dda936;letter-spacing:1.5mm;margin:-6mm 0 4mm}.tb-of span{color:#252e35;letter-spacing:0;margin-left:2mm}
   .tb-cod{font-size:8pt;color:#6b7378;margin-top:18px}
@@ -76,8 +76,8 @@ function paginaDocumento(titulo, corpoHtml, ctx, codigo) {
   const nome = esc((e.nome_fantasia || e.razao_social || 'Verbo Logística').toUpperCase());
   const l1 = [e.cnpj && 'CNPJ ' + e.cnpj, e.endereco].filter(Boolean).map(esc), l2 = [e.site, e.email, e.telefone].filter(Boolean).map(esc);
   return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>${esc(titulo)}</title><style>${CSS_DOC.replaceAll('%BASE%', base)}</style></head><body>
-    <div class="tb-cab"><img src="${base}doc-logo.png" alt=""></div><img class="tb-marca" src="${base}doc-marca.png" alt="">
-    <div class="tb-rod"><div class="t"><b>${nome}</b>${l1.map(t => `<i>|</i>${t}`).join('')}<br>${l2.join('<i>|</i>')}</div><div class="barra"></div></div>
+    <div class="tb-cab"><img class="fx" src="${base}doc-cabecalho.jpg?v=3" alt=""><img class="lg" src="${base}doc-logo.png?v=3" alt=""></div><img class="tb-marca" src="${base}doc-marca.png?v=3" alt="">
+    <div class="tb-rod"><div class="t"><b>${nome}</b>${l1.map(t => `<i>|</i>${t}`).join('')}<br>${l2.join('<i>|</i>')}</div><img class="barra" src="${base}doc-rodape.jpg?v=3" alt=""></div>
     <table class="tb-pag"><thead><tr><td></td></tr></thead><tfoot><tr><td></td></tr></tfoot><tbody><tr><td>
       <div class="tb-of">CORRESPONDÊNCIA OFICIAL<span>${esc(ctx.responsavel?.cargo || '')}</span></div>
       ${corpoHtml}${codigo ? `<div class="tb-cod">${esc(codigo)}</div>` : ''}</td></tr></tbody></table></body></html>`;

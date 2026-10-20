@@ -78,99 +78,108 @@ function coletarRelatorio(tela, table) {
 }
 
 // ---------- PDF ----------
+// Papel timbrado da Verbo (mesma moldura dos documentos), em paisagem, gerado direto em PDF:
+// imagens em alta resolução, cabeçalho e rodapé em todas as páginas e "Página x de y".
 async function exportarPDF(table, titulo, subtitulo) {
   const tela = table.closest('#tela') || document;
   const R = coletarRelatorio(tela, table);
-  const ctx = await contextoDocumento(null).catch(() => ({ empresa: {} }));
-  const emp = ctx.empresa || {};
-  const logo = location.origin + location.pathname.replace(/[^/]*$/, '') + 'logo.png';
+  // CNPJ que emite (dados do cadastro da empresa); com mais de um CNPJ, pergunta
+  const es = await empresasL().catch(() => []);
+  let E = es[0] || {};
+  if (es.length > 1) {
+    const r = await modal(`<form><h2>Relatório em PDF</h2><div class="form"><label class="campo largo">CNPJ que emite<select name="empresa">${es.map(e => `<option value="${e.id}">${esc(rotEmpresa(e))}</option>`).join('')}</select></label></div>
+      <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Gerar PDF</button></div></form>`);
+    if (!r) return; E = es.find(e => e.id === r.empresa) || E;
+  }
+  await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+  await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js');
+  const IMG = await imagensTimbrado(true);
+  const doc = new window.jspdf.jsPDF({ unit: 'mm', format: 'a4', orientation: 'landscape' });
+  const W = 297, ML = 20, MR = W - 20, TOPO = 40, BASE = 182;
+  const hex = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+  const C = { texto: [37, 46, 53], cinza: [107, 115, 120], ouro: hex(REL_COR.ouro), verde: hex(REL_COR.verde), escuro: hex(REL_COR.escuro), claro: hex(REL_COR.claro), borda: hex(REL_COR.borda), zebra: hex(REL_COR.zebra) };
+  const desenhadas = new Set();
+  const moldura = () => { const pg = doc.getCurrentPageInfo().pageNumber; if (desenhadas.has(pg)) return; desenhadas.add(pg); molduraTimbrado(doc, E, IMG); };
   const agora = dataHoraBR(new Date().toISOString());
   const nomeRel = R.secao ? `${R.titulo} — ${R.secao}` : R.titulo;
   const totalGeral = R.kV >= 0 ? R.totais[R.kV] : null;
+
+  moldura();
+  // faixa de identificação (como "Correspondência oficial" do modelo)
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(...C.ouro);
+  const rot = 'RELATÓRIO GERENCIAL'; let px = MR - [...rot].reduce((w, ch) => w + doc.getTextWidth(ch) + 1.5, 0) + 1.5;
+  for (const ch of rot) { doc.text(ch, px, 36); px += doc.getTextWidth(ch) + 1.5; }
+  let y = 44;
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(15); doc.setTextColor(...C.texto);
+  const tl = doc.splitTextToSize(nomeRel, 180); doc.text(tl, ML, y); y += tl.length * 6;
+  const sub = R.subtitulo || subtitulo;
+  if (sub) { doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(...C.cinza); const sl = doc.splitTextToSize(sub, 180); doc.text(sl, ML, y); y += sl.length * 4.2; }
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(...C.cinza);
+  doc.text(`Gerado em ${agora}`, MR, 44, { align: 'right' }); doc.text(`por ${estado.usuario?.nome || ''}`, MR, 48, { align: 'right' });
+  y += 1;
+  const fl = doc.splitTextToSize(R.filtros.length ? 'Filtros aplicados: ' + R.filtros.join(' · ') : 'Sem filtros — todos os registros da tela', MR - ML);
+  doc.setFontSize(8); doc.text(fl, ML, y); y += fl.length * 3.8 + 3;
+  doc.setDrawColor(...C.borda); doc.setLineWidth(0.2); doc.line(ML, y - 1.5, MR, y - 1.5); y += 2;
+
+  // indicadores
+  const kpis = R.kpis.length ? R.kpis.map(k => ({ v: k.valor, r: k.rotulo, alerta: k.alerta }))
+    : [{ v: String(R.linhas.length), r: 'registro(s)' }, ...(totalGeral != null ? [{ v: brl(totalGeral), r: 'total · ' + R.nomeValor.toLowerCase(), destaque: true }] : [])];
+  if (kpis.length) {
+    const porLinha = Math.min(6, kpis.length), gap = 4, kw = (MR - ML - gap * (porLinha - 1)) / porLinha, kh = 15;
+    kpis.forEach((k, i) => {
+      const col = i % porLinha; if (i && !col) y += kh + gap;
+      const x = ML + col * (kw + gap);
+      doc.setFillColor(...(k.destaque ? C.escuro : [255, 255, 255])); doc.setDrawColor(...C.borda); doc.setLineWidth(0.2); doc.roundedRect(x, y, kw, kh, 1.5, 1.5, 'FD');
+      doc.setFillColor(...(k.alerta ? [180, 35, 24] : k.destaque ? C.ouro : C.verde)); doc.rect(x, y, kw, 0.9, 'F');
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(...(k.destaque ? [255, 255, 255] : k.alerta ? [180, 35, 24] : C.escuro));
+      doc.text(doc.splitTextToSize(k.v, kw - 6)[0], x + 3, y + 7);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(...(k.destaque ? [201, 213, 209] : C.cinza));
+      doc.text(doc.splitTextToSize(k.r.toUpperCase(), kw - 6)[0], x + 3, y + 11.8);
+    });
+    y += kh + 6;
+  }
+
+  // resumos por agrupamento (até 3, lado a lado, com barras)
+  if (R.resumos.length && y < BASE - 45) {
+    const nR = R.resumos.length, gap = 5, rw = (MR - ML - gap * (nR - 1)) / nR; let fim = y;
+    R.resumos.forEach((rs, k) => {
+      const max = Math.max(...rs.itens.map(i => R.kV >= 0 ? Math.abs(i.v) : i.n), 1);
+      const tot = rs.itens.reduce((s, i) => s + (R.kV >= 0 ? i.v : i.n), 0) || 1;
+      const cabe = Math.max(3, Math.floor((BASE - y - 10) / 4.6));
+      const itens = rs.itens.length > cabe ? [...rs.itens.slice(0, cabe - 1), rs.itens.slice(cabe - 1).reduce((a, i) => ({ g: 'Outros', n: a.n + i.n, v: a.v + i.v }), { g: 'Outros', n: 0, v: 0 })] : rs.itens;
+      const body = itens.map(i => { const b = R.kV >= 0 ? i.v : i.n; return [i.g, Math.min(100, Math.max(2, Math.abs(b) / max * 100)), String(i.n), ...(R.kV >= 0 ? [brl(i.v)] : []), (b / tot * 100).toFixed(1).replace('.', ',') + '%']; });
+      doc.autoTable({ startY: y, margin: { left: ML + k * (rw + gap), right: W - (ML + k * (rw + gap) + rw), top: TOPO, bottom: 210 - BASE }, tableWidth: rw, pageBreak: 'avoid',
+        head: [[{ content: 'Por ' + rs.nome.toLowerCase(), colSpan: R.kV >= 0 ? 5 : 4 }]], body, theme: 'plain',
+        styles: { font: 'helvetica', fontSize: 7.5, textColor: C.texto, cellPadding: { top: 1.1, bottom: 1.1, left: 1.5, right: 1.5 }, overflow: 'ellipsize' },
+        headStyles: { textColor: C.verde, fontStyle: 'bold', fontSize: 7.5, lineWidth: { bottom: 0.3 }, lineColor: C.verde },
+        columnStyles: { 0: { cellWidth: rw * .34 }, 1: { cellWidth: rw * .22 }, 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right', textColor: C.cinza } },
+        didParseCell: d => { if (d.section === 'body' && d.column.index === 1) d.cell.text = ['']; },
+        didDrawCell: d => { if (d.section === 'body' && d.column.index === 1) { const pct = Number(d.row.raw[1]) / 100;
+          doc.setFillColor(...C.verde); doc.roundedRect(d.cell.x + 1, d.cell.y + d.cell.height / 2 - 1.1, Math.max(0.8, (d.cell.width - 2) * pct), 2.2, 1, 1, 'F'); } },
+        willDrawPage: moldura });
+      fim = Math.max(fim, doc.lastAutoTable.finalY);
+    });
+    y = fim + 7;
+  }
+
+  // detalhamento
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(...C.verde);
+  if (y > BASE - 20) { doc.addPage(); moldura(); y = TOPO + 4; }
+  doc.text(`DETALHAMENTO · ${R.linhas.length} REGISTRO(S)`, ML, y); y += 2.5;
+  const colSt = {}; R.colunas.forEach((c, k) => { colSt[k] = c.tipo === 'moeda' ? { halign: 'right', cellWidth: 'wrap' } : c.tipo === 'data' ? { cellWidth: 'wrap' } : {}; });
   const temTotais = R.totais.some(t => t != null);
-
-  const kpisHtml = [
-    ...R.kpis.map(k => `<div class="kpi ${k.alerta ? 'alerta' : ''}"><div class="v">${esc(k.valor)}</div><div class="r">${esc(k.rotulo)}</div></div>`),
-    ...(R.kpis.length ? [] : [`<div class="kpi"><div class="v">${R.linhas.length}</div><div class="r">registro(s)</div></div>`,
-        totalGeral != null ? `<div class="kpi destaque"><div class="v">${brl(totalGeral)}</div><div class="r">total · ${esc(R.nomeValor.toLowerCase())}</div></div>` : ''])
-  ].join('');
-
-  const resumosHtml = R.resumos.map(rs => {
-    const max = Math.max(...rs.itens.map(i => R.kV >= 0 ? Math.abs(i.v) : i.n), 1);
-    const tot = rs.itens.reduce((s, i) => s + (R.kV >= 0 ? i.v : i.n), 0) || 1;
-    return `<div class="resumo"><h3>Por ${esc(rs.nome.toLowerCase())}</h3><table><tbody>${rs.itens.map(i => {
-      const base = R.kV >= 0 ? i.v : i.n;
-      return `<tr><td class="g">${esc(i.g)}</td><td class="barra"><span style="width:${Math.max(2, Math.abs(base) / max * 100).toFixed(1)}%"></span></td>
-        <td class="n">${i.n}</td>${R.kV >= 0 ? `<td class="m">${brl(i.v)}</td>` : ''}<td class="p">${(base / tot * 100).toFixed(1).replace('.', ',')}%</td></tr>`; }).join('')}
-      </tbody></table></div>`;
-  }).join('');
-
-  const tabelaHtml = `<table class="dados"><thead><tr>${R.colunas.map(c => `<th class="${c.tipo}">${esc(c.nome)}</th>`).join('')}</tr></thead>
-    <tbody>${R.linhas.map(l => `<tr>${l.map((v, k) => `<td class="${R.colunas[k].tipo}">${esc(v)}</td>`).join('')}</tr>`).join('')}</tbody>
-    ${temTotais ? `<tfoot><tr>${R.colunas.map((c, k) => `<td class="${c.tipo}">${k === 0 ? `Total · ${R.linhas.length} registro(s)` : R.totais[k] != null ? brl(R.totais[k]) : ''}</td>`).join('')}</tr></tfoot>` : ''}</table>`;
-
-  const css = `
-    @page { size: A4 landscape; margin: 12mm 12mm 16mm;
-      @bottom-left { content: "${esc(emp.nome_fantasia || 'Verbo Logística').replace(/"/g, '')} · ${esc(nomeRel).replace(/"/g, '')}"; font: 8px Arial; color: #7a8892; }
-      @bottom-right { content: "Página " counter(page) " de " counter(pages); font: 8px Arial; color: #7a8892; } }
-    * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    body { font-family: "Segoe UI", Arial, Helvetica, sans-serif; color: #0E1E2B; font-size: 10.5px; margin: 0; }
-    .cab { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0 0 10px; border-bottom: 3px solid ${REL_COR.verde}; position: relative; }
-    .cab:after { content: ""; position: absolute; left: 0; bottom: -3px; width: 90px; height: 3px; background: ${REL_COR.ouro}; }
-    .cab img { height: 42px; }
-    .cab .emp { text-align: right; font-size: 9.5px; color: ${REL_COR.cinza}; line-height: 1.45; }
-    .cab .emp b { color: #0E1E2B; font-size: 11px; }
-    .tit { display: flex; justify-content: space-between; align-items: flex-end; margin: 16px 0 10px; gap: 20px; }
-    .tit .eyebrow { font-size: 9px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: ${REL_COR.ouro}; }
-    .tit h1 { font-size: 21px; margin: 2px 0 0; color: ${REL_COR.escuro}; letter-spacing: -.01em; }
-    .tit .sub { color: ${REL_COR.cinza}; margin-top: 3px; }
-    .tit .meta { text-align: right; font-size: 9.5px; color: ${REL_COR.cinza}; white-space: nowrap; }
-    .tit .meta b { display: block; color: #0E1E2B; font-size: 11px; }
-    .chips { margin: 0 0 12px; display: flex; flex-wrap: wrap; gap: 5px; align-items: center; font-size: 9.5px; color: ${REL_COR.cinza}; }
-    .chips span.c { background: ${REL_COR.claro}; color: ${REL_COR.verde}; border-radius: 99px; padding: 2px 9px; font-weight: 600; }
-    .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin-bottom: 14px; }
-    .kpi { border: 1px solid ${REL_COR.borda}; border-radius: 8px; padding: 9px 11px; background: #fff; border-top: 3px solid ${REL_COR.verde}; break-inside: avoid; }
-    .kpi .v { font-size: 16px; font-weight: 700; color: ${REL_COR.escuro}; font-variant-numeric: tabular-nums; }
-    .kpi .r { font-size: 9px; color: ${REL_COR.cinza}; text-transform: uppercase; letter-spacing: .04em; margin-top: 2px; }
-    .kpi.alerta { border-top-color: #b42318; } .kpi.alerta .v { color: #b42318; }
-    .kpi.destaque { background: ${REL_COR.escuro}; border-color: ${REL_COR.escuro}; border-top-color: ${REL_COR.ouro}; } .kpi.destaque .v { color: #fff; } .kpi.destaque .r { color: #c9d5d1; }
-    .resumos { display: grid; grid-template-columns: repeat(${Math.min(3, Math.max(1, R.resumos.length))}, 1fr); gap: 10px; margin-bottom: 14px; }
-    .resumo { border: 1px solid ${REL_COR.borda}; border-radius: 8px; padding: 9px 11px; break-inside: avoid; }
-    .resumo h3 { margin: 0 0 6px; font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: ${REL_COR.verde}; }
-    .resumo table { width: 100%; border-collapse: collapse; }
-    .resumo td { padding: 3px 4px; border-bottom: 1px solid #eef2f1; font-size: 9.5px; vertical-align: middle; }
-    .resumo td.g { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .resumo td.barra { width: 32%; } .resumo td.barra span { display: block; height: 7px; border-radius: 4px; background: linear-gradient(90deg, ${REL_COR.verde}, #2f9b7e); }
-    .resumo td.n, .resumo td.m, .resumo td.p { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
-    .resumo td.p { color: ${REL_COR.cinza}; }
-    h2.sec { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: ${REL_COR.verde}; margin: 4px 0 6px; }
-    table.dados { width: 100%; border-collapse: collapse; font-size: 9.5px; }
-    table.dados thead { display: table-header-group; }
-    table.dados th { background: ${REL_COR.escuro}; color: #fff; text-align: left; padding: 6px 7px; font-size: 8.5px; text-transform: uppercase; letter-spacing: .05em; }
-    table.dados th:first-child { border-top-left-radius: 6px; } table.dados th:last-child { border-top-right-radius: 6px; }
-    table.dados td { padding: 5px 7px; border-bottom: 1px solid #e6ecea; vertical-align: top; }
-    table.dados tbody tr:nth-child(even) td { background: ${REL_COR.zebra}; }
-    table.dados tr { break-inside: avoid; }
-    table.dados .moeda { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
-    table.dados .data { white-space: nowrap; }
-    table.dados tfoot td { background: ${REL_COR.claro}; font-weight: 700; color: ${REL_COR.escuro}; border-top: 2px solid ${REL_COR.verde}; border-bottom: 0; }
-    .vazio { padding: 30px; text-align: center; color: ${REL_COR.cinza}; border: 1px dashed ${REL_COR.borda}; border-radius: 8px; }
-    .rod { margin-top: 14px; font-size: 8.5px; color: #8a979f; display: flex; justify-content: space-between; border-top: 1px solid #e6ecea; padding-top: 6px; }
-    @media screen { body { margin: 24px auto; max-width: 1180px; padding: 0 16px; } }`;
-  const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>${esc(nomeRel)} · ${dataBR(hojeISO())}</title><style>${css}</style></head><body>
-    <div class="cab"><img src="${logo}" alt="">
-      <div class="emp"><b>${esc(emp.razao_social || emp.nome_fantasia || 'Verbo Logística')}</b>${emp.cnpj ? '<br>CNPJ ' + esc(emp.cnpj) : ''}${emp.cidade ? '<br>' + esc([emp.cidade, emp.uf].filter(Boolean).join('/')) : ''}</div></div>
-    <div class="tit"><div><div class="eyebrow">Relatório gerencial</div><h1>${esc(nomeRel)}</h1>${R.subtitulo || subtitulo ? `<div class="sub">${esc(R.subtitulo || subtitulo)}</div>` : ''}</div>
-      <div class="meta">Gerado em<b>${agora}</b>por ${esc(estado.usuario.nome)}</div></div>
-    <div class="chips">${R.filtros.length ? 'Filtros aplicados: ' + R.filtros.map(f => `<span class="c">${esc(f)}</span>`).join('') : '<span>Sem filtros — todos os registros da tela</span>'}</div>
-    ${kpisHtml ? `<div class="kpis">${kpisHtml}</div>` : ''}
-    ${resumosHtml ? `<div class="resumos">${resumosHtml}</div>` : ''}
-    <h2 class="sec">Detalhamento · ${R.linhas.length} registro(s)</h2>
-    ${R.linhas.length ? tabelaHtml : '<div class="vazio">Nenhum registro com os filtros aplicados.</div>'}
-    <div class="rod"><span>Verbo Gestão · documento gerado pelo sistema</span><span>${agora} · ${esc(estado.usuario.nome)}</span></div>
-    <script>window.onload=()=>setTimeout(()=>window.print(),400)<\/script></body></html>`;
-  const w = window.open('', '_blank'); if (!w) return aviso('Libere as janelas pop-up para gerar o PDF.', true);
-  w.document.write(html); w.document.close();
+  doc.autoTable({ startY: y, margin: { left: ML, right: W - MR, top: TOPO, bottom: 210 - BASE },
+    head: [R.colunas.map(c => c.nome.toUpperCase())], body: R.linhas.length ? R.linhas : [[{ content: 'Nenhum registro com os filtros aplicados.', colSpan: R.colunas.length, styles: { halign: 'center', textColor: C.cinza } }]],
+    foot: temTotais && R.linhas.length ? [R.colunas.map((c, k) => k === 0 ? `Total · ${R.linhas.length} registro(s)` : R.totais[k] != null ? brl(R.totais[k]) : '')] : undefined,
+    showFoot: 'lastPage', theme: 'grid',
+    styles: { font: 'helvetica', fontSize: 7.8, textColor: C.texto, lineColor: [230, 236, 234], lineWidth: { bottom: 0.15 }, cellPadding: 1.8, valign: 'top' },
+    headStyles: { fillColor: C.escuro, textColor: 255, fontStyle: 'bold', fontSize: 7, lineWidth: 0 },
+    footStyles: { fillColor: C.claro, textColor: C.escuro, fontStyle: 'bold', lineWidth: { top: 0.4 }, lineColor: C.verde },
+    alternateRowStyles: { fillColor: C.zebra }, columnStyles: colSt,
+    didParseCell: d => { if (d.section !== 'body' && R.colunas[d.column.index]?.tipo === 'moeda') d.cell.styles.halign = 'right'; },
+    willDrawPage: moldura });
+  paginarTimbrado(doc, true);
+  doc.save(`${nomeRel.replace(/[\\/:*?"<>|]/g, '')} ${hojeISO()}.pdf`);
 }
 
 // ---------- Excel ----------

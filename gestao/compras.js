@@ -665,15 +665,49 @@ async function anexarEm(destinos, arquivos, descricao = null) {
 const _imgTimbrado = {};
 async function imgDataUrl(nome) {
   if (_imgTimbrado[nome]) return _imgTimbrado[nome];
-  const b = await (await fetch(nome + '?v=1')).blob();
+  const b = await (await fetch(nome + '?v=3')).blob();
   return (_imgTimbrado[nome] = await new Promise(ok => { const fr = new FileReader(); fr.onload = () => ok(fr.result); fr.readAsDataURL(b); }));
+}
+// Moldura do papel timbrado (cabeçalho, logo, marca-d'água, rodapé com dados do CNPJ) — retrato ou paisagem.
+// Medidas do modelo "Ofícios, comunicados, declarações e cartas" (A4: faixa 30,7 mm; logo 53,9 × 14,8 mm a 20 mm da borda).
+async function imagensTimbrado(paisagem = false) {
+  const [cab, logo, marca, rod] = await Promise.all([paisagem ? 'doc-cabecalho-paisagem.jpg' : 'doc-cabecalho.jpg', 'doc-logo.png', 'doc-marca.png',
+    paisagem ? 'doc-rodape-paisagem.jpg' : 'doc-rodape.jpg'].map(imgDataUrl));
+  return { cab, logo, marca, rod, paisagem };
+}
+function molduraTimbrado(doc, E, I) {
+  const W = I.paisagem ? 297 : 210, H = I.paisagem ? 210 : 297, ML = 20, MR = W - 20;
+  const COR = { texto: [37, 46, 53], cinza: [107, 115, 120], ouro: [221, 169, 54] };
+  const cor = c => doc.setTextColor(...COR[c]);
+  const largEsp = (txt, esp) => [...txt].reduce((w, ch) => w + doc.getTextWidth(ch) + esp, 0) - esp;
+  doc.addImage(I.marca, 'PNG', W - 113.7, H - 111, 137.6, 82.5, 'marca', 'NONE');
+  doc.addImage(I.cab, 'JPEG', 0, 0, W, 30.7, 'cab' + W, 'NONE');
+  doc.addImage(I.logo, 'PNG', ML, 7.95, 53.9, 14.8, 'logo', 'NONE');
+  doc.addImage(I.rod, 'JPEG', 0, H - 5.7, W, 5.8, 'rod' + W, 'NONE');
+  const nomeEmp = (E.nome_fantasia || E.razao_social || 'Verbo Logística').toUpperCase();
+  const l1 = [E.cnpj ? 'CNPJ ' + fmtCNPJ(E.cnpj) : '', empresaEndereco(E)].filter(Boolean);
+  const l2 = [E.site, E.email, E.telefone ? fmtTel(E.telefone) : ''].filter(Boolean);
+  const y1 = H - 17.4, y2 = H - 13.7;
+  let fs = 7.5; const larg = () => { doc.setFontSize(fs); doc.setFont('helvetica', 'normal'); return [l1, l2].map(l => l.reduce((w, t) => w + doc.getTextWidth(t) + 5.5, 0)); };
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(fs);
+  while (fs > 5.5 && Math.max(larg()[0] + largEsp(nomeEmp, 0.9) + 3, larg()[1] + 22) > MR - ML) fs -= 0.5;
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(fs); cor('texto');
+  let x = ML; for (const ch of nomeEmp) { doc.text(ch, x, y1); x += doc.getTextWidth(ch) + 0.9; } x += 1.6;
+  const parte = (t, y) => { doc.setFont('helvetica', 'normal'); doc.setFontSize(fs); cor('ouro'); doc.text('|', x, y); x += 3; cor('cinza'); doc.text(t, x, y); x += doc.getTextWidth(t) + 2.5; };
+  l1.forEach(t => parte(t, y1));
+  x = ML; doc.setFont('helvetica', 'normal'); doc.setFontSize(fs); cor('cinza');
+  l2.forEach((t, i) => { if (i === 0) { doc.text(t, x, y2); x += doc.getTextWidth(t) + 2.5; } else parte(t, y2); });
+}
+function paginarTimbrado(doc, paisagem = false) {
+  const W = paisagem ? 297 : 210, H = paisagem ? 210 : 297, n = doc.getNumberOfPages();
+  for (let i = 1; i <= n; i++) { doc.setPage(i); doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(37, 46, 53); doc.text(`Página ${i} de ${n}`, W - 20, H - 13.7, { align: 'right' }); }
 }
 const MESES_DOC = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 async function pdfTimbrado({ setor, numero, destinatario = [], assunto, corpo, assinatura = [], arquivo, empresa = null }) {
   const E = empresa || (await empresasL().catch(() => []))[0] || {};
   await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
   await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js');
-  const [cab, logo, marca, rod] = await Promise.all(['doc-cabecalho.jpg', 'doc-logo.png', 'doc-marca.png', 'doc-rodape.jpg'].map(imgDataUrl));
+  const IMG = await imagensTimbrado(false);
   const doc = new window.jspdf.jsPDF({ unit: 'mm', format: 'a4' });
   const W = 210, ML = 20, MR = 190, TOPO = 44, BASE = 268;
   const COR = { texto: [37, 46, 53], cinza: [107, 115, 120], ouro: [221, 169, 54], verde: [2, 101, 77], linha: [214, 220, 224] };
@@ -682,25 +716,7 @@ async function pdfTimbrado({ setor, numero, destinatario = [], assunto, corpo, a
   const largEsp = (txt, esp) => [...txt].reduce((w, ch) => w + doc.getTextWidth(ch) + esp, 0) - esp;
   const espacado = (txt, x, y, opts = {}) => { const esp = opts.esp ?? 1.1; let px = opts.align === 'right' ? x - largEsp(txt, esp) : x;
     for (const ch of txt) { doc.text(ch, px, y); px += doc.getTextWidth(ch) + esp; } return largEsp(txt, esp); };
-  const moldura = () => {
-    doc.addImage(marca, 'PNG', 96.3, 186, 137.6, 82.5);
-    doc.addImage(cab, 'JPEG', 0, 0, W, 30.7);
-    doc.addImage(logo, 'PNG', ML, 8.5, 53.9, 14.8);
-    doc.addImage(rod, 'JPEG', 0, 291.3, W, 5.8);
-    // rodapé institucional (dados do CNPJ escolhido)
-    const nomeEmp = (E.nome_fantasia || E.razao_social || 'Verbo Logística').toUpperCase();
-    const l1 = [E.cnpj ? 'CNPJ ' + fmtCNPJ(E.cnpj) : '', empresaEndereco(E)].filter(Boolean);
-    const l2 = [E.site, E.email, E.telefone ? fmtTel(E.telefone) : ''].filter(Boolean);
-    let fs = 7.5; const larg = () => { doc.setFontSize(fs); doc.setFont('helvetica', 'normal'); return [l1, l2].map(l => l.reduce((w, t) => w + doc.getTextWidth(t) + 5.5, 0)); };
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(fs);
-    while (fs > 5.5 && Math.max(larg()[0] + largEsp(nomeEmp, 0.9) + 3, larg()[1] + 22) > MR - ML) fs -= 0.5;
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(fs); cor('texto');
-    let x = ML + espacado(nomeEmp, ML, 279.6, { esp: 0.9 }) + 2.5;
-    const parte = (t, y) => { doc.setFont('helvetica', 'normal'); doc.setFontSize(fs); cor('ouro'); doc.text('|', x, y); x += 3; cor('cinza'); doc.text(t, x, y); x += doc.getTextWidth(t) + 2.5; };
-    l1.forEach(t => parte(t, 279.6));
-    x = ML; doc.setFont('helvetica', 'normal'); doc.setFontSize(fs); cor('cinza');
-    l2.forEach((t, i) => { if (i === 0) { doc.text(t, x, 283.3); x += doc.getTextWidth(t) + 2.5; } else parte(t, 283.3); });
-  };
+  const moldura = () => molduraTimbrado(doc, E, IMG);
   // ---- 1ª página: cabeçalho da correspondência
   moldura();
   doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); cor('ouro');
@@ -744,8 +760,7 @@ async function pdfTimbrado({ setor, numero, destinatario = [], assunto, corpo, a
   doc.setDrawColor(...COR.texto); doc.setLineWidth(0.3); doc.line(ML, y, ML + 68, y); y += 5;
   assinatura.forEach(([t, estilo], i) => { doc.setFont('helvetica', estilo === 'b' ? 'bold' : 'normal'); doc.setFontSize(estilo === 'b' ? 11 : 10); cor(estilo === 'b' ? 'texto' : 'cinza'); doc.text(t, ML, y); y += 5.2; });
   // ---- "Página x de y"
-  const n = doc.getNumberOfPages();
-  for (let i = 1; i <= n; i++) { doc.setPage(i); doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); cor('texto'); doc.text(`Página ${i} de ${n}`, MR, 283.3, { align: 'right' }); }
+  paginarTimbrado(doc, false);
   doc.save(arquivo);
 }
 
