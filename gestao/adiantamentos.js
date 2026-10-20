@@ -281,6 +281,8 @@ rota('/financeiro/fundo', async tela => {
   const comSaldo = !ate;
   let acum = saldo - movs.reduce((x, m) => x + Number(m.valor), 0);
   const ORIGEM = { transferencia: 'Transferência', reposicao: 'Reposição', despesa_fundo: 'Despesa', adiantamento: 'Adiantamento entregue', devolucao: 'Devolução', ajuste: 'Ajuste', baixa: 'Pagamento' };
+  // despesa devolvida ao fundo (cancelada ou passou a ser reembolso/adiantamento) aparece como estorno, não como despesa
+  const tipoMov = m => m.origem === 'despesa_fundo' && Number(m.valor) > 0 ? 'Estorno de despesa' : m.origem === 'baixa' && Number(m.valor) > 0 ? 'Estorno de pagamento' : (ORIGEM[m.origem] || m.origem);
   tela.innerHTML = `
     <div class="topo"><div><h1>Fundo Fixo</h1><p class="sub">Responsável: ${esc(fundo.responsavel_nome || '—')}${fundo.chave_pix ? ' · Pix ' + esc(fundo.chave_pix) : ''}</p></div>
       <div class="acoes">${editaFin() ? `<a class="btn prim" href="#/reembolsos/novo?custeio=fundo_fixo">+ Despesa paga pelo fundo</a>
@@ -297,8 +299,8 @@ rota('/financeiro/fundo', async tela => {
     <div class="cartao"><div class="topo" style="margin:0 0 8px"><h2 style="margin:0">Extrato do fundo</h2>
       <form class="filtros" id="filtros" style="margin:0"><input type="date" name="de" value="${de}" aria-label="De"><input type="date" name="ate" value="${ate}" aria-label="Até"><button class="btn peq">Filtrar</button></form></div>
       ${movs.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Data</th><th>Tipo</th><th>Pessoa</th><th>Descrição</th><th class="num">Entrada</th><th class="num">Saída</th>${comSaldo ? '<th class="num">Saldo</th>' : ''}</tr></thead><tbody>
-      ${movs.map(m => `<tr data-mov="1"${fAttr('tipo', ORIGEM[m.origem] || m.origem)}${fAttr('pessoa', pessoaMov(m) || '—')}${fAttr('data', m.data)}${fAttr('valor', m.valor)}${fAttr('busca', [m.descricao, pessoaMov(m)].filter(Boolean).join(' '))} ${m.entidade === 'reembolso' ? `class="clicavel" onclick="location.hash='#/reembolsos/ver/${m.entidade_id}'"` : m.entidade === 'adiantamento' ? `class="clicavel" onclick="location.hash='#/adiantamentos/ver/${m.entidade_id}'"` : ''}>
-        <td data-r="Data" class="nowrap">${dataBR(m.data)}</td><td data-r="Tipo">${esc(ORIGEM[m.origem] || m.origem)}</td><td data-r="Pessoa">${esc(pessoaMov(m) || '—')}</td><td data-r="Descrição">${esc(m.descricao || '')}</td>
+      ${movs.map(m => `<tr data-mov="1"${fAttr('tipo', tipoMov(m))}${fAttr('pessoa', pessoaMov(m) || '—')}${fAttr('data', m.data)}${fAttr('valor', m.valor)}${fAttr('busca', [m.descricao, pessoaMov(m)].filter(Boolean).join(' '))} ${m.entidade === 'reembolso' ? `class="clicavel" onclick="location.hash='#/reembolsos/ver/${m.entidade_id}'"` : m.entidade === 'adiantamento' ? `class="clicavel" onclick="location.hash='#/adiantamentos/ver/${m.entidade_id}'"` : ''}>
+        <td data-r="Data" class="nowrap">${dataBR(m.data)}</td><td data-r="Tipo">${esc(tipoMov(m))}</td><td data-r="Pessoa">${esc(pessoaMov(m) || '—')}</td><td data-r="Descrição">${esc(m.descricao || '')}</td>
         <td data-r="Entrada" class="num">${m.valor > 0 ? brl(m.valor) : ''}</td><td data-r="Saída" class="num">${m.valor < 0 ? brl(-m.valor) : ''}</td>${comSaldo ? `<td data-r="Saldo" class="num"><b>${brl(acum += Number(m.valor))}</b></td>` : ''}</tr>`).join('')}
       </tbody><tfoot><tr><td colspan="4">Movimento do período</td><td class="num">${brl(movs.filter(m => m.valor > 0).reduce((s, m) => s + Number(m.valor), 0))}</td><td class="num">${brl(-movs.filter(m => m.valor < 0).reduce((s, m) => s + Number(m.valor), 0))}</td>${comSaldo ? `<td class="num">${brl(saldo)}</td>` : ''}</tr></tfoot></table></div>`
       : '<div class="vazio">Sem movimentos no período.</div>'}</div>`;
