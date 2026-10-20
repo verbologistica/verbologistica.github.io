@@ -96,7 +96,7 @@ async function listaTitulos(tela, tipo) {
       <button class="btn">Filtrar</button></form>
     ${podeSel && ps.length ? `<div class="sel-barra" id="sel-barra" hidden><span id="sel-txt"></span>${st === 'abertas' ? '<button class="btn peq" id="virar-prev">Transformar em previsão</button>' : '<button class="btn ok peq" id="conf-prev">Confirmar como conta (nota/boleto chegou)</button>'}</div>` : ''}
     <div class="cartao">${ps.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr>${podeSel ? '<th class="sel-cel"><input type="checkbox" id="sel-todos" aria-label="Selecionar todos"></th>' : ''}<th>Vencimento</th><th>${T.pessoa}</th><th>Descrição</th><th>Título</th><th class="num">Valor</th><th class="num">${colValor}</th><th>Situação</th></tr></thead><tbody>
-      ${ps.map(p => `<tr class="clicavel" data-t="${p.titulo_id}"${fAttr('pessoa', nome(p))}${fAttr('tipo', ORIG_T[p.origem] || p.origem)}${fAttr('conta', nomeConta(p.conta_id))}${fAttr('cc', nomeCC(p.centro_custo_id))}${fAttr('sit', _txt(tagParcela(p, tipo)))}${fAttr('data', p.vencimento)}${fAttr('valor', pagas ? p.total_pago : p.saldo)}${fAttr('busca', [nome(p), pesBusca(p), p.descricao, p.titulo_numero, p.observacoes].filter(Boolean).join(' '))}>${podeSel ? `<td class="sel-cel" data-r=""><input type="checkbox" class="sel-t" value="${p.titulo_id}" aria-label="Selecionar"></td>` : ''}<td data-r="Vencimento" class="nowrap">${dataBR(p.vencimento)}</td><td data-r="${T.pessoa}">${esc(nome(p))}</td>
+      ${ps.map(p => `<tr class="clicavel" data-t="${p.titulo_id}"${fAttr('pessoa', nome(p))}${fAttr('tipo', ORIG_T[p.origem] || p.origem)}${fAttr('conta', nomeConta(p.conta_id))}${fAttr('cc', nomeCC(p.centro_custo_id))}${fAttr('sit', _txt(tagParcela(p, tipo)))}${fAttr('data', p.vencimento)}${fAttr('valor', pagas ? p.total_pago : p.saldo)}${fAttr('busca', [nome(p), pesBusca(p), p.descricao, p.titulo_numero, p.observacoes].filter(Boolean).join(' '))}>${podeSel ? `<td class="sel-cel" data-r=""><input type="checkbox" class="sel-t" value="${p.titulo_id}" aria-label="Selecionar"></td>` : ''}<td data-r="Vencimento" class="nowrap">${dataBR(p.vencimento)}${Number(p.renegociacoes) ? `<div class="enc" title="Vencimento renegociado">renegociada · orig. ${dataBR(p.vencimento_original)}</div>` : ''}</td><td data-r="${T.pessoa}">${esc(nome(p))}</td>
         <td data-r="Descrição">${temVerificar(p.observacoes) ? '<span title="A verificar">⚠️</span> ' : ''}${esc(p.descricao || '')}</td><td data-r="Título" class="nowrap">${esc(p.titulo_numero)}${p.parcela > 1 ? ` <span class="muted">${p.parcela}ª</span>` : ''}</td>
         <td data-r="Valor" class="num">${brl(p.valor)}${Number(p.encargos) ? `<div class="enc ${Number(p.encargos) > 0 ? 'mais' : 'menos'}" title="${esc(txtEncargos(p))}">${Number(p.encargos) > 0 ? '+' : '−'} ${brl(Math.abs(p.encargos))} ${Number(p.encargos) > 0 ? 'juros/multa' : 'desconto'}</div><div class="enc">${tipo === 'receber' ? 'recebido' : 'pago'} ${brl(p.total_pago)}</div>` : ''}</td><td data-r="${colValor}" class="num"><b>${brl(pagas ? p.total_pago : p.saldo)}</b></td><td data-r="Situação">${tagParcela(p, tipo)}${tipo === 'pagar' && semCompIds.has(p.id) ? ' <span class="tag amarelo">Sem comprovante</span>' : ''}</td></tr>`).join('')}
       </tbody><tfoot><tr><td colspan="${podeSel ? 6 : 5}">Total</td><td class="num">${brl(total)}</td><td></td></tr></tfoot></table></div>` : '<div class="vazio">Nenhuma conta encontrada.</div>'}</div>`;
@@ -220,6 +220,7 @@ async function verTitulo(tela, id, tipo) {
   if (t.tipo && t.tipo !== tipo) { location.hash = TIPO[t.tipo].rota + '/ver/' + id; return; }
   const ps = t.status !== 'cancelado' ? await api.listar('v_parcelas', `titulo_id=eq.${id}&order=parcela`).catch(() => api.listar('titulo_parcelas', `titulo_id=eq.${id}&order=parcela`))
     : await api.listar('titulo_parcelas', `titulo_id=eq.${id}&order=parcela`);
+  const reneg = ps.length ? await api.listar('parcela_renegociacoes', `parcela_id=${lista(ps.map(p => p.id))}&order=criado_em&select=parcela_id,vencimento_anterior,vencimento_novo,motivo,criado_em,u:usuarios(nome)`).catch(() => []) : [];
   const encT = ps.reduce((x, p) => x + Number(p.encargos || 0), 0), pagoT = ps.reduce((x, p) => x + Number(p.total_pago ?? p.valor_pago ?? 0), 0);
   const baixas = veTudo() && ps.length ? await api.listar('baixas', `parcela_id=${lista(ps.map(p => p.id))}&cancelado_em=is.null&order=data_pagamento`) : [];
   const bs = await bancos();
@@ -261,10 +262,11 @@ async function verTitulo(tela, id, tipo) {
     </div></div>
     ${reembs.length ? `<div class="cartao"><h2>Reembolsos deste pagamento</h2><table><tbody>${reembs.map(r => `<tr class="clicavel" onclick="location.hash='#/reembolsos/ver/${r.id}'"><td>${esc(r.numero)}</td><td>${dataBR(r.data_despesa)}</td><td>${esc(r.descricao || '')}</td><td class="num">${brl(r.valor)}</td></tr>`).join('')}</tbody></table></div>` : ''}
     <div class="cartao"><h2>Parcelas</h2><div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Parcela</th><th>Vencimento</th><th class="num">Valor</th><th class="num">${T.feito}</th><th>Situação</th><th></th></tr></thead><tbody>
-      ${ps.map(p => `<tr><td data-r="Parcela">${p.parcela}ª</td><td data-r="Vencimento">${dataBR(p.vencimento)}</td><td data-r="Valor" class="num">${brl(p.valor)}</td>
+      ${ps.map(p => `<tr><td data-r="Parcela">${p.parcela}ª</td><td data-r="Vencimento">${dataBR(p.vencimento)}${reneg.some(x => x.parcela_id === p.id) ? `<div class="enc">renegociada · orig. ${dataBR(reneg.find(x => x.parcela_id === p.id).vencimento_anterior)}</div>` : ''}</td><td data-r="Valor" class="num">${brl(p.valor)}</td>
         <td data-r="${T.feito}" class="num">${brl(p.total_pago ?? p.valor_pago)}${Number(p.encargos) ? `<div class="enc">${esc(txtEncargos(p))}</div>` : ''}</td><td data-r="Situação">${tagParcela({ ...p, vencida: ['aberta', 'aprovada'].includes(p.status) && p.vencimento < hojeISO() }, tipo)}</td>
-        <td>${editaFin() && ['aberta', 'aprovada'].includes(p.status) && t.status !== 'cancelado' ? `<button class="btn ok peq" data-baixa="${p.id}">${T.baixa}</button>` : ''}</td></tr>`).join('')}
-    </tbody></table></div></div>
+        <td>${editaFin() && ['aberta', 'aprovada'].includes(p.status) && t.status !== 'cancelado' ? `<button class="btn ok peq" data-baixa="${p.id}">${T.baixa}</button> <button class="btn peq" data-reneg="${p.id}" title="Acordo de novo prazo">Renegociar vencimento</button>` : ''}</td></tr>`).join('')}
+    </tbody></table></div>
+    ${reneg.length ? `<h3 style="margin:14px 0 6px">Renegociações de vencimento</h3><ul class="ac-hist">${reneg.map(x => `<li>${ps.length > 1 ? (ps.find(p => p.id === x.parcela_id)?.parcela || '') + 'ª · ' : ''}${dataBR(x.vencimento_anterior)} → <b>${dataBR(x.vencimento_novo)}</b> · ${esc(x.motivo)} <span class="muted">· ${esc(x.u?.nome || '')} em ${dataHoraBR(x.criado_em)}</span></li>`).join('')}</ul>` : ''}</div>
     ${baixas.length ? `<div class="cartao"><h2>${tipo === 'pagar' ? 'Pagamentos' : 'Recebimentos'}</h2><ul class="lista-simples">${baixas.map(b => `<li style="flex-wrap:wrap"><span>${dataBR(b.data_pagamento)} · ${esc(bs.find(x => x.id === b.conta_bancaria_id)?.nome || '')}${b.forma_pagamento ? ' · ' + esc(b.forma_pagamento) : ''}${b.observacao ? ' · ' + esc(b.observacao) : ''}</span><b>${brl(Number(b.valor) + Number(b.juros) + Number(b.multa) - Number(b.desconto))}${Number(b.juros) || Number(b.multa) || Number(b.desconto) ? `<span class="enc" style="font-weight:400"> (${brl(b.valor)}${Number(b.juros) ? ' + juros ' + brl(b.juros) : ''}${Number(b.multa) ? ' + multa ' + brl(b.multa) : ''}${Number(b.desconto) ? ' − desconto ' + brl(b.desconto) : ''})</span>` : ''}</b>
       <div style="flex-basis:100%">${tipo === 'pagar' && semComp.has(b.id) ? `<span class="tag amarelo">Comprovante pendente</span>
         ${editaFin() ? `<label class="btn peq" style="margin-left:6px">Anexar comprovante<input type="file" hidden accept="image/*,application/pdf" multiple data-comp="${b.id}"></label>
@@ -311,6 +313,21 @@ async function verTitulo(tela, id, tipo) {
       aviso('Conta cancelada.'); navegar();
     } catch (err) { falha(err); }
   });
+  $$('[data-reneg]', tela).forEach(b => b.addEventListener('click', async () => {
+    const p = ps.find(x => x.id === b.dataset.reneg); if (!p) return;
+    const r = await modal(`<form><h2>Renegociar vencimento · ${esc(t.numero)}${ps.length > 1 ? ' · ' + p.parcela + 'ª parcela' : ''}</h2><div class="form">
+      <div><div class="muted">Vencimento atual</div><b>${dataBR(p.vencimento)}</b>${p.vencimento < hojeISO() ? ' <span class="tag vermelho">vencida</span>' : ''}</div>
+      <div><div class="muted">Valor em aberto</div><b>${brl(Number(p.valor) - Number(p.valor_pago || 0))}</b></div>
+      <label class="campo">Novo vencimento *<input type="date" name="venc" required min="${hojeISO()}"></label>
+      <label class="campo largo">Acordo / motivo *<textarea name="motivo" rows="2" required placeholder="Ex.: acordado com o fornecedor por telefone em 20/10, pagamento em 30/10 sem juros"></textarea></label>
+      <label class="campo largo">Comprovante do acordo (e-mail, mensagem…)<input type="file" name="arquivos" multiple></label></div>
+      <p class="muted">O vencimento original fica registrado no histórico. Se o acordo tiver juros ou multa, informe no momento do pagamento.</p>
+      <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Renegociar</button></div></form>`);
+    if (!r) return;
+    try { await api.rpc('renegociar_parcela', { p_parcela: p.id, p_vencimento: r.venc, p_motivo: r.motivo });
+      if (r.arquivos?.length) await anexar('titulo', id, r.arquivos, 'Acordo de novo vencimento');
+      aviso(`Vencimento renegociado para ${dataBR(r.venc)}.`); navegar(); } catch (err) { falha(err); }
+  }));
   $$('[data-baixa]', tela).forEach(b => b.addEventListener('click', async () => {
     if (await modalBaixa(ps.find(x => x.id === b.dataset.baixa), tipo)) navegar();
   }));
