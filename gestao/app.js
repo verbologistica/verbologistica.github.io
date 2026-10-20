@@ -252,16 +252,30 @@ async function anexar(entidade, id, arquivos, descricao = null) {
   }
 }
 
+// link (Drive, SharePoint, site…) guardado como anexo
+async function anexarLinks(entidade, id, texto, descricao = null) {
+  const urls = String(texto || '').split(/\s+/).map(u => u.trim()).filter(Boolean).map(u => /^https?:\/\//i.test(u) ? u : 'https://' + u);
+  if (urls.length) await api.inserir('anexos', urls.map(u => ({ entidade, entidade_id: id, caminho_arquivo: u, nome_original: u.replace(/^https?:\/\//i, '').slice(0, 120),
+    tipo_mime: 'text/uri-list', enviado_por: estado.usuario.id, descricao })));
+  return urls.length;
+}
+const camposAnexoHtml = (nArq = 'arquivos', nLink = 'links') => `<label class="campo largo">Anexos (qualquer formato)<input type="file" name="${nArq}" multiple></label>
+  <label class="campo largo">Links<input name="${nLink}" placeholder="Cole um ou mais links (Drive, SharePoint, site…), separados por espaço"></label>`;
+async function salvarAnexosForm(entidade, id, d, nArq = 'arquivos', nLink = 'links') {
+  if (d[nArq]?.length) await anexar(entidade, id, d[nArq]);
+  if (d[nLink]) await anexarLinks(entidade, id, d[nLink]);
+}
 async function htmlAnexos(entidade, id) {
   const a = await api.listar('anexos', `entidade=eq.${entidade}&entidade_id=eq.${id}&cancelado_em=is.null&order=enviado_em`);
   if (!a.length) return '<span class="muted">Sem anexos</span>';
   return '<div class="anexos">' + a.map(x =>
-    `<span class="anexo" data-arquivo="${esc(x.caminho_arquivo)}" title="${esc(x.descricao || '')}">${x.tipo_mime?.includes('pdf') ? '📄' : x.tipo_mime?.startsWith('image/') ? '🖼️' : '📎'} ${x.descricao ? `<b>${esc(x.descricao)}:</b> ` : ''}${esc(x.nome_original || 'arquivo')}</span>`).join('') + '</div>';
+    `<span class="anexo" data-arquivo="${esc(x.caminho_arquivo)}" title="${esc(x.descricao || x.caminho_arquivo)}">${/^https?:/.test(x.caminho_arquivo) ? '🔗' : x.tipo_mime?.includes('pdf') ? '📄' : x.tipo_mime?.startsWith('image/') ? '🖼️' : /sheet|excel|csv/.test(x.tipo_mime || '') ? '📊' : /presentation|powerpoint/.test(x.tipo_mime || '') ? '📽️' : '📎'} ${x.descricao ? `<b>${esc(x.descricao)}:</b> ` : ''}${esc(x.nome_original || 'arquivo')}</span>`).join('') + '</div>';
 }
 
 document.addEventListener('click', async e => {
   const a = e.target.closest('[data-arquivo]');
   if (!a) return;
+  if (/^https?:\/\//i.test(a.dataset.arquivo)) { window.open(a.dataset.arquivo, '_blank', 'noopener'); return; }
   const janela = window.open('', '_blank');
   try { janela.location = await api.linkArquivo(a.dataset.arquivo); }
   catch (err) { janela?.close(); falha(err); }
@@ -1037,6 +1051,8 @@ async function abrirAcao(a) {
   const aberta = ['aberta', 'em_andamento'].includes(a.status);
   const podeRepact = aberta && (podeEditar || ehResp || gestor || (a.modulo === 'ssma' && tem('ssma')) || (a.modulo === 'qual' && tem('qualidade')));
   const nomesResp = nomesPessoas(a.responsaveis) || a.responsavel;
+  const entAnx = { geral: 'acao_geral', ssma: 'ssma_acao', qual: 'qual_acao' }[a.modulo];
+  const anxHtml = await htmlAnexos(entAnx, a.id).catch(() => '');
   const r = await modal(`<form><h2>Ação</h2>
     ${podeEditar ? `<div class="form">
         <label class="campo largo">O que fazer<textarea name="descricao" rows="2" required>${esc(a.descricao)}</textarea></label>
@@ -1047,7 +1063,9 @@ async function abrirAcao(a) {
     ${hist.length ? `<div style="margin-top:10px"><div class="muted">Repactuações</div><ul class="ac-hist">${hist.map(h => `<li>${h.prazo_anterior ? dataBR(h.prazo_anterior) : 'sem prazo'} → <b>${dataBR(h.prazo_novo)}</b> · ${esc(h.motivo)} <span class="muted">· ${esc(h.u?.nome || '')} em ${dataHoraBR(h.criado_em)}</span></li>`).join('')}</ul></div>` : ''}
     <div class="form" style="margin-top:12px">
       <label class="campo">Situação<select name="status">${['aberta', 'em_andamento', 'concluida', ...(podeEditar ? ['cancelada'] : [])].map(k => `<option value="${k}" ${k === a.status ? 'selected' : ''}>${ST_ACAO_TXT[k][0]}</option>`).join('')}</select></label>
-      <label class="campo largo">O que foi feito<textarea name="evidencia" rows="3">${esc(a.evidencia || '')}</textarea></label></div>
+      <label class="campo largo">O que foi feito<textarea name="evidencia" rows="3">${esc(a.evidencia || '')}</textarea></label>
+      <div class="campo largo"><span>Anexos da ação</span>${anxHtml}</div>
+      ${podeEditar || ehResp || gestor ? camposAnexoHtml() : ''}</div>
     ${linkMod ? `<p class="muted"><a href="${linkMod}" data-fechar>Ver no módulo de ${a.modulo === 'ssma' ? 'Segurança' : 'Qualidade'}</a></p>` : ''}
     ${a.plano_id && !location.hash.startsWith('#/planos/ver/') ? `<p class="muted">Referência: <a href="#/planos/ver/${a.plano_id}" data-fechar>${esc(a.origem)}</a></p>` : ''}
     <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button>${podeEditar || ehResp || gestor ? '<button class="btn prim">Salvar</button>' : ''}</div></form>`,
@@ -1058,7 +1076,7 @@ async function abrirAcao(a) {
   if (!r) return false;
   const dados = { status: r.status, evidencia: r.evidencia?.trim() || null };
   if (podeEditar) Object.assign(dados, { descricao: r.descricao.trim(), responsaveis: lerPessoas(r.resp), ...(a.prazo ? {} : { prazo: r.prazo || null }) });
-  try { await api.alterar(tabela, `id=eq.${a.id}`, dados); aviso(r.status === 'concluida' ? 'Ação concluída.' : 'Ação atualizada.'); return true; } catch (err) { falha(err); return false; }
+  try { await salvarAnexosForm(entAnx, a.id, r); await api.alterar(tabela, `id=eq.${a.id}`, dados); aviso(r.status === 'concluida' ? 'Ação concluída.' : 'Ação atualizada.'); return true; } catch (err) { falha(err); return false; }
 }
 function ligarMinhasAcoes(tela, acs) {
   $$('[data-acao]', tela).forEach(b => (b.onclick = async () => {
@@ -1073,9 +1091,10 @@ const TIPOS_PLANO = { reuniao: 'Reunião', auditoria: 'Auditoria', inspecao: 'In
 const SETORES_PLANO = ['Diretoria', 'Financeiro', 'Compras', 'Operação', 'Manutenção', 'Almoxarifado', 'RH', 'DP', 'Segurança', 'Qualidade', 'Administrativo'];
 const linhaAcaoHtml = (us, i) => `<tr data-linha="${i}"><td><input name="d_${i}" placeholder="O que fazer"></td>
   <td>${htmlSelPessoas('r_' + i, [], 'Responsável(is)…')}</td>
-  <td><input type="date" name="p_${i}" value="${somaDias(hojeISO(), 7)}"></td><td><button type="button" class="btn peq" data-tirar title="Tirar linha">✕</button></td></tr>`;
+  <td><input type="date" name="p_${i}" value="${somaDias(hojeISO(), 7)}"></td>
+  <td><label class="btn peq anx-linha" title="Anexar arquivos nesta ação">📎<span data-qt></span><input type="file" name="a_${i}" multiple hidden></label></td><td><button type="button" class="btn peq" data-tirar title="Tirar linha">✕</button></td></tr>`;
 const blocoAcoesHtml = us => `<h3 style="margin:14px 0 6px">Ações</h3>
-  <div class="tabela-wrap"><table class="pl-linhas"><thead><tr><th>O que fazer</th><th style="width:36%">Responsável(is)</th><th style="width:150px">Prazo</th><th style="width:44px"></th></tr></thead>
+  <div class="tabela-wrap"><table class="pl-linhas"><thead><tr><th>O que fazer</th><th style="width:36%">Responsável(is)</th><th style="width:150px">Prazo</th><th style="width:52px">Anexo</th><th style="width:44px"></th></tr></thead>
   <tbody>${[0, 1, 2].map(i => linhaAcaoHtml(us, i)).join('')}</tbody></table></div>
   <button type="button" class="btn peq" data-mais-linha style="margin-top:8px">+ Linha</button>`;
 function ligarLinhasAcao(f, us) {
@@ -1085,12 +1104,16 @@ function ligarLinhasAcao(f, us) {
     if (e.target.closest('[data-mais-linha]')) { $('.pl-linhas tbody', f).insertAdjacentHTML('beforeend', linhaAcaoHtml(us, n++)); ligarSelPessoas(f, us); $$('.pl-linhas tbody tr', f).at(-1).querySelector('input').focus(); }
     const t = e.target.closest('[data-tirar]'); if (t) t.closest('tr').remove();
   });
+  f.addEventListener('change', e => { if (e.target.matches('input[type=file][name^="a_"]')) { const q = e.target.files.length; e.target.closest('label').querySelector('[data-qt]').textContent = q ? ' ' + q : ''; } });
 }
-const lerLinhasAcao = d => Object.keys(d).filter(k => /^d_\d+$/.test(k) && String(d[k]).trim()).map(k => { const i = k.slice(2); return { descricao: String(d[k]).trim(), responsaveis: lerPessoas(d['r_' + i]), prazo: d['p_' + i] || null }; });
+const lerLinhasAcao = d => Object.keys(d).filter(k => /^d_\d+$/.test(k) && String(d[k]).trim()).map(k => { const i = k.slice(2); return { descricao: String(d[k]).trim(), responsaveis: lerPessoas(d['r_' + i]), prazo: d['p_' + i] || null, _arq: d['a_' + i] || [] }; });
 const validarLinhas = (d, obrigatoria) => { const ls = lerLinhasAcao(d); if (obrigatoria && !ls.length) return 'Inclua pelo menos uma ação.';
   return ls.some(l => !l.responsaveis.length) ? 'Inclua o responsável de cada ação.' : ls.some(l => !l.prazo) ? 'Informe o prazo de cada ação.' : null; };
 async function salvarAcoesDoPlano(planoId, linhas) {
-  if (linhas.length) await api.inserir('acoes_gerais', linhas.map(l => ({ ...l, plano_id: planoId })));
+  if (linhas.length) {
+    const criadas = await api.inserir('acoes_gerais', linhas.map(({ _arq, ...l }) => ({ ...l, plano_id: planoId })));
+    for (let k = 0; k < linhas.length; k++) if (linhas[k]._arq?.length && criadas[k]) await anexar('acao_geral', criadas[k].id, linhas[k]._arq);
+  }
   return linhas.some(l => l.responsaveis.some(p => p.usuario_id && p.usuario_id !== estado.usuario.id));
 }
 async function modalPlano(p = null) {
@@ -1102,15 +1125,17 @@ async function modalPlano(p = null) {
       <label class="campo">Setor<select name="setor"><option value="">—</option>${SETORES_PLANO.map(x => `<option ${x === p?.setor ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
       <label class="campo largo">Título / assunto<input name="titulo" required value="${esc(p?.titulo || '')}" placeholder="Ex.: Reunião de resultados de outubro; Auditoria interna ISO 9001"></label>
       <div class="campo largo">Participantes${htmlSelPessoas('participantes', partIni, 'Buscar colaborador, usuário ou incluir externo…')}</div>
-      <label class="campo largo">Resumo / pauta<textarea name="descricao" rows="2">${esc(p?.descricao || '')}</textarea></label></div>
+      <label class="campo largo">Resumo / pauta<textarea name="descricao" rows="2">${esc(p?.descricao || '')}</textarea></label>
+      ${camposAnexoHtml('arquivos_plano', 'links_plano')}</div>
     ${p ? '' : blocoAcoesHtml(us)}
     <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">${p ? 'Salvar' : 'Criar plano'}</button></div></form>`,
     { aoAbrir: f => { $('.modal', f).classList.add('modal-largo'); ligarSelPessoas(f, us); if (!p) ligarLinhasAcao(f, us); }, validar: d => !d.titulo?.trim() ? 'Informe o título.' : p ? null : validarLinhas(d, true) });
   if (!r) return null;
   const dados = { tipo: r.tipo, data: r.data, setor: r.setor || null, titulo: r.titulo.trim(), participantes: nomesPessoas(lerPessoas(r.participantes)) || null, participantes_lista: lerPessoas(r.participantes), descricao: r.descricao?.trim() || null };
   try {
-    if (p) { await api.alterar('planos', `id=eq.${p.id}`, dados); aviso('Plano atualizado.'); return p.id; }
+    if (p) { await api.alterar('planos', `id=eq.${p.id}`, dados); await salvarAnexosForm('plano', p.id, r, 'arquivos_plano', 'links_plano'); aviso('Plano atualizado.'); return p.id; }
     const [np] = await api.inserir('planos', dados);
+    await salvarAnexosForm('plano', np.id, r, 'arquivos_plano', 'links_plano');
     const avisou = await salvarAcoesDoPlano(np.id, lerLinhasAcao(r));
     aviso(`Plano ${np.numero} criado${avisou ? ' e responsáveis avisados' : ''}.`); return np.id;
   } catch (err) { falha(err); return null; }
@@ -1200,9 +1225,18 @@ rota('/planos/ver/:id', async (tela, id) => {
       <div><div class="muted">Aberto por</div><b>${esc(p.autor?.nome || '—')}</b></div>
       ${p.participantes_lista?.length || p.participantes ? `<div class="largo"><div class="muted">Participantes</div>${esc(nomesPessoas(p.participantes_lista) || p.participantes)}</div>` : ''}
       ${p.descricao ? `<div class="largo"><div class="muted">Resumo / pauta</div><div style="white-space:pre-line">${esc(p.descricao)}</div></div>` : ''}</div></div>
+    <div class="cartao"><div class="topo" style="margin:0 0 8px"><h2 style="margin:0">Anexos do plano</h2><button class="btn peq" id="anx-plano">📎 Anexar</button></div><div id="pl-anx"></div></div>
     <div class="cartao"><h2>Ações deste plano</h2>${acs.length ? tabelaAcoesHtml(acs, { mostrarOrigem: false }) : '<div class="vazio">Nenhuma ação lançada.</div>'}</div>`;
   ligarTabelaAcoes(tela, acs);
   $('#mais-acoes').onclick = async () => { if (await modalAcoesNoPlano(id)) navegar(); };
+  $('#pl-anx').innerHTML = await htmlAnexos('plano', id).catch(() => '<span class="muted">—</span>');
+  $('#anx-plano').onclick = async () => {
+    const r = await modal(`<form><h2>Anexar no plano</h2><div class="form">${camposAnexoHtml()}<label class="campo largo">Descrição<input name="desc"></label></div>
+      <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Anexar</button></div></form>`,
+      { validar: d => !d.arquivos?.length && !d.links ? 'Escolha um arquivo ou informe um link.' : null });
+    if (!r) return;
+    try { if (r.arquivos?.length) await anexar('plano', id, r.arquivos, r.desc || null); await anexarLinks('plano', id, r.links, r.desc || null); aviso('Anexado.'); navegar(); } catch (err) { falha(err); }
+  };
   $('#ed-plano')?.addEventListener('click', async () => { if (await modalPlano(p)) navegar(); });
 });
 
