@@ -739,8 +739,8 @@ async function pdfTimbrado({ setor, numero, destinatario = [], assunto, corpo, a
     }
   }
   // ---- assinatura
-  if (y > BASE - 30) novaPagina();
-  y += 2; paragrafo('Atenciosamente,', { espaco: 14 });
+  if (y > BASE - 27) novaPagina();
+  y += 1; paragrafo('Atenciosamente,', { espaco: 11 });
   doc.setDrawColor(...COR.texto); doc.setLineWidth(0.3); doc.line(ML, y, ML + 68, y); y += 5;
   assinatura.forEach(([t, estilo], i) => { doc.setFont('helvetica', estilo === 'b' ? 'bold' : 'normal'); doc.setFontSize(estilo === 'b' ? 11 : 10); cor(estilo === 'b' ? 'texto' : 'cinza'); doc.text(t, ML, y); y += 5.2; });
   // ---- "Página x de y"
@@ -805,10 +805,8 @@ async function pdfPedido(p, forn, itens, r) {
       'Prezado(a) Senhor(a),',
       `Confirmamos a compra dos itens relacionados abaixo${r?.justificativa ? ` (${r.justificativa})` : ''}, conforme proposta aprovada.`,
       { tabela: { cab, linhas, colunas } },
-      { negrito: 'Dados para faturamento' },
-      { lista: [`${E.razao_social}${E.cnpj ? ' — CNPJ ' + fmtCNPJ(E.cnpj) : ''}${E.inscricao_estadual ? ' — IE ' + E.inscricao_estadual : ''}`, empresaEndereco(E) || '—'] },
       { negrito: 'Condições' },
-      { lista: [`Pagamento: ${ped.condicao_pagamento || '—'}${vParc.length ? ' — ' + vParc.map((v, k) => `${parc[k]} dias: ${brl(v)}`).join('; ') : ''}.`,
+      { lista: [`Faturar para: ${E.razao_social}${E.cnpj ? ', CNPJ ' + fmtCNPJ(E.cnpj) : ''}${E.inscricao_estadual ? ', IE ' + E.inscricao_estadual : ''} — ${empresaEndereco(E) || '—'}.`,`Pagamento: ${ped.condicao_pagamento || '—'}${vParc.length ? ' — ' + vParc.map((v, k) => `${parc[k]} dias: ${brl(v)}`).join('; ') : ''}.`,
         `Previsão de entrega: ${ped.previsao_entrega ? dataBR(ped.previsao_entrega) : 'a combinar'}.`,
         `Local de entrega: ${ped.entrega_local || empresaEndereco(E) || '—'}.`,
         `Informar o número ${ped.numero} na nota fiscal e no boleto.`] },

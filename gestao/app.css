@@ -773,3 +773,19 @@ td .cb, .orc-grade .cb { min-width: 120px; }
 .tabela-wrap.com-hbar.larga { scrollbar-width: none; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
 .tabela-wrap.com-hbar.larga::-webkit-scrollbar { display: none; }
 @media (max-width: 760px) { .hbar { bottom: 64px; } }
+
+/* seletor de pessoas (planos de ação) */
+.selpes { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; border: 1px solid var(--borda); border-radius: 8px; padding: 4px 6px; background: var(--cartao); min-height: 38px; margin-top: 4px; }
+.selpes-chips { display: contents; }
+.selpes-chip { display: inline-flex; align-items: center; gap: 4px; background: var(--verde-claro); color: var(--verde); border-radius: 999px; padding: 2px 4px 2px 10px; font-size: 13px; font-weight: 600; }
+.selpes-chip.ext { background: var(--cinza-claro); color: var(--cinza); }
+.selpes-chip small { font-weight: 400; opacity: .8; }
+.selpes-chip button { border: 0; background: transparent; color: inherit; cursor: pointer; font-size: 12px; padding: 0 4px; }
+.selpes-q { flex: 1 1 140px; min-width: 120px; border: 0 !important; outline: 0; padding: 6px 4px !important; background: transparent; box-shadow: none !important; }
+.selpes-lista { flex-basis: 100%; max-height: 220px; overflow: auto; border-top: 1px solid var(--borda); margin-top: 4px; }
+.selpes-op { padding: 6px 8px; cursor: pointer; display: flex; flex-direction: column; border-radius: 6px; }
+.selpes-op:hover { background: var(--cinza-claro); }
+.selpes-op .muted { font-size: 12px; }
+.selpes-op.ext { color: var(--verde); font-weight: 600; }
+.ac-hist { margin: 4px 0 0; padding-left: 18px; font-size: 13px; }
+.ac-hist li { margin: 2px 0; }

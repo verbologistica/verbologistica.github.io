@@ -158,8 +158,18 @@ rota('/operacao/abastecimentos/fatura/:id', async (tela, id) => {
         <td data-r="Combustível">${esc(a.combustivel || '')}</td><td data-r="Litros" class="num">${n2(a.litros)}</td><td data-r="R$/L" class="num">${n2(a.preco_litro, 3)}</td><td data-r="Valor" class="num">${brl(a.valor_total)}</td><td data-r="Situação">${tagSt(ST_AB, a.status)}</td></tr>`).join('')}</tbody>
       <tfoot><tr><td colspan="5"><b>Total</b></td><td class="num"><b>${n2(ativos.reduce((s, a) => s + Number(a.litros), 0))}</b></td><td></td><td class="num"><b>${brl(ativos.reduce((s, a) => s + Number(a.valor_total), 0))}</b></td><td></td></tr></tfoot></table></div>
       ${aberta && ativos.some(a => a.alerta && !a.conferido_em) ? '<p class="muted">⚠️ Há lançamentos com alerta: confira-os (foto do cupom) antes de registrar a nota.</p>' : ''}</div>
-    <div class="cartao"><h2>Nota/fatura do posto</h2><div id="anx-fat"></div></div>`;
+    <div class="cartao"><div class="topo" style="margin:0"><h2 style="margin:0">Nota/fatura do posto</h2>${pode ? '<button class="btn" id="fat-anx">📎 Anexar na fatura e nos abastecimentos</button>' : ''}</div><div id="anx-fat"></div></div>`;
   $('#anx-fat').innerHTML = await htmlAnexos('fechamento', id);
+  $('#fat-anx')?.addEventListener('click', async () => {
+    const r = await modal(`<form><h2>Anexar arquivo · ${esc(f.numero)}</h2><div class="form">
+      <label class="campo largo">Arquivo(s) *<input type="file" name="arquivos" multiple required accept="image/*,application/pdf"></label>
+      <label class="campo largo">Descrição<input name="desc" value="${f.numero_nota ? 'Fatura ' + esc(f.numero_nota) + ' do posto' : 'Fatura do posto'}"></label>
+      <div class="campo largo"><label><input type="checkbox" name="todos" checked> Anexar também como comprovante nos ${ativos.length} abastecimento(s) da fatura</label></div></div>
+      <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Anexar</button></div></form>`);
+    if (!r) return;
+    const destinos = [['fechamento', id], ...(r.todos ? ativos.map(a => ['abastecimento', a.id]) : [])];
+    try { await anexarEm(destinos, r.arquivos, r.desc || null); aviso(`Arquivo anexado em ${destinos.length} registro(s).`); navegar(); } catch (err) { falha(err); }
+  });
   $('#fat-nota')?.addEventListener('click', async () => {
     const r = await modal(`<form><h2>Nota/fatura do ${esc(f.posto)} · ${perAb(f)}</h2><p class="muted">Fecha <b>todos</b> os ${ativos.length} abastecimento(s) desta fatura em aberto. Para escolher período e quais entram, use <b>Fechar período</b>.</p><div class="form">
       <label class="campo">Nº da nota/fatura<input name="nota" value="${esc(f.numero_nota || '')}"></label>
@@ -313,7 +323,7 @@ rota('/operacao/abastecimentos/ver/:id', async (tela, id) => {
         ['Hodômetro', a.km != null ? a.km.toLocaleString('pt-BR') + ' km' : '—'], ['Desde o anterior', a.km_rodado ? `${a.km_rodado.toLocaleString('pt-BR')} km · ${n2(a.km_l)} km/L` : '—'],
         ['Observação do motorista', a.observacao], ['Registrado no celular', dataHoraBR(a.registrado_no_celular_em)], ['Cancelamento', a.motivo_cancelamento]]
         .filter(([, x]) => x !== null && x !== undefined && x !== '').map(([k, x]) => `<div><div class="muted">${k}</div><b>${esc(x)}</b></div>`).join('')}</div></div>
-      <div class="cartao"><h2>Comprovante</h2><div id="ab-foto">${anx.length ? '' : '<div class="vazio">Sem foto do cupom.</div>'}</div>
+      <div class="cartao"><div class="topo" style="margin:0"><h2 style="margin:0">Comprovante</h2>${editaAbast() || editaFin() ? '<button class="btn" id="ab-anx">📎 Anexar comprovante</button>' : ''}</div><div id="ab-foto">${anx.length ? '' : '<div class="vazio">Sem comprovante.</div>'}</div>
         <h2 style="margin-top:16px">Para onde foi</h2>
         ${a.forma_pagamento === 'motorista' ? (a.reembolso_numero ? `<p>Reembolso <a href="#/reembolsos/ver/${a.reembolso_id}"><b>${esc(a.reembolso_numero)}</b></a> — ${esc(ST_RMB_AB[a.reembolso_status] || '')}${a.reembolso_custeio === 'adiantamento' ? ' (prestação de contas de adiantamento)' : ''}.</p>` : '<p class="muted">Sem reembolso.</p>')
           : a.fatura_numero ? `<p>Fatura do posto <a href="#/operacao/abastecimentos/fatura/${a.fechamento_id}"><b>${esc(a.fatura_numero)}</b></a> (${esc(ST_FAT[a.fatura_status]?.[0] || '')})${a.titulo_id ? ` · Conta a pagar <a href="#/financeiro/pagar/ver/${a.titulo_id}">${esc(a.titulo_numero)}</a> (${esc(a.titulo_status)})` : ''}.</p>` : '<p class="muted">—</p>'}
@@ -323,6 +333,7 @@ rota('/operacao/abastecimentos/ver/:id', async (tela, id) => {
   const box = $('#ab-foto');
   for (const x of anx) {
     if (/^https?:/.test(x.caminho_arquivo)) { box.insertAdjacentHTML('beforeend', `<p><a class="btn" target="_blank" rel="noopener" href="${esc(x.caminho_arquivo)}">🖼️ Ver foto do cupom (Google Drive)</a></p>`); continue; }
+    if (!(x.tipo_mime || '').startsWith('image/')) { box.insertAdjacentHTML('beforeend', `<p><span class="anexo" data-arquivo="${esc(x.caminho_arquivo)}">${(x.tipo_mime || '').includes('pdf') ? '📄' : '📎'} ${x.descricao ? `<b>${esc(x.descricao)}:</b> ` : ''}${esc(x.nome_original || 'arquivo')}</span></p>`); continue; }
     try { const u = await api.linkArquivo(x.caminho_arquivo); box.insertAdjacentHTML('beforeend', `<a href="${esc(u)}" target="_blank" rel="noopener"><img src="${esc(u)}" alt="Cupom" style="max-width:100%;max-height:420px;border-radius:8px;border:1px solid var(--borda)"></a>`); }
     catch { box.insertAdjacentHTML('beforeend', `<span class="anexo" data-arquivo="${esc(x.caminho_arquivo)}">🖼️ ${esc(x.nome_original || 'foto')}</span>`); }
   }
@@ -334,6 +345,21 @@ rota('/operacao/abastecimentos/ver/:id', async (tela, id) => {
     const m = await confirmar(`Cancelar ${a.numero}?${a.reembolso_numero ? ` O reembolso ${a.reembolso_numero} também será cancelado.` : a.fatura_numero ? ` Ele sai da fatura ${a.fatura_numero}.` : ''}`, { comMotivo: true, botao: 'Cancelar abastecimento' });
     if (!m) return; try { await api.rpc('abastecimento_cancelar', { p_id: id, p_motivo: m }); aviso('Abastecimento cancelado.'); navegar(); } catch (err) { falha(err); } });
   $('#ab-cor')?.addEventListener('click', () => modalCorrigirAbast(a));
+  $('#ab-anx')?.addEventListener('click', async () => {
+    const irmaos = a.fechamento_id ? (await api.listar('v_abastecimentos', `fechamento_id=eq.${a.fechamento_id}&status=neq.cancelado&id=neq.${id}&order=data_hora`).catch(() => [])) : [];
+    const r = await modal(`<form><h2>Anexar comprovante · ${esc(a.numero)}</h2><div class="form">
+      <label class="campo largo">Arquivo(s) *<input type="file" name="arquivos" multiple required accept="image/*,application/pdf"></label>
+      <label class="campo largo">Descrição<input name="desc" placeholder="Ex.: Fatura 11962 do posto"></label></div>
+      ${irmaos.length ? `<div class="campo largo"><label><input type="checkbox" name="fat" value="1"> Anexar também na fatura ${esc(a.fatura_numero || '')}</label></div>
+        <div class="campo largo"><div class="muted" style="margin:8px 0 4px">Replicar nos outros abastecimentos da fatura <button type="button" class="btn peq" id="anx-todos">Marcar todos</button></div>
+        <div style="max-height:220px;overflow:auto;border:1px solid var(--borda);border-radius:8px;padding:6px 10px">${irmaos.map(x => `<label style="display:block"><input type="checkbox" name="irm_${x.id}" value="1"> <b class="mono">${esc(x.numero)}</b> · ${dataBR(x.data)} · ${esc(x.placa || '')} · ${brl(x.valor_total)}</label>`).join('')}</div></div>` : ''}
+      <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Anexar</button></div></form>`, {
+      aoAbrir: m => m.querySelector('#anx-todos')?.addEventListener('click', () => m.querySelectorAll('input[name^="irm_"],input[name="fat"]').forEach(c => c.checked = true)) });
+    if (!r) return;
+    const destinos = [['abastecimento', id], ...irmaos.filter(x => r['irm_' + x.id]).map(x => ['abastecimento', x.id])];
+    if (r.fat && a.fechamento_id) destinos.push(['fechamento', a.fechamento_id]);
+    try { await anexarEm(destinos, r.arquivos, r.desc || null); aviso(destinos.length > 1 ? `Comprovante anexado em ${destinos.length} registros.` : 'Comprovante anexado.'); navegar(); } catch (err) { falha(err); }
+  });
 });
 
 async function modalCorrigirAbast(a) {

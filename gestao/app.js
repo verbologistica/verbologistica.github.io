@@ -960,30 +960,104 @@ function htmlMinhasAcoes(acs) {
         <span class="tag ${sc}">${st}</span><button class="btn prim peq" data-acao="${a.modulo}:${a.id}">Abrir ação</button></li>`; }).join('')}</ul></div>`;
 }
 const TAB_ACAO = { ssma: 'ssma_acoes', qual: 'qual_acoes', geral: 'acoes_gerais' };
+
+// ===================== Seletor de pessoas (usuários, colaboradores do RH e externos) =====================
+let _pessoasAcao = null;
+async function pessoasAcao() {
+  if (!_pessoasAcao) _pessoasAcao = await api.rpc('pessoas_para_acao').catch(async () =>
+    (await usuarios().catch(() => [])).filter(u => u.ativo).map(u => ({ chave: 'u:' + u.id, usuario_id: u.id, nome: u.nome, email: u.email, info: 'usuário' })));
+  return _pessoasAcao;
+}
+const pessoaRef = p => { const o = { nome: p.nome }; if (p.usuario_id) o.usuario_id = p.usuario_id; else if (p.colaborador_id) o.colaborador_id = p.colaborador_id; else o.externo = true; if (p.email) o.email = p.email; return o; };
+const chavePessoa = p => p.usuario_id ? 'u:' + p.usuario_id : p.colaborador_id ? 'c:' + p.colaborador_id : 'x:' + semAcento(p.nome || '');
+const nomesPessoas = l => (l || []).map(p => p.nome + (p.externo ? ' (externo)' : '')).join(', ');
+const lerPessoas = v => { try { const a = JSON.parse(v || '[]'); return Array.isArray(a) ? a : []; } catch { return []; } };
+const htmlSelPessoas = (name, sel = [], ph = 'Buscar pessoa…') => `<div class="selpes" data-selpes="${name}"><input type="hidden" name="${name}" value="${esc(JSON.stringify(sel || []))}">
+  <div class="selpes-chips"></div><input type="text" class="selpes-q" placeholder="${esc(ph)}" autocomplete="off"><div class="selpes-lista" hidden></div></div>`;
+function ligarSelPessoas(raiz, pessoas) {
+  $$('[data-selpes]', raiz).forEach(box => {
+    if (box._ligado) return; box._ligado = true;
+    const hid = $('input[type=hidden]', box), q = $('.selpes-q', box), lista = $('.selpes-lista', box), chips = $('.selpes-chips', box);
+    let sel = lerPessoas(hid.value), achados = [];
+    const gravar = () => { hid.value = JSON.stringify(sel); desenhar(); };
+    const desenhar = () => { chips.innerHTML = sel.map((p, i) => `<span class="selpes-chip${p.externo ? ' ext' : ''}">${esc(p.nome)}${p.externo ? ' <small>externo</small>' : p.colaborador_id ? ' <small>RH</small>' : ''}<button type="button" data-tira="${i}" title="Tirar">✕</button></span>`).join(''); };
+    const fechar = () => { lista.hidden = true; };
+    const mostrar = () => {
+      const t = q.value.trim(), ja = new Set(sel.map(chavePessoa));
+      achados = pessoas.filter(p => !ja.has(chavePessoa(p)) && casaBusca(p.nome + ' ' + (p.info || '') + ' ' + (p.email || ''), t)).slice(0, 40);
+      lista.innerHTML = achados.map((p, i) => `<div class="selpes-op" data-op="${i}"><b>${esc(p.nome)}</b><span class="muted">${esc(p.info || '')}</span></div>`).join('')
+        + `<div class="selpes-op ext" data-ext>+ Pessoa externa${t ? `: <b>${esc(t)}</b>` : '…'}</div>`;
+      lista.hidden = false;
+    };
+    const externo = async () => {
+      const r = await modal(`<form><h2>Pessoa externa</h2><div class="form"><label class="campo largo">Nome *<input name="nome" required value="${esc(q.value.trim())}"></label>
+        <label class="campo largo">Empresa / função<input name="info" placeholder="Ex.: Consultor, cliente Bracell"></label><label class="campo largo">E-mail<input type="email" name="email"></label></div>
+        <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Incluir</button></div></form>`);
+      if (!r?.nome) return;
+      sel.push({ nome: r.nome + (r.info ? ' · ' + r.info : ''), externo: true, ...(r.email ? { email: r.email } : {}) }); q.value = ''; gravar(); fechar();
+    };
+    const escolher = i => { const p = achados[i]; if (!p) return; sel.push(pessoaRef(p)); q.value = ''; gravar(); mostrar(); q.focus(); };
+    q.addEventListener('focus', mostrar); q.addEventListener('input', mostrar);
+    q.addEventListener('blur', () => setTimeout(fechar, 150));
+    q.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); if (achados.length && q.value.trim()) escolher(0); else if (q.value.trim()) externo(); }
+      else if (e.key === 'Escape') { e.stopPropagation(); fechar(); }
+      else if (e.key === 'Backspace' && !q.value && sel.length) { sel.pop(); gravar(); }
+    });
+    lista.addEventListener('mousedown', e => { e.preventDefault(); const o = e.target.closest('[data-op]'); if (o) escolher(Number(o.dataset.op)); else if (e.target.closest('[data-ext]')) externo(); });
+    chips.addEventListener('click', e => { const b = e.target.closest('[data-tira]'); if (b) { sel.splice(Number(b.dataset.tira), 1); gravar(); } });
+    desenhar();
+  });
+}
+const respsDaAcao = a => a.responsaveis?.length ? a.responsaveis : a.responsavel_id ? [{ usuario_id: a.responsavel_id, nome: a.responsavel || '' }] : [];
+const ehRespAcao = a => (a.responsaveis_ids?.length ? a.responsaveis_ids : [a.responsavel_id]).includes(estado.usuario.id);
+function htmlRepact(a) {
+  const n = Number(a.repactuacoes || 0) || (a.prazo_original && a.prazo && a.prazo_original !== a.prazo ? 1 : 0);
+  return n ? `<div class="muted" style="font-size:12px">repactuada${a.prazo_original && a.prazo_original !== a.prazo ? ' · orig. ' + dataBR(a.prazo_original) : Number(a.repactuacoes) > 1 ? ` (${a.repactuacoes}×)` : ''}</div>` : '';
+}
+async function repactuarAcao(a) {
+  const r = await modal(`<form><h2>Repactuar prazo</h2><p class="muted">${esc(a.descricao)}</p><div class="form">
+    <div><div class="muted">Prazo atual</div><b>${a.prazo ? dataBR(a.prazo) : 'sem prazo'}</b></div>
+    <label class="campo">Novo prazo *<input type="date" name="prazo" required min="${hojeISO()}" value="${a.prazo && a.prazo > hojeISO() ? somaDias(a.prazo, 7) : somaDias(hojeISO(), 7)}"></label>
+    <label class="campo largo">Motivo *<textarea name="motivo" rows="2" required placeholder="Por que o prazo foi postergado"></textarea></label></div>
+    <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Repactuar</button></div></form>`,
+    { validar: d => d.prazo === a.prazo ? 'O novo prazo é igual ao atual.' : null });
+  if (!r) return false;
+  try { await api.rpc('repactuar_acao', { p_modulo: a.modulo, p_id: a.id, p_prazo: r.prazo, p_motivo: r.motivo }); aviso('Prazo repactuado para ' + dataBR(r.prazo) + '.'); return true; } catch (err) { falha(err); return false; }
+}
 async function abrirAcao(a) {
   const tabela = TAB_ACAO[a.modulo];
   const gestor = tem('administrador', 'diretoria');
   const podeEditar = a.modulo === 'geral' && (a.criado_por_id === estado.usuario.id || gestor);
-  const ehResp = a.responsavel_id === estado.usuario.id;
+  const ehResp = ehRespAcao(a);
   const linkMod = a.modulo === 'ssma' ? (telaPermitida('/ssma/acoes') ? '#/ssma/acoes' : '') : a.modulo === 'qual' && a.nc_id && telaPermitida('/qualidade/nc') ? '#/qualidade/nc/ver/' + a.nc_id : '';
-  const us = podeEditar ? (await usuarios().catch(() => [])).filter(u => u.ativo) : [];
+  const [pes, hist] = await Promise.all([podeEditar ? pessoasAcao() : [],
+    api.listar('acao_repactuacoes', `modulo=eq.${a.modulo}&acao_id=eq.${a.id}&order=criado_em&select=prazo_anterior,prazo_novo,motivo,criado_em,u:usuarios(nome)`).catch(() => [])]);
   const [pt] = prazoTxt(a.prazo);
+  const aberta = ['aberta', 'em_andamento'].includes(a.status);
+  const podeRepact = aberta && (podeEditar || ehResp || gestor || (a.modulo === 'ssma' && tem('ssma')) || (a.modulo === 'qual' && tem('qualidade')));
+  const nomesResp = nomesPessoas(a.responsaveis) || a.responsavel;
   const r = await modal(`<form><h2>Ação</h2>
     ${podeEditar ? `<div class="form">
         <label class="campo largo">O que fazer<textarea name="descricao" rows="2" required>${esc(a.descricao)}</textarea></label>
-        <label class="campo">Responsável<select name="resp" required>${opcoes(us, null, u => u.nome, a.responsavel_id, 'Selecione…')}</select></label>
-        <label class="campo">Prazo<input type="date" name="prazo" value="${a.prazo || ''}"></label></div>`
-      : `<div class="ma-det"><p><b>${esc(a.descricao)}</b></p><p class="muted">${esc(a.origem)}${a.responsavel ? ' · ' + esc(a.responsavel) : ''}${a.criado_por ? ' · aberta por ' + esc(a.criado_por) : ''} · ${a.prazo ? 'prazo ' + dataBR(a.prazo) + ' (' + pt + ')' : 'sem prazo'}</p></div>`}
+        <div class="campo largo">Responsável(is)${htmlSelPessoas('resp', respsDaAcao(a), 'Buscar colaborador, usuário ou incluir externo…')}</div>
+        ${a.prazo ? `<div class="campo"><span>Prazo</span><b style="padding:8px 0">${dataBR(a.prazo)} <span class="muted">(${pt})</span></b></div>` : '<label class="campo">Prazo<input type="date" name="prazo"></label>'}</div>`
+      : `<div class="ma-det"><p><b>${esc(a.descricao)}</b></p><p class="muted">${esc(a.origem)}${nomesResp ? ' · ' + esc(nomesResp) : ''}${a.criado_por ? ' · aberta por ' + esc(a.criado_por) : ''} · ${a.prazo ? 'prazo ' + dataBR(a.prazo) + ' (' + pt + ')' : 'sem prazo'}</p></div>`}
+    ${podeRepact && a.prazo ? '<p style="margin:8px 0 0"><button type="button" class="btn peq" id="ac-repact">↻ Repactuar prazo</button></p>' : ''}
+    ${hist.length ? `<div style="margin-top:10px"><div class="muted">Repactuações</div><ul class="ac-hist">${hist.map(h => `<li>${h.prazo_anterior ? dataBR(h.prazo_anterior) : 'sem prazo'} → <b>${dataBR(h.prazo_novo)}</b> · ${esc(h.motivo)} <span class="muted">· ${esc(h.u?.nome || '')} em ${dataHoraBR(h.criado_em)}</span></li>`).join('')}</ul></div>` : ''}
     <div class="form" style="margin-top:12px">
       <label class="campo">Situação<select name="status">${['aberta', 'em_andamento', 'concluida', ...(podeEditar ? ['cancelada'] : [])].map(k => `<option value="${k}" ${k === a.status ? 'selected' : ''}>${ST_ACAO_TXT[k][0]}</option>`).join('')}</select></label>
       <label class="campo largo">O que foi feito<textarea name="evidencia" rows="3">${esc(a.evidencia || '')}</textarea></label></div>
     ${linkMod ? `<p class="muted"><a href="${linkMod}" data-fechar>Ver no módulo de ${a.modulo === 'ssma' ? 'Segurança' : 'Qualidade'}</a></p>` : ''}
     ${a.plano_id && !location.hash.startsWith('#/planos/ver/') ? `<p class="muted">Referência: <a href="#/planos/ver/${a.plano_id}" data-fechar>${esc(a.origem)}</a></p>` : ''}
     <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button>${podeEditar || ehResp || gestor ? '<button class="btn prim">Salvar</button>' : ''}</div></form>`,
-    { validar: d => d.status === 'concluida' && !d.evidencia?.trim() ? 'Para concluir, descreva a evidência de que a ação foi feita.' : null });
+    { aoAbrir: (f, fechar) => { if (podeEditar) { $('.modal', f).classList.add('modal-largo'); ligarSelPessoas(f, pes); }
+        $('#ac-repact', f)?.addEventListener('click', async () => { if (await repactuarAcao(a)) { fechar(null); navegar(); } }); },
+      validar: d => d.status === 'concluida' && !d.evidencia?.trim() ? 'Para concluir, descreva a evidência de que a ação foi feita.'
+        : podeEditar && !lerPessoas(d.resp).length ? 'Inclua pelo menos um responsável.' : null });
   if (!r) return false;
   const dados = { status: r.status, evidencia: r.evidencia?.trim() || null };
-  if (podeEditar) Object.assign(dados, { descricao: r.descricao.trim(), responsavel_id: r.resp, prazo: r.prazo || null });
+  if (podeEditar) Object.assign(dados, { descricao: r.descricao.trim(), responsaveis: lerPessoas(r.resp), ...(a.prazo ? {} : { prazo: r.prazo || null }) });
   try { await api.alterar(tabela, `id=eq.${a.id}`, dados); aviso(r.status === 'concluida' ? 'Ação concluída.' : 'Ação atualizada.'); return true; } catch (err) { falha(err); return false; }
 }
 function ligarMinhasAcoes(tela, acs) {
@@ -998,40 +1072,42 @@ function ligarMinhasAcoes(tela, acs) {
 const TIPOS_PLANO = { reuniao: 'Reunião', auditoria: 'Auditoria', inspecao: 'Inspeção', visita: 'Visita', indicador: 'Análise de indicador', projeto: 'Projeto', outro: 'Outro' };
 const SETORES_PLANO = ['Diretoria', 'Financeiro', 'Compras', 'Operação', 'Manutenção', 'Almoxarifado', 'RH', 'DP', 'Segurança', 'Qualidade', 'Administrativo'];
 const linhaAcaoHtml = (us, i) => `<tr data-linha="${i}"><td><input name="d_${i}" placeholder="O que fazer"></td>
-  <td><select name="r_${i}">${opcoes(us, null, u => u.nome, null, 'Responsável…')}</select></td>
+  <td>${htmlSelPessoas('r_' + i, [], 'Responsável(is)…')}</td>
   <td><input type="date" name="p_${i}" value="${somaDias(hojeISO(), 7)}"></td><td><button type="button" class="btn peq" data-tirar title="Tirar linha">✕</button></td></tr>`;
 const blocoAcoesHtml = us => `<h3 style="margin:14px 0 6px">Ações</h3>
-  <div class="tabela-wrap"><table class="pl-linhas"><thead><tr><th>O que fazer</th><th style="width:30%">Responsável</th><th style="width:150px">Prazo</th><th style="width:44px"></th></tr></thead>
+  <div class="tabela-wrap"><table class="pl-linhas"><thead><tr><th>O que fazer</th><th style="width:36%">Responsável(is)</th><th style="width:150px">Prazo</th><th style="width:44px"></th></tr></thead>
   <tbody>${[0, 1, 2].map(i => linhaAcaoHtml(us, i)).join('')}</tbody></table></div>
   <button type="button" class="btn peq" data-mais-linha style="margin-top:8px">+ Linha</button>`;
 function ligarLinhasAcao(f, us) {
   let n = $$('tr[data-linha]', f).length;
+  ligarSelPessoas(f, us);
   f.addEventListener('click', e => {
-    if (e.target.closest('[data-mais-linha]')) { $('.pl-linhas tbody', f).insertAdjacentHTML('beforeend', linhaAcaoHtml(us, n++)); $$('.pl-linhas tbody tr', f).at(-1).querySelector('input').focus(); }
+    if (e.target.closest('[data-mais-linha]')) { $('.pl-linhas tbody', f).insertAdjacentHTML('beforeend', linhaAcaoHtml(us, n++)); ligarSelPessoas(f, us); $$('.pl-linhas tbody tr', f).at(-1).querySelector('input').focus(); }
     const t = e.target.closest('[data-tirar]'); if (t) t.closest('tr').remove();
   });
 }
-const lerLinhasAcao = d => Object.keys(d).filter(k => /^d_\d+$/.test(k) && String(d[k]).trim()).map(k => { const i = k.slice(2); return { descricao: String(d[k]).trim(), responsavel_id: d['r_' + i], prazo: d['p_' + i] || null }; });
+const lerLinhasAcao = d => Object.keys(d).filter(k => /^d_\d+$/.test(k) && String(d[k]).trim()).map(k => { const i = k.slice(2); return { descricao: String(d[k]).trim(), responsaveis: lerPessoas(d['r_' + i]), prazo: d['p_' + i] || null }; });
 const validarLinhas = (d, obrigatoria) => { const ls = lerLinhasAcao(d); if (obrigatoria && !ls.length) return 'Inclua pelo menos uma ação.';
-  return ls.some(l => !l.responsavel_id) ? 'Escolha o responsável de cada ação.' : ls.some(l => !l.prazo) ? 'Informe o prazo de cada ação.' : null; };
+  return ls.some(l => !l.responsaveis.length) ? 'Inclua o responsável de cada ação.' : ls.some(l => !l.prazo) ? 'Informe o prazo de cada ação.' : null; };
 async function salvarAcoesDoPlano(planoId, linhas) {
   if (linhas.length) await api.inserir('acoes_gerais', linhas.map(l => ({ ...l, plano_id: planoId })));
-  return linhas.some(l => l.responsavel_id !== estado.usuario.id);
+  return linhas.some(l => l.responsaveis.some(p => p.usuario_id && p.usuario_id !== estado.usuario.id));
 }
 async function modalPlano(p = null) {
-  const us = (await usuarios().catch(() => [])).filter(u => u.ativo);
+  const us = await pessoasAcao();
+  const partIni = p?.participantes_lista?.length ? p.participantes_lista : String(p?.participantes || '').split(/[,;\n]+/).map(x => x.trim()).filter(Boolean).map(nome => ({ nome, externo: true }));
   const r = await modal(`<form><h2>${p ? 'Editar plano' : 'Novo plano de ação'}</h2><div class="form">
       <label class="campo">Origem<select name="tipo" required>${Object.entries(TIPOS_PLANO).map(([k, t]) => `<option value="${k}" ${k === (p?.tipo || 'reuniao') ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
       <label class="campo">Data<input type="date" name="data" value="${p?.data || hojeISO()}" required></label>
       <label class="campo">Setor<select name="setor"><option value="">—</option>${SETORES_PLANO.map(x => `<option ${x === p?.setor ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
       <label class="campo largo">Título / assunto<input name="titulo" required value="${esc(p?.titulo || '')}" placeholder="Ex.: Reunião de resultados de outubro; Auditoria interna ISO 9001"></label>
-      <label class="campo largo">Participantes<input name="participantes" value="${esc(p?.participantes || '')}" placeholder="Quem participou"></label>
+      <div class="campo largo">Participantes${htmlSelPessoas('participantes', partIni, 'Buscar colaborador, usuário ou incluir externo…')}</div>
       <label class="campo largo">Resumo / pauta<textarea name="descricao" rows="2">${esc(p?.descricao || '')}</textarea></label></div>
     ${p ? '' : blocoAcoesHtml(us)}
     <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">${p ? 'Salvar' : 'Criar plano'}</button></div></form>`,
-    { aoAbrir: f => { $('.modal', f).classList.add('modal-largo'); if (!p) ligarLinhasAcao(f, us); }, validar: d => !d.titulo?.trim() ? 'Informe o título.' : p ? null : validarLinhas(d, true) });
+    { aoAbrir: f => { $('.modal', f).classList.add('modal-largo'); ligarSelPessoas(f, us); if (!p) ligarLinhasAcao(f, us); }, validar: d => !d.titulo?.trim() ? 'Informe o título.' : p ? null : validarLinhas(d, true) });
   if (!r) return null;
-  const dados = { tipo: r.tipo, data: r.data, setor: r.setor || null, titulo: r.titulo.trim(), participantes: r.participantes?.trim() || null, descricao: r.descricao?.trim() || null };
+  const dados = { tipo: r.tipo, data: r.data, setor: r.setor || null, titulo: r.titulo.trim(), participantes: nomesPessoas(lerPessoas(r.participantes)) || null, participantes_lista: lerPessoas(r.participantes), descricao: r.descricao?.trim() || null };
   try {
     if (p) { await api.alterar('planos', `id=eq.${p.id}`, dados); aviso('Plano atualizado.'); return p.id; }
     const [np] = await api.inserir('planos', dados);
@@ -1040,7 +1116,7 @@ async function modalPlano(p = null) {
   } catch (err) { falha(err); return null; }
 }
 async function modalAcoesNoPlano(planoId) {
-  const us = (await usuarios().catch(() => [])).filter(u => u.ativo);
+  const us = await pessoasAcao();
   let pid = planoId;
   let opPlanos = '';
   if (!pid) { const ps = await api.rpc('planos_lista').catch(() => []);
@@ -1059,7 +1135,7 @@ function tabelaAcoesHtml(acs, { mostrarResp = true, mostrarOrigem = true } = {})
       return `<tr class="clicavel" data-i="${i}"${fAttr('origem', (a.origem || '').split(' · ')[0])}${fAttr('resp', a.responsavel)}${fAttr('sit', !fim && pc === 'atr' ? 'Atrasada' : st)}${fAttr('data', a.prazo)}${fAttr('busca', [a.descricao, a.origem, a.responsavel, a.evidencia].filter(Boolean).join(' '))}>
         <td data-r="Ação"><b>${esc(a.descricao)}</b>${a.evidencia ? `<div class="muted">${esc(a.evidencia)}</div>` : ''}</td>
         ${mostrarOrigem ? `<td data-r="Referência">${a.plano_id ? `<a href="#/planos/ver/${a.plano_id}" data-ref>${esc(a.origem)}</a>` : esc(a.origem)}</td>` : ''}${mostrarResp ? `<td data-r="Responsável">${esc(a.responsavel || '—')}</td>` : ''}
-        <td data-r="Prazo" class="nowrap">${a.prazo ? dataBR(a.prazo) : '—'}${!fim && a.prazo ? `<div class="ma-pt ${pc}">${pt}</div>` : ''}</td>
+        <td data-r="Prazo" class="nowrap">${a.prazo ? dataBR(a.prazo) : '—'}${!fim && a.prazo ? `<div class="ma-pt ${pc}">${pt}</div>` : ''}${htmlRepact(a)}</td>
         <td data-r="Situação"><span class="tag ${!fim && pc === 'atr' ? 'vermelho' : sc}">${!fim && pc === 'atr' ? 'Atrasada' : st}</span></td>
         <td class="nowrap"><button class="btn peq" data-i="${i}">Abrir</button></td></tr>`; }).join('')}
   </tbody></table></div>`;
@@ -1106,10 +1182,11 @@ rota('/planos/ver/:id', async (tela, id) => {
   const p = await api.um('planos', `id=eq.${id}`).catch(() => null);
   if (!p) { tela.innerHTML = '<div class="cartao vazio">Plano não encontrado ou sem acesso.</div>'; return; }
   const [autor, linhas] = await Promise.all([p.criado_por ? api.um('usuarios', `id=eq.${p.criado_por}&select=nome`).catch(() => null) : null,
-    api.listar('acoes_gerais', `plano_id=eq.${id}&ativo=eq.true&select=id,descricao,prazo,status,evidencia,concluida_em,responsavel_id,criado_por,criado_em,u:usuarios!acoes_gerais_responsavel_id_fkey(nome)`).catch(() => [])]);
+    api.listar('acoes_gerais', `plano_id=eq.${id}&ativo=eq.true&select=id,descricao,prazo,prazo_original,status,evidencia,concluida_em,responsavel_id,responsaveis,responsaveis_ids,criado_por,criado_em,u:usuarios!acoes_gerais_responsavel_id_fkey(nome)`).catch(() => [])]);
   p.autor = autor;
   const acs = linhas.map(a => ({ modulo: 'geral', id: a.id, descricao: a.descricao, prazo: a.prazo, status: a.status, evidencia: a.evidencia, concluida_em: a.concluida_em,
-    responsavel_id: a.responsavel_id, responsavel: a.u?.nome, criado_por_id: a.criado_por, plano_id: id, origem: `${TIPOS_PLANO[p.tipo] || 'Plano'} ${dataBR(p.data)} · ${p.titulo}` }));
+    responsavel_id: a.responsavel_id, responsaveis: a.responsaveis, responsaveis_ids: a.responsaveis_ids, prazo_original: a.prazo_original,
+    responsavel: nomesPessoas(a.responsaveis) || a.u?.nome, criado_por_id: a.criado_por, plano_id: id, origem: `${TIPOS_PLANO[p.tipo] || 'Plano'} ${dataBR(p.data)} · ${p.titulo}` }));
   acs.sort((x, y) => (['concluida', 'cancelada'].includes(x.status) - ['concluida', 'cancelada'].includes(y.status)) || String(x.prazo || '9').localeCompare(String(y.prazo || '9')));
   const vivas = acs.filter(a => a.status !== 'cancelada'), conc = vivas.filter(a => a.status === 'concluida').length;
   const atr = vivas.filter(a => ['aberta', 'em_andamento'].includes(a.status) && a.prazo && a.prazo < hojeISO()).length;
@@ -1121,7 +1198,7 @@ rota('/planos/ver/:id', async (tela, id) => {
     <div class="cartao pl-cab"><div class="form">
       <div><div class="muted">Andamento</div><div class="pl-prog grande"><span style="width:${pct}%"></span></div><b>${conc} de ${vivas.length} concluída(s)</b>${atr ? ` · <b class="txt-verm">${atr} atrasada(s)</b>` : ''}</div>
       <div><div class="muted">Aberto por</div><b>${esc(p.autor?.nome || '—')}</b></div>
-      ${p.participantes ? `<div class="largo"><div class="muted">Participantes</div>${esc(p.participantes)}</div>` : ''}
+      ${p.participantes_lista?.length || p.participantes ? `<div class="largo"><div class="muted">Participantes</div>${esc(nomesPessoas(p.participantes_lista) || p.participantes)}</div>` : ''}
       ${p.descricao ? `<div class="largo"><div class="muted">Resumo / pauta</div><div style="white-space:pre-line">${esc(p.descricao)}</div></div>` : ''}</div></div>
     <div class="cartao"><h2>Ações deste plano</h2>${acs.length ? tabelaAcoesHtml(acs, { mostrarOrigem: false }) : '<div class="vazio">Nenhuma ação lançada.</div>'}</div>`;
   ligarTabelaAcoes(tela, acs);
