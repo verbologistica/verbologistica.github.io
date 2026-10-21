@@ -481,7 +481,8 @@ const MENU = [
 function menuPara(perfis, menus) {
   const admin = perfis.includes('administrador');
   const lista = !admin && Array.isArray(menus) && menus.length ? menus : null;
-  const ok = MENU.filter(i => i[0] === 'grupo' || i[0] === 'sub' || ((!i[2] || i[2].some(p => perfis.includes(p))) && (!lista || lista.includes(i[1]))));
+  const SEMPRE = ['#/inicio', '#/aprovacoes', '#/planos'];   // aparecem para todos, mesmo com lista de telas restrita
+  const ok = MENU.filter(i => i[0] === 'grupo' || i[0] === 'sub' || SEMPRE.includes(i[1]) || ((!i[2] || i[2].some(p => perfis.includes(p))) && (!lista || lista.includes(i[1]))));
   const semSub = ok.filter((i, k) => i[0] !== 'sub' || (ok[k + 1] && !['sub', 'grupo'].includes(ok[k + 1][0])));
   return semSub.filter((i, k) => i[0] !== 'grupo' || (semSub[k + 1] && semSub[k + 1][0] !== 'grupo'));
 }
@@ -1175,8 +1176,7 @@ rota('/planos', async tela => {
   const gestor = tem('administrador', 'diretoria');
   const ver = estado.params.get('ver') || 'minhas';
   const abertas = !temTodos(pLista('sit', 'todas'));
-  const veTodas = gestor || tem('ssma', 'qualidade');
-  const ABAS = [['minhas', 'No meu nome'], ['criadas', 'Que eu abri'], ['planos', 'Reuniões, auditorias e outros'], ...(veTodas ? [['todas', gestor ? 'Todas as ações' : 'Todas as ações do meu setor']] : [])];
+  const ABAS = [['minhas', 'No meu nome'], ['criadas', 'Que eu abri'], ['planos', 'Reuniões, auditorias e outros'], ['todas', 'Todas as ações']];
   const url = m => '#/planos?' + new URLSearchParams({ ver, ...m }).toString();
   const topo = (sub) => `<div class="topo"><div><h1>Planos de ação</h1><p class="sub">${sub}</p></div>
       <div class="acoes"><button class="btn" id="lancar-acoes">+ Ações em plano existente</button><button class="btn prim" id="novo-plano">+ Novo plano</button></div></div>
@@ -1194,7 +1194,7 @@ rota('/planos', async tela => {
     $$('tr[data-p]', tela).forEach(tr => (tr.onclick = () => (location.hash = '#/planos/ver/' + tr.dataset.p)));
     filtroLocal(tela, { itens: 'tbody tr[data-p]', antes: $$('.cartao', tela).at(-1), campos: [{ k: 'origem', rotulo: 'Origem' }, { k: 'setor', rotulo: 'Setor' }], periodo: true, rotuloPeriodo: 'Data' });
   } else {
-    const escopo = ver === 'todas' && !veTodas ? 'minhas' : ver;
+    const escopo = ver;
     const acs = await api.rpc('planos_acao', { p_escopo: escopo, p_abertas: abertas }).catch(err => { falha(err); return []; });
     const atr = acs.filter(a => a.prazo && a.prazo < hojeISO() && ['aberta', 'em_andamento'].includes(a.status)).length;
     tela.innerHTML = `${topo(`${acs.length} ação(ões)${atr ? ` · <b class="txt-verm">${atr} atrasada(s)</b>` : ''}`)}
