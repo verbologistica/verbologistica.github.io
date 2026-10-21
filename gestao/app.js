@@ -481,7 +481,7 @@ const MENU = [
 function menuPara(perfis, menus) {
   const admin = perfis.includes('administrador');
   const lista = !admin && Array.isArray(menus) && menus.length ? menus : null;
-  const SEMPRE = ['#/inicio', '#/aprovacoes', '#/planos'];   // aparecem para todos, mesmo com lista de telas restrita
+  const SEMPRE = ['#/inicio', '#/planos'];   // aparecem para todos, mesmo com lista de telas restrita
   const ok = MENU.filter(i => i[0] === 'grupo' || i[0] === 'sub' || SEMPRE.includes(i[1]) || ((!i[2] || i[2].some(p => perfis.includes(p))) && (!lista || lista.includes(i[1]))));
   const semSub = ok.filter((i, k) => i[0] !== 'sub' || (ok[k + 1] && !['sub', 'grupo'].includes(ok[k + 1][0])));
   return semSub.filter((i, k) => i[0] !== 'grupo' || (semSub[k + 1] && semSub[k + 1][0] !== 'grupo'));
