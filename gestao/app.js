@@ -378,6 +378,7 @@ const MENU = [
   ['Minha jornada', '#/operacao/jornada', [...P_OP, 'motorista'], 'relogio', null, true],
   ['Pesquisa de clima', '#/clima', null, 'conversa', 'pesquisa_aberta', true],
   ['Registrar não conformidade', '#/qualidade/nc/nova', null, 'documento', null, true],
+  ['Chamados', '#/chamados', null, 'conversa', 'chamados_abertos', true],
   ['grupo', 'Biblioteca', 'livro'],
   ['Modelos de documentos', '#/modelos', null, 'documento', null, true],
   ['Documentos da qualidade', '#/qualidade/documentos', null, 'livro_ok', 'qual_docs_ler', true],
@@ -852,7 +853,7 @@ rota('/inicio', async tela => {
     <ul class="mr-lista">${minhasReq.map(r => { const [n, txt] = ETAPA_REQ[r.status] || [0, r.status];
       return `<li><a href="#/compras/requisicoes/ver/${r.id}"><span class="mr-num">${esc(r.numero || '')}</span><span class="mr-txt">${esc((r.justificativa || '').slice(0, 90))}${(r.justificativa || '').length > 90 ? '…' : ''}</span>
         <span class="mr-etapa ${r.status === 'devolvida' ? 'alerta' : ''}"><span class="mr-pontos">${[0, 1, 2, 3, 4, 5, 6, 7].map(i => `<i class="${i < n ? 'f' : i === n ? 'a' : ''}"></i>`).join('')}</span>${txt}</span></a></li>`; }).join('')}</ul></div>` : '';
-  const [resGestao, minhasAcoes, diariasFechar] = await Promise.all([api.rpc('resumo_gestao').catch(() => null), api.rpc('minhas_acoes').catch(() => []), api.rpc('diarias_a_fechar').catch(() => [])]);
+  const [resGestao, minhasAcoes, diariasFechar, chamadosAb] = await Promise.all([api.rpc('resumo_gestao').catch(() => null), api.rpc('minhas_acoes').catch(() => []), api.rpc('diarias_a_fechar').catch(() => []), api.rpc('chamados_abertos').catch(() => [])]);
   const hojeD = hojeISO(), fimMes = d => somaDias(somaMeses(d.slice(0, 7) + '-01', 1), -1);
   const dfPend = (diariasFechar || []).filter(x => fimMes(x.competencia) <= hojeD || Number(hojeD.slice(8)) >= 25);
   const blocoDiarias = dfPend.length ? `<div class="cartao" style="border-left:4px solid var(--ouro)"><h2>Diárias para fechar</h2><ul class="lista-simples">${dfPend.map(x => `<li class="clicavel" onclick="location.hash='#/financeiro/pagar/ver/${x.titulo_id}'"><span><b>${esc(x.fornecedor || '')}</b> · ${esc(x.descricao || '')}</span><span class="muted">previsto ${brl(x.valor)}</span></li>`).join('')}</ul></div>` : '';
@@ -872,7 +873,7 @@ rota('/inicio', async tela => {
         ${(() => { const [f, a, o] = fraseDoDia(); return `<figure class="ih-frase"><blockquote>“${esc(f)}”</blockquote><figcaption>— <b>${esc(a)}</b>${o ? `, <cite>${esc(o)}</cite>` : ''}</figcaption></figure>`; })()}
       </div>
     </section>
-    ${blocoAcoes}${blocoDiarias}
+    ${typeof htmlChamadosInicio === 'function' ? htmlChamadosInicio(chamadosAb) : ''}${blocoAcoes}${blocoDiarias}
     ${blocoGestao}
     <div class="inicio-kpis">
       <a class="cartao kpi ${minhasReq.some(r => r.status === 'devolvida') ? 'alerta' : ''}" href="#${minhasReq.length ? '/inicio' : '/compras/requisicoes'}" ${minhasReq.length ? 'onclick="event.preventDefault();document.getElementById(\'minhas-req\').scrollIntoView({behavior:\'smooth\'})"' : ''}><div class="n">${minhasReq.length}</div><div class="r">minha(s) requisição(ões) de compra em andamento</div></a>
