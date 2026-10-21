@@ -140,13 +140,26 @@ function pnKpi({ rot, valor, sub = '', delta = null, spark = null, link = null, 
 
 // ---------- alertas ----------
 const PN_NIVEL = { critico: ['Crítico', 'critico'], atencao: ['Atenção', 'atencao'], info: ['Informativo', 'info'] };
-function pnAlertas(lista) {
+function pnAlertas(lista, itens = {}) {
   if (!lista.length) return `<div class="cartao pn-alertas ok"><div class="pn-al-cab"><span class="pn-st bom" aria-hidden="true">✓</span><b>Nenhum alerta</b><span class="muted">Nada parado, vencido ou pendente fora do prazo.</span></div></div>`;
   const n = k => lista.filter(a => a.nivel === k).length;
   return `<div class="cartao pn-alertas"><div class="pn-al-cab"><h2>Alertas</h2><span class="pn-chip critico">${n('critico')} crítico(s)</span><span class="pn-chip atencao">${n('atencao')} de atenção</span>${n('info') ? `<span class="pn-chip info">${n('info')} informativo(s)</span>` : ''}</div>
     <ul class="pn-al">${lista.map(a => { const [rot, cls] = PN_NIVEL[a.nivel] || PN_NIVEL.info;
       return `<li class="${cls}"><span class="pn-st ${cls}" aria-hidden="true">${cls === 'info' ? 'i' : '!'}</span><div class="pn-al-t"><b>${esc(a.titulo)}</b><span class="pn-al-nv">${rot}</span>${a.detalhe ? `<div class="muted">${esc(a.detalhe)}</div>` : ''}</div>
-        <div class="pn-al-n">${a.qtd != null ? `<b>${pnInt(a.qtd)}</b>` : ''}${a.valor != null ? `<span>${brl(a.valor)}</span>` : ''}</div>${a.link ? `<a class="btn peq" href="${a.link}">Abrir</a>` : ''}</li>`; }).join('')}</ul></div>`;
+        <div class="pn-al-n">${a.qtd != null ? `<b>${pnInt(a.qtd)}</b>` : ''}${a.valor != null ? `<span>${brl(a.valor)}</span>` : ''}</div>${pnAbrir(a, itens[a.titulo] || [])}</li>`; }).join('')}</ul></div>`;
+}
+
+// "Abrir" vai direto ao item; com vários itens, mostra a lista para escolher
+let _pnAl = 0;
+function pnAbrir(a, its) {
+  if (its.length === 1) return `<a class="btn peq" href="${esc(its[0].link)}">Abrir</a>`;
+  if (!its.length) return a.link ? `<a class="btn peq" href="${esc(a.link)}">Abrir</a>` : '';
+  const id = 'pn-al-' + (++_pnAl);
+  return `<button type="button" class="btn peq" data-al-itens="${id}" aria-expanded="false">Ver ${its.length} itens</button>
+    <ul class="pn-al-itens" id="${id}" hidden>${its.map(i => `<li><a href="${esc(i.link)}"><span>${esc(i.rot)}</span><b>Abrir ›</b></a></li>`).join('')}${a.link ? `<li class="pn-al-lista"><a href="${esc(a.link)}">Ver a lista completa no menu ›</a></li>` : ''}</ul>`;
+}
+function pnLigarAlertas(raiz) {
+  raiz.querySelectorAll('[data-al-itens]').forEach(b => b.onclick = () => { const ul = raiz.querySelector('#' + b.dataset.alItens); ul.hidden = !ul.hidden; b.setAttribute('aria-expanded', String(!ul.hidden)); b.classList.toggle('ativo', !ul.hidden); });
 }
 
 // ---------- cartão de gráfico com tabela de dados ----------
@@ -179,14 +192,14 @@ const pnTopo = (tit, sub, dados) => `<div class="topo"><div><h1>${esc(tit)}</h1>
 
 // ===================== Painel do Financeiro =====================
 rota('/financeiro/painel', async tela => {
-  const d = await api.rpc('painel_financeiro');
+  const [d, its] = await Promise.all([api.rpc('painel_financeiro'), api.rpc('painel_alertas_itens', { p_painel: 'financeiro' }).catch(() => ({}))]);
   const k = d.kpi, ms = pnCortarMeses(d.meses, ['pago', 'recebido', 'despesas', 'reembolsos', 'fundo']), cats = ms.map(m => pnMes(m.mes));
   const ult = arr => arr.slice(-6);
   const semanas = d.semanas.map((s, i) => ({ ...s, rot: i === 0 ? 'Vencidas' : pnDia(s.inicio) }));
   const AGING_COR = [PN_COR.atencao, PN_COR.serio, PN_COR.serio, PN_COR.critico, PN_COR.critico];
   const negativos = d.contas.filter(c => Number(c.saldo) < 0).length;
   tela.innerHTML = `${pnTopo('Painel do Financeiro', 'Caixa, contas a pagar e a receber, despesas e alertas do setor', d)}
-    ${pnAlertas(d.alertas)}
+    ${pnAlertas(d.alertas, its)}
     <div class="pn-kpis">
       ${pnKpi({ rot: 'Saldo em contas', valor: brl(k.saldo_contas), sub: negativos ? `${negativos} conta(s) negativa(s)` : 'bancos e caixa', nivel: Number(k.saldo_contas) < 0 ? 'critico' : '', link: '#/financeiro/projecao' })}
       ${pnKpi({ rot: 'Fundo Fixo', valor: brl(k.saldo_fundo), sub: `${k.adiant_aberto_qtd} adiantamento(s) em aberto · ${brl(k.adiant_aberto)}`, nivel: Number(k.saldo_fundo) < 2000 ? 'atencao' : '', link: '#/financeiro/fundo' })}
@@ -222,16 +235,17 @@ rota('/financeiro/painel', async tela => {
     ['g-enc', W => pnColunas(W, { cats, series: [{ nome: 'Juros + multa', cor: PN_COR.s2, vals: ms.map(m => m.encargos) }], fmtEixo: v => 'R$ ' + pnK(v), alt: 180 })],
     hFix('g-contas', pnBarrasH(d.contas.map(c => ({ nome: c.nome, valor: c.saldo, rot: 'Saldo' })))),
   ]);
+  pnLigarAlertas(tela);
   $('#pn-atualizar').onclick = () => navegar();
 });
 
 // ===================== Painel de Compras =====================
 rota('/compras/painel', async tela => {
-  const d = await api.rpc('painel_compras');
+  const [d, its] = await Promise.all([api.rpc('painel_compras'), api.rpc('painel_alertas_itens', { p_painel: 'compras' }).catch(() => ({}))]);
   const k = d.kpi, ms = pnCortarMeses(d.meses, ['comprado', 'requisicoes', 'pedidos']), cats = ms.map(m => pnMes(m.mes));
   const FUNIL_COR = ['#86b6ef', '#6da7ec', '#5598e7', '#3987e5', '#2a78d6', '#1c5cab'];
   tela.innerHTML = `${pnTopo('Painel de Compras', 'Requisições, cotações, pedidos, fornecedores e alertas do setor', d)}
-    ${pnAlertas(d.alertas)}
+    ${pnAlertas(d.alertas, its)}
     <div class="pn-kpis">
       ${pnKpi({ rot: 'Requisições em aberto', valor: pnInt(k.req_abertas), sub: `${k.req_urgentes} urgente(s)`, nivel: k.req_urgentes > 0 ? 'atencao' : '', link: '#/compras/requisicoes' })}
       ${pnKpi({ rot: 'Comprado no mês', valor: brl(k.comprado_mes), delta: { atual: Number(k.comprado_mes), ant: Number(k.comprado_ant_ate_dia), rot: 'vs mesmo período do mês anterior', bomSubir: false }, spark: pnSpark(ms.slice(-6).map(m => m.comprado)) })}
@@ -262,5 +276,6 @@ rota('/compras/painel', async tela => {
     hFix('g-forn', pnBarrasH(d.fornecedores.map(c => ({ nome: c.nome, valor: c.total, rot: '12 meses', sub: c.qtd + ' pedido(s)' })))),
     hFix('g-cc', pnBarrasH(d.centros.map(c => ({ nome: c.nome, valor: c.total, rot: '12 meses', sub: c.qtd + ' pedido(s)' })))),
   ]);
+  pnLigarAlertas(tela);
   $('#pn-atualizar').onclick = () => navegar();
 });
