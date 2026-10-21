@@ -360,9 +360,9 @@ rota('/aprovacoes', async tela => {
   const idsA = pend.filter(a => a.entidade === 'adiantamento').map(a => a.entidade_id);
   const adts = idsA.length ? porId(await api.listar('adiantamentos', `select=*,colab:usuarios(nome)&id=${lista(idsA)}`)) : {};
   const meusA = pend.filter(a => a.entidade === 'adiantamento' && adts[a.entidade_id]?.status === 'aguardando_aprovacao' && adts[a.entidade_id].colaborador_id !== estado.usuario.id
-                          && (a.aprovador_id === estado.usuario.id || (a.perfil_aprovador && tem(a.perfil_aprovador))));
+                          && (aprovoComo(a.aprovador_id) || (a.perfil_aprovador && tem(a.perfil_aprovador))));
   const meus = pend.filter(a => a.entidade === 'reembolso' && docs[a.entidade_id]?.status === 'aguardando_aprovacao' && docs[a.entidade_id].colaborador_id !== estado.usuario.id
-                         && (a.aprovador_id === estado.usuario.id || (a.perfil_aprovador && tem(a.perfil_aprovador))));
+                         && (aprovoComo(a.aprovador_id) || (a.perfil_aprovador && tem(a.perfil_aprovador))));
   const comp = await cartoesCotacao(pend);
   const auto = estado.usuario.autoaprovacao ? await api.rpc('minhas_autoaprovacoes').catch(() => []) : [];
   const ENT_AUTO = { reembolso: 'Reembolso', cotacao: 'Compra (cotação)', requisicao: 'Requisição', adiantamento: 'Adiantamento', pagamento: 'Pagamento' };

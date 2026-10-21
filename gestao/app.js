@@ -301,6 +301,8 @@ const fornecedores = f => cad('fornecedores', 'select=id,razao_social,nome_fanta
 const bancos = f => cad('contas_bancarias', 'select=id,nome,tipo,ativo&order=nome', f);
 const veiculos = f => cad('veiculos', 'select=id,placa,modelo,ativo&order=placa', f);
 const porId = arr => Object.fromEntries(arr.map(x => [x.id, x]));
+// sou aprovador deste item (direto ou por aprovação conjunta)
+const aprovoComo = id => !!id && (id === estado.usuario?.id || id === estado.usuario?.aprova_junto_de);
 
 const opcoes = (arr, valor, rotulo, sel, vazio = '') =>
   (vazio !== null ? `<option value="">${esc(vazio)}</option>` : '') +

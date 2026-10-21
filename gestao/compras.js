@@ -252,7 +252,7 @@ rota('/compras/cotacoes/ver/:id', async (tela, id) => {
   const anx = {}; await Promise.all(props.map(async p => (anx[p.id] = await htmlAnexos('proposta', p.id))));
   const conta = c.conta_id ? (await contas()).find(x => x.id === c.conta_id) : null;
   const apPend = aprs.find(a => a.decisao === 'pendente');
-  const souAprovador = apPend && (apPend.aprovador_id === estado.usuario.id || (apPend.perfil_aprovador && tem(apPend.perfil_aprovador))) && c.comprador_id !== estado.usuario.id;
+  const souAprovador = apPend && (aprovoComo(apPend.aprovador_id) || (apPend.perfil_aprovador && tem(apPend.perfil_aprovador))) && c.comprador_id !== estado.usuario.id;
   tela.innerHTML = `
     <div class="topo"><div><h1>Cotação ${esc(c.numero)}</h1><p class="sub">${tag(c.status)} · Requisição <a href="#/compras/requisicoes/ver/${c.requisicao_id}">${esc(r?.numero || '')}</a> · ${esc(r?.justificativa || '')}</p></div>
       <div class="acoes">${aberta ? '<button class="btn" id="nova-prop">+ Proposta</button><button class="btn prim" id="enviar">Enviar para aprovação</button>' : ''}
@@ -371,7 +371,7 @@ rota('/compras/cotacoes/ver/:id', async (tela, id) => {
 
 // ---------- Cartões de compra na tela Aprovações ----------
 async function cartoesCotacao(pend) {
-  const meus = pend.filter(a => a.entidade === 'cotacao' && (a.aprovador_id === estado.usuario.id || (a.perfil_aprovador && tem(a.perfil_aprovador))));
+  const meus = pend.filter(a => a.entidade === 'cotacao' && (aprovoComo(a.aprovador_id) || (a.perfil_aprovador && tem(a.perfil_aprovador))));
   if (!meus.length) return { html: '', n: 0 };
   const ids = meus.map(a => a.entidade_id);
   const [cots, props, forns] = await Promise.all([
