@@ -1067,12 +1067,14 @@ async function abrirAcao(a) {
       ${podeEditar || ehResp || gestor ? camposAnexoHtml() : ''}</div>
     ${linkMod ? `<p class="muted"><a href="${linkMod}" data-fechar>Ver no módulo de ${a.modulo === 'ssma' ? 'Segurança' : 'Qualidade'}</a></p>` : ''}
     ${a.plano_id && !location.hash.startsWith('#/planos/ver/') ? `<p class="muted">Referência: <a href="#/planos/ver/${a.plano_id}" data-fechar>${esc(a.origem)}</a></p>` : ''}
-    <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button>${podeEditar || ehResp || gestor ? '<button class="btn prim">Salvar</button>' : ''}</div></form>`,
+    <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button>${podeEditar || ehResp || gestor ? `<button class="btn${aberta ? '' : ' prim'}" value="salvar">Salvar</button>${aberta ? '<button class="btn ok" value="concluir">✔ Concluir ação</button>' : ''}` : ''}</div></form>`,
     { aoAbrir: (f, fechar) => { if (podeEditar) { $('.modal', f).classList.add('modal-largo'); ligarSelPessoas(f, pes); }
         $('#ac-repact', f)?.addEventListener('click', async () => { if (await repactuarAcao(a)) { fechar(null); navegar(); } }); },
-      validar: d => d.status === 'concluida' && !d.evidencia?.trim() ? 'Para concluir, descreva a evidência de que a ação foi feita.'
+      validar: d => (d._acao === 'concluir' || d.status === 'concluida') && !d.evidencia?.trim() && !d.arquivos?.length && !d.links?.trim() && !anxHtml.includes('data-arquivo') ? 'Para concluir, descreva o que foi feito ou anexe a evidência.'
         : podeEditar && !lerPessoas(d.resp).length ? 'Inclua pelo menos um responsável.' : null });
   if (!r) return false;
+  if (r._acao === 'concluir') r.status = 'concluida';
+  if (r.status === 'concluida' && !r.evidencia?.trim()) r.evidencia = 'Evidência em anexo' + (r.arquivos?.length ? ': ' + r.arquivos.map(f => f.name).join(', ') : r.links?.trim() ? ': ' + r.links.trim() : '.');
   const dados = { status: r.status, evidencia: r.evidencia?.trim() || null };
   if (podeEditar) Object.assign(dados, { descricao: r.descricao.trim(), responsaveis: lerPessoas(r.resp), ...(a.prazo ? {} : { prazo: r.prazo || null }) });
   try { await salvarAnexosForm(entAnx, a.id, r); await api.alterar(tabela, `id=eq.${a.id}`, dados); aviso(r.status === 'concluida' ? 'Ação concluída.' : 'Ação atualizada.'); return true; } catch (err) { falha(err); return false; }
@@ -1407,7 +1409,39 @@ function barraRolagem(w) {
   medir(); setTimeout(medir, 300);
 }
 function barrasEm(raiz) { (raiz.matches?.('.tabela-wrap') ? [raiz] : $$('.tabela-wrap', raiz)).forEach(barraRolagem); }
-function combosEm(raiz) { barrasEm(raiz); (raiz.matches?.('select') ? [raiz] : $$('select', raiz)).forEach(sel => (podeMulti(sel) ? multiFiltro(sel) : comboSelect(sel))); }
+function combosEm(raiz) { barrasEm(raiz); (raiz.matches?.('select') ? [raiz] : $$('select', raiz)).forEach(sel => (podeMulti(sel) ? multiFiltro(sel) : comboSelect(sel)));
+  (raiz.matches?.('input[type=file]') ? [raiz] : $$('input[type=file]', raiz)).forEach(campoArquivo); }
+
+// ===================== Campo de anexos (todos os formulários) =====================
+// Os arquivos escolhidos ficam listados e se somam a cada escolha; clicar fora ou cancelar a janela não apaga nada.
+// Cada arquivo pode ser tirado pelo ✕. Também aceita arrastar e soltar.
+function campoArquivo(inp) {
+  if (inp._fx || inp.hidden || !inp.name || !inp.closest('form') || inp.closest('label.btn')) return;
+  inp._fx = true;
+  const lab = inp.closest('label');
+  if (lab) { const d = document.createElement('div'); d.className = lab.className; while (lab.firstChild) d.append(lab.firstChild); lab.replaceWith(d); }
+  const obrig = inp.required; inp.required = false; inp.hidden = true;
+  const pick = document.createElement('input'); pick.type = 'file'; pick.multiple = inp.multiple; if (inp.accept) pick.accept = inp.accept; pick.hidden = true;
+  const box = document.createElement('div'); box.className = 'fx';
+  box.innerHTML = `<button type="button" class="btn peq fx-add">📎 ${inp.multiple ? 'Adicionar arquivos' : 'Escolher arquivo'}</button><span class="fx-lista"><span class="muted fx-vazio">Nenhum arquivo escolhido · arraste para cá</span></span>`;
+  inp.before(box); box.append(pick);
+  let arq = [...(inp.files || [])];
+  const gravar = () => {
+    const dt = new DataTransfer(); arq.forEach(f => dt.items.add(f)); inp.files = dt.files;
+    $('.fx-lista', box).innerHTML = arq.length ? arq.map((f, i) => `<span class="fx-item">${esc(f.name)} <small class="muted">${f.size > 1048576 ? (f.size / 1048576).toFixed(1).replace('.', ',') + ' MB' : Math.max(1, Math.round(f.size / 1024)) + ' KB'}</small><button type="button" data-fx-tira="${i}" title="Tirar">✕</button></span>`).join('')
+      : '<span class="muted fx-vazio">Nenhum arquivo escolhido · arraste para cá</span>';
+    inp.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+  const somar = lista => { const novos = [...lista]; if (!novos.length) return; arq = inp.multiple ? [...arq, ...novos.filter(n => !arq.some(a => a.name === n.name && a.size === n.size))] : [novos[0]]; gravar(); };
+  $('.fx-add', box).onclick = () => pick.click();
+  pick.onchange = () => { somar(pick.files); pick.value = ''; };
+  box.addEventListener('click', e => { const b = e.target.closest('[data-fx-tira]'); if (b) { arq.splice(Number(b.dataset.fxTira), 1); gravar(); } });
+  box.addEventListener('dragover', e => { e.preventDefault(); box.classList.add('fx-sobre'); });
+  box.addEventListener('dragleave', () => box.classList.remove('fx-sobre'));
+  box.addEventListener('drop', e => { e.preventDefault(); box.classList.remove('fx-sobre'); somar(e.dataTransfer.files); });
+  if (obrig) inp.form.addEventListener('submit', e => { if (inp.isConnected && !arq.length) { e.preventDefault(); e.stopImmediatePropagation(); aviso('Anexe o arquivo (obrigatório).', true); } }, true);
+  if (arq.length) gravar();
+}
 new MutationObserver(ms => { for (const m of ms) for (const n of m.addedNodes) if (n.nodeType === 1 && !n.classList?.contains('cb-lista')) combosEm(n);
   if (_cbAberto && !_cbAberto.box.isConnected) _cbAberto.fechar(); }).observe(document.documentElement, { childList: true, subtree: true });
 addEventListener('scroll', e => { if (_cbAberto && !_cbAberto.lista?.contains(e.target)) _cbAberto.posicionar(); }, true);

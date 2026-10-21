@@ -792,3 +792,11 @@ td .cb, .orc-grade .cb { min-width: 120px; }
 .enc { font-size: 12px; color: var(--cinza); white-space: nowrap; }
 .enc.mais { color: var(--vermelho, #b42318); }
 .enc.menos { color: var(--verde); }
+
+/* campo de anexos */
+.fx { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; border: 1px dashed var(--borda); border-radius: 8px; padding: 6px 8px; background: var(--cartao); margin-top: 4px; min-height: 40px; }
+.fx.fx-sobre { border-color: var(--verde); background: var(--verde-claro); }
+.fx-lista { display: contents; }
+.fx-item { display: inline-flex; align-items: center; gap: 4px; background: var(--cinza-claro); border-radius: 999px; padding: 2px 4px 2px 10px; font-size: 13px; max-width: 100%; }
+.fx-item button { border: 0; background: transparent; cursor: pointer; font-size: 12px; padding: 0 4px; color: var(--cinza); }
+.fx-vazio { font-size: 13px; }
