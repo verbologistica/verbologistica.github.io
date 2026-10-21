@@ -52,13 +52,23 @@ rota('/financeiro/adiantamentos', async tela => {
 
 // ---------- Novo adiantamento ----------
 rota('/adiantamentos/novo', async tela => {
-  const [listaPes, ccs] = await Promise.all([editaFin() ? pessoasFin() : [], centros()]);
+  const [listaPes, ccs, bs, saldos] = await Promise.all([editaFin() ? pessoasFin() : [], centros(),
+    editaFin() ? api.listar('contas_bancarias', 'select=*&ativo=eq.true&order=nome').catch(() => []) : [],
+    editaFin() ? api.listar('v_saldos_contas', 'select=id,saldo').catch(() => []) : []]);
+  const fundoF = bs.find(b => b.tipo === 'fundo_fixo'), doFundo = estado.params.get('origem') === 'fundo';
   const ccPadrao = estado.usuario.centro_custo_id || ccs.find(c => c.codigo === 'GERAL')?.id;
   tela.innerHTML = `
     <div class="topo"><div><h1>${editaFin() ? 'Novo adiantamento' : 'Pedir adiantamento'}</h1><p class="sub">Depois de aprovado, o Financeiro entrega o valor. A prestação de contas vence ${5} dias após o retorno.</p></div></div>
     <form class="cartao form" id="f-adt">
       ${editaFin() ? htmlPessoaFin(listaPes, '') : ''}
       <label class="campo">Valor (R$)<input name="valor" inputmode="decimal" required placeholder="0,00"></label>
+      ${editaFin() ? `<label class="campo">Sai de<select name="origem"><option value="">A definir na entrega</option>${bs.map(b => `<option value="${b.id}" ${doFundo && b.id === fundoF?.id ? 'selected' : ''}>${esc(b.nome)}${b.tipo === 'fundo_fixo' ? ` (saldo ${brl(saldos.find(x => x.id === b.id)?.saldo)})` : ''}</option>`).join('')}</select></label>
+      <label class="check largo"><input type="checkbox" name="entregue" ${doFundo ? 'checked' : ''}> O dinheiro já foi entregue (lança agora no extrato da conta escolhida, sem passar por aprovação)</label>
+      <div class="largo form" id="box-entregue" style="padding:0">
+        <label class="campo">Data da entrega<input type="date" name="data_entrega" value="${hojeISO()}" max="${hojeISO()}"></label>
+        <label class="campo">Forma<select name="forma">${FORMAS_DIN.map(x => `<option>${x}</option>`).join('')}</select></label>
+        <label class="campo largo">Comprovante da entrega (obrigatório, exceto dinheiro)<input type="file" name="arquivos" accept="image/*,application/pdf" multiple></label></div>
+      <p class="muted largo" id="dica-fundo" hidden>Saindo do Fundo Fixo, ao ser aprovado o adiantamento já é entregue e aparece no extrato do fundo.</p>` : ''}
       <label class="campo largo">Motivo<input name="motivo" required placeholder="Ex.: viagem Guararapes × Três Lagoas, combustível e alimentação"></label>
       <label class="campo">Data de saída<input type="date" name="data_saida" value="${hojeISO()}"></label>
       <label class="campo">Data de retorno<input type="date" name="data_retorno"></label>
@@ -66,16 +76,33 @@ rota('/adiantamentos/novo', async tela => {
       <div class="largo acoes"><button class="btn prim">Enviar para aprovação</button><a class="btn" href="javascript:history.back()">Cancelar</a></div>
     </form>`;
   const f = $('#f-adt');
-  ligarPessoaFin(f);
+  ligarPessoaFin(f, listaPes);
+  if (f.entregue) {
+    const sinc = () => { const ent = f.entregue.checked; $('#box-entregue').hidden = !ent; f.origem.required = ent;
+      $('#dica-fundo').hidden = ent || f.origem.value !== fundoF?.id;
+      f.querySelector('.acoes .btn.prim').textContent = ent ? 'Registrar adiantamento entregue' : 'Enviar para aprovação'; };
+    f.entregue.onchange = sinc; f.origem.onchange = sinc; sinc();
+  }
   f.onsubmit = async e => {
     e.preventDefault();
     const d = formDados(f); const v = num(d.valor);
     if (!v || v <= 0) return aviso('Informe o valor.', true);
+    if (editaFin() && !d.quem) return aviso('Escolha a pessoa que recebe o adiantamento.', true);
     const q = d.quem || 'u:' + estado.usuario.id;
+    const ent = editaFin() && f.entregue?.checked;
+    if (ent && !d.origem) return aviso('Informe de onde saiu o dinheiro.', true);
+    if (ent && d.forma !== 'Dinheiro' && !d.arquivos?.length) return aviso('Anexe o comprovante da entrega. Só dinheiro dispensa comprovante.', true);
     await ocupado(e.submitter, async () => {
       try {
         const quemDados = await resolverPessoaFin(q, d.quem_nome, listaPes);
-        const [a] = await api.inserir('adiantamentos', { ...quemDados,
+        if (ent) {
+          const id = await api.rpc('registrar_adiantamento_entregue', { p_colaborador: quemDados.colaborador_id, p_pessoa: quemDados.colaborador_id ? null : quemDados.pessoa_sem_login_id,
+            p_valor: v, p_motivo: d.motivo, p_data_entrega: d.data_entrega || hojeISO(), p_conta: d.origem, p_forma: d.forma, p_lancar_saida: true,
+            p_prazo: null, p_cc: d.cc || null, p_obs: null });
+          await anexar('adiantamento', id, d.arquivos);
+          aviso('Adiantamento registrado como entregue' + (d.origem === fundoF?.id ? ' e lançado no Fundo Fixo.' : '.')); location.hash = '#/adiantamentos/ver/' + id; return;
+        }
+        const [a] = await api.inserir('adiantamentos', { ...quemDados, conta_prevista_id: d.origem || null,
           valor: v, motivo: d.motivo, data_saida: d.data_saida || null, data_retorno: d.data_retorno || null, centro_custo_id: d.cc || null, status: 'aguardando_aprovacao' });
         aviso(`Adiantamento ${a.numero} enviado para aprovação.`); location.hash = '#/adiantamentos/ver/' + a.id;
       } catch (err) { falha(err); }
@@ -167,7 +194,7 @@ rota('/adiantamentos/ver/:id', async (tela, id) => {
   $('#entregar')?.addEventListener('click', async () => {
     const r = await modal(`<form><h2>Entregar ${esc(a.numero)} · ${brl(a.valor)}</h2><div class="form">
       <label class="campo">Data<input type="date" name="data" value="${hojeISO()}" required></label>
-      <label class="campo">Saiu de<select name="conta" required>${contaOpcoes(fundo?.id)}</select></label>
+      <label class="campo">Saiu de<select name="conta" required>${contaOpcoes(a.conta_prevista_id || fundo?.id)}</select></label>
       <label class="campo">Forma<select name="forma" required>${FORMAS_DIN.map(x => `<option>${x}</option>`).join('')}</select></label>
       <label class="campo largo">Observação<input name="obs"></label>
       <label class="campo largo">Comprovante (obrigatório, exceto dinheiro)<input type="file" name="arquivos" accept="image/*,application/pdf" multiple></label></div>
@@ -258,7 +285,7 @@ rota('/financeiro/fundo', async tela => {
     api.listar('movimentos_bancarios', `conta_bancaria_id=eq.${fundo.id}&cancelado_em=is.null${de ? '&data=gte.' + de : ''}${ate ? '&data=lte.' + ate : ''}&order=data,criado_em&limit=2000`),
     api.um('v_saldos_contas', `id=eq.${fundo.id}`),
     api.listar('adiantamentos', `${SELECT_ADT}&conta_bancaria_id=eq.${fundo.id}&status=in.(pago,prestando_contas)&order=prazo_prestacao`),
-    api.listar('reembolsos', `select=id,valor&forma_custeio=eq.fundo_fixo&status=in.(aguardando_aprovacao,devolvido)`),
+    api.listar('reembolsos', `select=id,numero,valor,status&forma_custeio=eq.fundo_fixo&status=in.(aguardando_aprovacao,devolvido)`),
     api.listar('contas_bancarias', 'select=*&ativo=eq.true&order=nome')]);
   const saldo = Number(saldoV?.saldo || 0);
   // pessoa de cada movimento (quem fez a despesa / recebeu o adiantamento)
@@ -270,6 +297,11 @@ rota('/financeiro/fundo', async tela => {
   const pessoaMov = m => pessoaDe[m.entidade_id] || (['transferencia', 'reposicao'].includes(m.origem) ? fundo.responsavel_nome || '' : '');
   const comColab = adts.reduce((s, a) => s + Number(a.valor), 0);
   const aAprovar = pendFundo.reduce((s, r) => s + Number(r.valor), 0);
+  // com quem está cada despesa pendente
+  const apsF = pendFundo.length ? await api.listar('aprovacoes', `select=entidade_id,aprovador_id,perfil_aprovador&entidade=eq.reembolso&decisao=eq.pendente&entidade_id=${lista(pendFundo.map(r => r.id))}`).catch(() => []) : [];
+  const nomesU = porId(await usuarios().catch(() => []));
+  const comQuem = [...new Set([...apsF.map(x => nomesU[x.aprovador_id]?.nome || x.perfil_aprovador || '—'), ...pendFundo.filter(r => r.status === 'devolvido').map(() => 'quem lançou (devolvida p/ correção)')])];
+  const minhas = apsF.some(x => x.aprovador_id === estado.usuario.id);
   // indicadores do período (ou de todo o histórico, sem filtro)
   const soma = f => movs.filter(f).reduce((x, m) => x + Number(m.valor), 0);
   const depositado = soma(m => ['transferencia', 'reposicao'].includes(m.origem) || (m.origem === 'ajuste' && Number(m.valor) > 0));
@@ -285,14 +317,14 @@ rota('/financeiro/fundo', async tela => {
   tela.innerHTML = `
     <div class="topo"><div><h1>Fundo Fixo</h1><p class="sub">Responsável: ${esc(fundo.responsavel_nome || '—')}${fundo.chave_pix ? ' · Pix ' + esc(fundo.chave_pix) : ''}</p></div>
       <div class="acoes">${editaFin() ? `<a class="btn prim" href="#/reembolsos/novo?custeio=fundo_fixo">+ Despesa paga pelo fundo</a>
-        <a class="btn" href="#/adiantamentos/novo">+ Adiantamento</a><button class="btn ok" id="repor">Repor o fundo</button>` : ''}</div></div>
+        <a class="btn" href="#/adiantamentos/novo?origem=fundo">+ Adiantamento pelo fundo</a><button class="btn ok" id="repor">Repor o fundo</button>` : ''}</div></div>
     <div class="grade" style="margin-bottom:16px">
       <div class="cartao kpi"><div class="n">${brl(depositado)}</div><div class="r">total depositado no fundo${periodoTxt}</div></div>
       <div class="cartao kpi"><div class="n">${brl(gasto)}</div><div class="r">total gasto em despesas${periodoTxt}</div></div>
       <div class="cartao kpi"><div class="n">${brl(adiantado)}</div><div class="r">entregue em adiantamentos (líquido)${periodoTxt}</div></div>
       <div class="cartao kpi" style="border-top:3px solid var(--ouro)"><div class="n">${brl(saldo)}</div><div class="r">disponível no fundo hoje</div></div>
       <div class="cartao kpi ${adts.some(adtVencido) ? 'alerta' : ''}"><div class="n">${brl(comColab)}</div><div class="r">${adts.length} adiantamento(s) com colaboradores</div></div>
-      <a class="cartao kpi ${aAprovar ? 'alerta' : ''}" href="#/aprovacoes"><div class="n">${brl(aAprovar)}</div><div class="r">${pendFundo.length} despesa(s) do fundo aguardando aprovação</div></a>
+      <a class="cartao kpi ${aAprovar ? 'alerta' : ''}" href="${minhas ? '#/aprovacoes' : '#/financeiro/reembolsos?status=abertos'}"><div class="n">${brl(aAprovar)}</div><div class="r">${pendFundo.length} despesa(s) do fundo aguardando aprovação${comQuem.length ? `<div class="muted" style="margin-top:4px">com ${esc(comQuem.join(', '))}: ${esc(pendFundo.map(r => r.numero).join(', '))}</div>` : ''}</div></a>
     </div>
     ${adts.length ? `<div class="cartao"><h2>Adiantamentos em aberto</h2>${tabelaAdts(adts)}</div>` : ''}
     <div class="cartao"><div class="topo" style="margin:0 0 8px"><h2 style="margin:0">Extrato do fundo</h2>
@@ -328,13 +360,11 @@ rota('/financeiro/fundo', async tela => {
 // Para dinheiro que o colaborador já recebeu antes do sistema (ou fora dele): entra direto como "entregue",
 // sem aprovação, para que as despesas possam ser vinculadas como prestação de contas.
 async function modalAdtRetroativo({ quem = '' } = {}) {
-  const [users, pessoas, bs, ccs] = await Promise.all([usuarios(), pessoasSemLogin(), api.listar('contas_bancarias', 'select=*&ativo=eq.true&order=nome'), centros()]);
+  const [listaPes, bs, ccs] = await Promise.all([pessoasFin(), api.listar('contas_bancarias', 'select=*&ativo=eq.true&order=nome'), centros()]);
   const r = await modal(`<form><h2>Registrar adiantamento já entregue</h2>
     <p class="muted">Use quando o dinheiro já foi entregue ao colaborador antes de existir no sistema. Ele entra como <b>entregue</b>, sem passar por aprovação, e fica registrado quem lançou.</p>
     <div class="form">
-      <label class="campo largo">Colaborador<select name="quem" required><option value="">Selecione…</option>
-        <optgroup label="Com acesso ao sistema">${users.filter(u => u.ativo).map(u => `<option value="u:${u.id}" ${quem === 'u:' + u.id ? 'selected' : ''}>${esc(u.nome)}</option>`).join('')}</optgroup>
-        ${pessoas.length ? `<optgroup label="Sem acesso (cadastro interno)">${pessoas.map(p => `<option value="p:${p.id}" ${quem === 'p:' + p.id ? 'selected' : ''}>${esc(p.nome)}</option>`).join('')}</optgroup>` : ''}</select></label>
+      <div class="largo">${htmlPessoaFin(listaPes, quem)}</div>
       <label class="campo">Valor entregue (R$)<input name="valor" inputmode="decimal" required placeholder="0,00"></label>
       <label class="campo">Data da entrega<input type="date" name="data" value="${hojeISO()}" required></label>
       <label class="campo largo">Motivo<input name="motivo" required placeholder="Ex.: viagem Guararapes × Três Lagoas"></label>
@@ -348,10 +378,12 @@ async function modalAdtRetroativo({ quem = '' } = {}) {
       <label class="campo largo">Comprovante da entrega (obrigatório, exceto dinheiro)<input type="file" name="arquivos" accept="image/*,application/pdf" multiple></label>
     </div>
     <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn ok">Registrar</button></div></form>`, {
+    aoAbrir: raiz => ligarPessoaFin($('form', raiz), listaPes),
     validar: d => !d.quem ? 'Escolha o colaborador.' : !(num(d.valor) > 0) ? 'Informe o valor.' : d.forma !== 'Dinheiro' && !d.arquivos.length ? 'Anexe o comprovante da entrega. Só dinheiro dispensa comprovante.' : null });
   if (!r) return null;
+  const pes = await resolverPessoaFin(r.quem, r.quem_nome, listaPes);
   const id = await api.rpc('registrar_adiantamento_entregue', {
-    p_colaborador: r.quem.startsWith('u:') ? r.quem.slice(2) : null, p_pessoa: r.quem.startsWith('p:') ? r.quem.slice(2) : null,
+    p_colaborador: pes.colaborador_id, p_pessoa: pes.colaborador_id ? null : pes.pessoa_sem_login_id,
     p_valor: num(r.valor), p_motivo: r.motivo, p_data_entrega: r.data, p_conta: r.conta, p_forma: r.forma,
     p_lancar_saida: !!r.lancar, p_prazo: r.prazo || null, p_cc: r.cc || null, p_obs: r.obs || null });
   if (r.arquivos?.length) await anexar('adiantamento', id, r.arquivos);

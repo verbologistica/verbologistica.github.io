@@ -190,6 +190,10 @@ async function formParceiro(tela, tabela, x = null) {
         <label class="campo">Situação na Receita<input name="situacao_cadastral" value="${esc(x?.situacao_cadastral || '')}" readonly></label>
         <div class="largo"><div class="muted" style="margin-bottom:4px">Categorias</div><div class="chips">${P.categorias.map(c => { const extra = c === 'Outro' ? cats.filter(x => !P.categorias.includes(x)) : [];
           return `<label class="chip"><input type="checkbox" name="cat_${esc(c)}" ${cats.includes(c) || extra.length ? 'checked' : ''} ${extra.length ? `data-valor="${esc(extra.join(', '))}"` : ''}> ${esc(c)}</label>`; }).join('')}</div></div>
+        ${tabela === 'fornecedores' ? `<div class="largo form" id="box-posto" style="padding:10px;border-left:4px solid var(--ouro);background:var(--cinza-claro);border-radius:8px">
+          <label class="check largo"><input type="checkbox" name="app_motorista" ${x?.app_motorista === false ? '' : 'checked'}> Aparece na lista de postos do app dos motoristas</label>
+          <label class="campo largo">Outros nomes do posto (separados por vírgula)<input name="apelidos" value="${esc((x?.apelidos || []).join(', '))}" placeholder="Como os motoristas chamam o posto. Ex.: Posto do Trevo, Bichim"></label>
+          <p class="muted largo" style="margin:0">Os abastecimentos com esses nomes ficam ligados a este cadastro e entram na fatura e no fechamento deste posto.</p></div>` : ''}
       </div></div>
       <div class="cartao"><h2>Contato e endereço</h2><div class="form">
         <label class="campo">Pessoa de contato<input name="contato" value="${esc(x?.contato || '')}"></label>
@@ -237,6 +241,8 @@ async function formParceiro(tela, tabela, x = null) {
         <a class="btn" href="javascript:history.back()">Cancelar</a></div>
     </form>`;
   const f = $('#f-parc');
+  const boxPosto = $('#box-posto'), cbPosto = f.querySelector('[name="cat_Posto de combustível"]');
+  if (boxPosto && cbPosto) { const sp = () => { boxPosto.hidden = !cbPosto.checked; }; cbPosto.addEventListener('change', sp); sp(); }
   let receita = null;
   const mostraCobranca = () => {
     const cob = $('[name=cobranca]:checked', f)?.value, fixo = ['fixa_mensal', 'diaria'].includes(cob), dia = cob === 'diaria';
@@ -306,6 +312,8 @@ async function formParceiro(tela, tabela, x = null) {
     };
     if (receita) Object.assign(dados, { atividade_principal: receita.cnae_fiscal_descricao || null, dados_receita: receita, consultado_em: new Date().toISOString() });
     if (tabela === 'fornecedores') {
+      dados.app_motorista = !!d.app_motorista;
+      dados.apelidos = [...new Set((d.apelidos || '').split(',').map(t => t.trim()).filter(Boolean))];
       const pc = contasBanc.find(c => c.principal) || {};
       Object.assign(dados, { conta_padrao_id: d.conta_padrao_id || null, chave_pix: pc.pix_chave || null, banco: pc.banco || null, agencia: pc.agencia || null, conta: pc.conta || null,
                              categoria: dados.categorias[0] || null });

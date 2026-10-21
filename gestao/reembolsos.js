@@ -17,15 +17,50 @@ async function pessoasFin() {
   const vistos = new Set(); l = l.filter(p => !vistos.has(p.chave) && vistos.add(p.chave));
   return (estado.cache._pessoasFin = l);
 }
-const GRUPOS_PES = { 1: 'Colaboradores (RH)', 2: 'Usuários sem cadastro no RH', 3: 'Outras pessoas' };
-const htmlPessoaFin = (lista, sel, { disabled = false } = {}) => `<label class="campo">Colaborador<select name="quem" required ${disabled ? 'disabled' : ''}><option value="">Selecione…</option>
-    ${Object.entries(GRUPOS_PES).map(([g, rot]) => { const ps = lista.filter(p => p.grupo === g); return ps.length ? `<optgroup label="${rot}">${ps.map(p => `<option value="${esc(p.chave)}" data-busca="${esc(p.info || '')}" ${p.chave === sel ? 'selected' : ''}>${esc(p.nome)}${p.info ? ' · ' + esc(p.info) : ''}</option>`).join('')}</optgroup>` : ''; }).join('')}
-    <optgroup label="Outra pessoa"><option value="x:novo">+ Pessoa externa…</option></optgroup></select></label>
-  <label class="campo" data-externo hidden>Nome da pessoa externa<input name="quem_nome" placeholder="Nome completo"></label>`;
-function ligarPessoaFin(f) {
-  const s = f.quem; if (!s) return; const c = f.querySelector('[data-externo]');
-  const at = () => { const ext = s.value === 'x:novo'; c.hidden = !ext; f.quem_nome.required = ext; };
-  s.addEventListener('change', at); at();
+const GRUPOS_PES = { 1: 'RH', 2: 'usuário', 3: 'cadastro interno' };
+// Seletor de pessoa (busca por nome, colaboradores do RH, usuários e pessoas externas) — mesmo padrão dos planos de ação
+const htmlPessoaFin = (lista, sel, { disabled = false, rotulo = 'Colaborador' } = {}) => {
+  const p = lista.find(x => x.chave === sel);
+  return `<div class="campo" data-pesfin${disabled ? ' data-fixo' : ''}><span>${esc(rotulo)} *</span><div class="selpes"><input type="hidden" name="quem" value="${esc(p ? sel : '')}"><input type="hidden" name="quem_nome" value="">
+    <div class="selpes-chips"></div>${disabled ? '' : '<input type="text" class="selpes-q" placeholder="Buscar colaborador, usuário ou pessoa…" autocomplete="off"><div class="selpes-lista" hidden></div>'}</div></div>`;
+};
+function ligarPessoaFin(f, lista = estado.cache._pessoasFin || []) {
+  const box = f.querySelector('[data-pesfin]'); if (!box || box._ligado) return; box._ligado = true;
+  const hid = box.querySelector('[name=quem]'), hidNome = box.querySelector('[name=quem_nome]'), chips = box.querySelector('.selpes-chips'),
+        q = box.querySelector('.selpes-q'), ls = box.querySelector('.selpes-lista'), fixo = box.hasAttribute('data-fixo');
+  let achados = [];
+  const desenhar = () => {
+    const v = hid.value, p = lista.find(x => x.chave === v), nome = v === 'x:novo' ? hidNome.value : p?.nome;
+    chips.innerHTML = nome ? `<span class="selpes-chip${v === 'x:novo' ? ' ext' : ''}">${esc(nome)} <small>${v === 'x:novo' ? 'externo' : esc(GRUPOS_PES[p?.grupo] || '')}</small>${fixo ? '' : '<button type="button" data-tira title="Trocar">✕</button>'}</span>` : '';
+    if (q) q.hidden = !!nome;
+  };
+  const definir = (v, nome = '') => { hid.value = v; hidNome.value = nome; desenhar(); hid.dispatchEvent(new Event('change', { bubbles: true })); };
+  if (!fixo) {
+    const fechar = () => { ls.hidden = true; };
+    const mostrar = () => {
+      const t = q.value.trim();
+      achados = lista.filter(p => casaBusca(p.nome + ' ' + (p.info || ''), t)).slice(0, 40);
+      ls.innerHTML = achados.map((p, i) => `<div class="selpes-op" data-op="${i}"><b>${esc(p.nome)}</b><span class="muted">${esc([GRUPOS_PES[p.grupo], p.info].filter(Boolean).join(' · '))}</span></div>`).join('')
+        + `<div class="selpes-op ext" data-ext>+ Pessoa externa${t ? `: <b>${esc(t)}</b>` : '…'}</div>`;
+      ls.hidden = false;
+    };
+    const externo = async () => {
+      let nome = q.value.trim();
+      if (!nome) { const r = await modal(`<form><h2>Pessoa externa</h2><div class="form"><label class="campo largo">Nome completo *<input name="nome" required></label></div>
+        <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Incluir</button></div></form>`); nome = r?.nome?.trim(); }
+      if (!nome) return; q.value = ''; fechar(); definir('x:novo', nome);
+    };
+    const escolher = i => { const p = achados[i]; if (!p) return; q.value = ''; fechar(); definir(p.chave); };
+    q.addEventListener('focus', mostrar); q.addEventListener('input', mostrar);
+    q.addEventListener('blur', () => setTimeout(fechar, 150));
+    q.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); if (achados.length && q.value.trim()) escolher(0); else if (q.value.trim()) externo(); }
+      else if (e.key === 'Escape') { e.stopPropagation(); fechar(); }
+    });
+    ls.addEventListener('mousedown', e => { e.preventDefault(); const o = e.target.closest('[data-op]'); if (o) escolher(Number(o.dataset.op)); else if (e.target.closest('[data-ext]')) externo(); });
+    chips.addEventListener('click', e => { if (e.target.closest('[data-tira]')) { definir(''); q.focus(); } });
+  }
+  desenhar();
 }
 // devolve os campos da pessoa para gravar (cria o cadastro interno para colaborador sem login ou externo)
 async function resolverPessoaFin(q, nomeExterno, lista) {
@@ -80,7 +115,7 @@ async function formReembolso(tela, r = null) {
   const adtFixo = adtParam ? await api.um('adiantamentos', `id=eq.${adtParam}`) : null;
   const custeioIni = r?.forma_custeio || (adtFixo ? 'adiantamento' : estado.params.get('custeio')) || 'reembolso';
   const quemIni = adtFixo ? (adtFixo.colaborador_id ? 'u:' + adtFixo.colaborador_id : 'p:' + adtFixo.pessoa_sem_login_id)
-    : estado.params.get('custeio') === 'fundo_fixo' ? '' : 'u:' + estado.usuario.id;
+    : ['fundo_fixo', 'adt_fundo'].includes(estado.params.get('custeio')) ? '' : 'u:' + estado.usuario.id;
   const adtsAbertos = await api.listar('adiantamentos', 'select=id,numero,valor,motivo,colaborador_id,pessoa_sem_login_id&status=in.(pago,prestando_contas)&order=numero').catch(() => []);
   const ccPadrao = r?.centro_custo_id || estado.usuario.centro_custo_id || ccs.find(c => c.codigo === 'GERAL')?.id;
   const contaOutros = (await contas()).filter(c => /^outr/i.test(c.nome)).map(c => c.id);
@@ -92,14 +127,16 @@ async function formReembolso(tela, r = null) {
       <label class="campo">Como foi pago?<select name="forma_custeio" ${adtFixo ? 'disabled' : ''}>
           <option value="reembolso" ${custeioIni === 'reembolso' ? 'selected' : ''}>Do próprio bolso (quero ser reembolsado)</option>
           <option value="adiantamento" ${custeioIni === 'adiantamento' ? 'selected' : ''}>Com adiantamento recebido (prestação de contas)</option>
-          ${editaFin() || custeioIni === 'fundo_fixo' ? `<option value="fundo_fixo" ${custeioIni === 'fundo_fixo' ? 'selected' : ''}>Com dinheiro do Fundo Fixo</option>` : ''}</select></label>
+          ${editaFin() || custeioIni === 'fundo_fixo' ? `<option value="fundo_fixo" ${custeioIni === 'fundo_fixo' ? 'selected' : ''}>Despesa paga com dinheiro do Fundo Fixo</option>` : ''}
+          ${editaFin() && !r ? `<option value="adt_fundo" ${custeioIni === 'adt_fundo' ? 'selected' : ''}>Adiantamento entregue pelo Fundo Fixo (a pessoa vai prestar contas)</option>` : ''}</select></label>
+      <div class="largo aviso-lei" id="dica-adt" hidden>Vai para <b>Adiantamentos</b> (código ADT), já como entregue, e sai do saldo do Fundo Fixo. As despesas entram depois, na prestação de contas.</div>
       <label class="campo" id="campo-adt" hidden>Adiantamento<select name="adiantamento_id" ${adtFixo ? 'disabled' : ''}></select></label>
       <label class="campo">Data da despesa<input type="date" name="data_despesa" required max="${hojeISO()}" value="${r?.data_despesa || hojeISO()}"></label>
       <label class="campo">Valor (R$)<input name="valor" inputmode="decimal" required placeholder="0,00" value="${r ? String(r.valor).replace('.', ',') : ''}"></label>
-      <label class="campo">Categoria<select name="conta_id" required>${await opcoesContas(r?.conta_id)}</select></label>
+      <label class="campo" data-so-despesa>Categoria<select name="conta_id" required>${await opcoesContas(r?.conta_id)}</select></label>
       <label class="campo" id="campo-outros" ${r?.categoria_outros ? '' : 'hidden'}>Qual despesa?<input name="categoria_outros" value="${esc(r?.categoria_outros || '')}" placeholder="Descreva a categoria"></label>
       <label class="campo">Centro de custo<select name="centro_custo_id">${opcoes(ccs.filter(c => c.ativo), null, c => c.nome, ccPadrao, null)}</select></label>
-      <label class="campo">Veículo (se houver)<select name="veiculo_id">${opcoes(vs.filter(v => v.ativo), null, v => v.placa + (v.modelo ? ' · ' + v.modelo : ''), r?.veiculo_id, 'Nenhum')}</select></label>
+      <label class="campo" data-so-despesa>Veículo (se houver)<select name="veiculo_id">${opcoes(vs.filter(v => v.ativo), null, v => v.placa + (v.modelo ? ' · ' + v.modelo : ''), r?.veiculo_id, 'Nenhum')}</select></label>
       <details class="largo comprovante" ${r?.fornecedor_nome || r?.chave_acesso ? 'open' : ''}><summary>Dados do comprovante (opcional)</summary><div class="form">
         <label class="campo">Estabelecimento<input name="fornecedor_nome" value="${esc(r?.fornecedor_nome || '')}" placeholder="Nome do posto, restaurante…"></label>
         <label class="campo">CNPJ / CPF<input name="fornecedor_documento" value="${esc(r?.fornecedor_documento || '')}" inputmode="numeric"></label>
@@ -115,12 +152,15 @@ async function formReembolso(tela, r = null) {
       <div class="largo acoes"><button class="btn prim">${r ? 'Reenviar para aprovação' : 'Enviar para aprovação'}</button><a class="btn" href="#/reembolsos">Cancelar</a></div>
     </form>`;
   const f = $('#f-reemb');
-  ligarPessoaFin(f);
+  ligarPessoaFin(f, listaPes);
   const mostrarOutros = () => { $('#campo-outros').hidden = !contaOutros.includes(f.conta_id.value); };
   f.conta_id.onchange = mostrarOutros; mostrarOutros();
   const quem = () => adtFixo ? quemIni : (f.quem ? f.quem.value : (r ? (r.colaborador_id ? 'u:' + r.colaborador_id : 'p:' + r.pessoa_sem_login_id) : 'u:' + estado.usuario.id));
   const atualizaAdt = () => {
     const ehAdt = f.forma_custeio.value === 'adiantamento'; $('#campo-adt').hidden = !ehAdt;
+    const adtF = f.forma_custeio.value === 'adt_fundo'; $('#dica-adt').hidden = !adtF;
+    $$('[data-so-despesa]', f).forEach(el => { el.hidden = adtF; }); f.conta_id.required = !adtF;
+    tela.querySelector('.topo h1').textContent = r ? 'Corrigir lançamento ' + r.numero : { reembolso: 'Lançar reembolso', fundo_fixo: 'Lançar despesa do Fundo Fixo', adiantamento: 'Lançar despesa da prestação de contas', adt_fundo: 'Lançar adiantamento entregue pelo Fundo Fixo' }[f.forma_custeio.value] || 'Lançar despesa';
     const q = quem(); const meus = adtsAbertos.filter(a => (a.colaborador_id && 'u:' + a.colaborador_id === q) || (a.pessoa_sem_login_id && 'p:' + a.pessoa_sem_login_id === q));
     const sel = adtFixo?.id || r?.adiantamento_id;
     f.adiantamento_id.innerHTML = meus.length ? meus.map(a => `<option value="${a.id}" ${a.id === sel ? 'selected' : ''}>${esc(a.numero)} · ${brl(a.valor)} · ${esc(a.motivo)}</option>`).join('')
@@ -132,7 +172,23 @@ async function formReembolso(tela, r = null) {
     const d = formDados(f);
     const valor = num(d.valor);
     if (!valor || valor <= 0) return aviso('Informe um valor válido.', true);
+    if (d.forma_custeio === 'adt_fundo') {
+      const q = quem(); if (!q) return aviso('Escolha a pessoa que recebeu o adiantamento.', true);
+      if (!d.arquivos?.length && (d.forma_pagamento || 'Dinheiro') !== 'Dinheiro') return aviso('Anexe o comprovante da entrega. Só dinheiro dispensa comprovante.', true);
+      return ocupado(e.submitter, async () => {
+        try {
+          const pes = await resolverPessoaFin(q, d.quem_nome, listaPes);
+          const fundo = await api.um('contas_bancarias', 'tipo=eq.fundo_fixo&ativo=eq.true&select=id');
+          const forma = ['Pix', 'Transferência'].includes(d.forma_pagamento) ? d.forma_pagamento : 'Dinheiro';
+          const id = await api.rpc('registrar_adiantamento_entregue', { p_colaborador: pes.colaborador_id, p_pessoa: pes.colaborador_id ? null : pes.pessoa_sem_login_id,
+            p_valor: valor, p_motivo: d.descricao, p_data_entrega: d.data_despesa, p_conta: fundo.id, p_forma: forma, p_lancar_saida: true, p_prazo: null, p_cc: d.centro_custo_id || null, p_obs: null });
+          await anexar('adiantamento', id, d.arquivos);
+          aviso('Adiantamento registrado e lançado no Fundo Fixo.'); location.hash = '#/adiantamentos/ver/' + id;
+        } catch (err) { falha(err); }
+      });
+    }
     if (contaOutros.includes(d.conta_id) && !d.categoria_outros) return aviso('Descreva a categoria "Outros".', true);
+    if (d.forma_custeio === 'fundo_fixo' && /fundo fixo/i.test(f.conta_id.selectedOptions[0]?.textContent || '') && !await confirmar('A categoria "Fundo fixo de colaboradores" é dinheiro entregue a alguém. Se a pessoa vai prestar contas, use "Adiantamento entregue pelo Fundo Fixo". Lançar mesmo assim como despesa?')) return;
     const custeio = adtFixo ? 'adiantamento' : d.forma_custeio;
     const adtId = adtFixo ? adtFixo.id : (custeio === 'adiantamento' ? f.adiantamento_id.value : null);
     if (custeio === 'adiantamento' && !adtId) return aviso('Não há adiantamento em aberto para esta pessoa. Escolha outra forma de pagamento.', true);
@@ -170,7 +226,7 @@ rota('/reembolsos/ver/:id', async (tela, id) => {
   const nomes = porId(await usuarios());
   const dono = r.colaborador_id === estado.usuario.id;
   tela.innerHTML = `
-    <div class="topo"><div><h1>Reembolso ${esc(r.numero)}</h1><p class="sub">${tag(r.status)} · lançado em ${dataHoraBR(r.criado_em)}${r.origem === 'legado_claude' ? ' · <span class="tag">Sistema anterior</span>' : ''}${r.acerto_adiantamento_id ? ` · <a href="#/adiantamentos/ver/${r.acerto_adiantamento_id}">saldo do acerto de adiantamento</a>` : ''}</p></div>
+    <div class="topo"><div><h1>${{ fundo_fixo: 'Despesa do Fundo Fixo', adiantamento: 'Despesa da prestação de contas' }[r.forma_custeio] || 'Reembolso'} ${esc(r.numero)}</h1><p class="sub">${tag(r.status)} · lançado em ${dataHoraBR(r.criado_em)}${r.origem === 'legado_claude' ? ' · <span class="tag">Sistema anterior</span>' : ''}${r.acerto_adiantamento_id ? ` · <a href="#/adiantamentos/ver/${r.acerto_adiantamento_id}">saldo do acerto de adiantamento</a>` : ''}</p></div>
       <div class="acoes">
         ${dono && ['devolvido', 'aguardando_aprovacao'].includes(r.status) ? `<a class="btn" href="#/reembolsos/editar/${r.id}">Corrigir</a>` : ''}
         ${editaFin() && custeioMutavel(r) ? '<button class="btn" id="custeio">Alterar forma de custeio</button>' : ''}
@@ -226,7 +282,7 @@ rota('/financeiro/reembolsos', async tela => {
   const ini = estado.params.get('de') || '', fim = estado.params.get('ate') || '';
   const linhas = await api.listar('reembolsos', `${SELECT_REEMB}&${filtroSt}${ini ? '&data_despesa=gte.' + ini : ''}${fim ? '&data_despesa=lte.' + fim : ''}&order=data_despesa.desc,numero.desc&limit=1000`);
   tela.innerHTML = `
-    <div class="topo"><div><h1>Reembolsos</h1><p class="sub">Financeiro · todos os colaboradores</p></div>
+    <div class="topo"><div><h1>Despesas e reembolsos</h1><p class="sub">RMB reembolso · DFF despesa do Fundo Fixo · PCA prestação de contas de adiantamento</p></div>
       <div class="acoes">${editaFin() ? (st === 'cancelados' ? '<button class="btn" id="reativar-sel" disabled>Reativar selecionados</button>' : '<button class="btn" id="mudar-custeio" disabled>Alterar forma de custeio</button><button class="btn ok" id="lote" disabled>Gerar pagamento dos selecionados</button>') : ''}
       <a class="btn prim" href="#/reembolsos/novo">+ Lançar</a></div></div>
     <form class="filtros" id="filtros">
