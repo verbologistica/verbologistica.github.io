@@ -367,17 +367,17 @@ rota('/aprovacoes', async tela => {
   const auto = estado.usuario.autoaprovacao ? await api.rpc('minhas_autoaprovacoes').catch(() => []) : [];
   const ENT_AUTO = { reembolso: 'Reembolso', cotacao: 'Compra (cotação)', requisicao: 'Requisição', adiantamento: 'Adiantamento', pagamento: 'Pagamento' };
   const blocoAuto = auto.length ? `<div class="cartao auto-aprov"><h2>Meus lançamentos pendentes (${auto.length})</h2>
-      <ul class="lista-simples">${auto.map(a => `<li data-auto="${a.id}" style="flex-wrap:wrap;gap:8px"><span><b>${esc(ENT_AUTO[a.entidade] || a.entidade)} ${esc(a.numero || '')}</b>${a.valor != null ? ' · ' + brl(a.valor) : ''}<br><span class="muted">${esc((a.descricao || '').slice(0, 140))}</span></span>
+      <ul class="lista-simples">${auto.map(a => `<li data-auto="${a.id}" style="flex-wrap:wrap;gap:8px"><span><b>${esc(/^DFF/.test(a.numero || '') ? 'Despesa do Fundo Fixo' : /^PCA/.test(a.numero || '') ? 'Prestação de contas' : ENT_AUTO[a.entidade] || a.entidade)} ${esc(a.numero || '')}</b>${a.valor != null ? ' · ' + brl(a.valor) : ''}<br><span class="muted">${esc((a.descricao || '').slice(0, 140))}</span></span>
         <span class="acoes"><a class="btn peq" href="${a.link}">Abrir</a><button class="btn ok peq" data-auto-d="aprovado">Autoaprovar</button><button class="btn peq" data-auto-d="devolvido">Devolver</button><button class="btn perigo peq" data-auto-d="reprovado">Reprovar</button></span></li>`).join('')}</ul></div>` : '';
   const outros = pend.length - meus.length - meusA.length - comp.n;
   tela.innerHTML = `
     <div class="topo"><div><h1>Aprovações</h1><p class="sub">${meus.length + meusA.length + comp.n} item(ns) esperando a sua decisão</p></div>
       ${meus.length ? '<button class="btn ok" id="aprovar-sel" disabled>Aprovar selecionados</button>' : ''}</div>
-    ${meus.length + meusA.length + comp.n > 1 ? '<label class="check" id="sel-vis-wrap" style="margin-bottom:10px"><input type="checkbox" id="sel-vis"> Selecionar todos os reembolsos exibidos</label>' : ''}
+    ${meus.length + meusA.length + comp.n > 1 ? '<label class="check" id="sel-vis-wrap" style="margin-bottom:10px"><input type="checkbox" id="sel-vis"> Selecionar todos os itens exibidos</label>' : ''}
     ${meus.length ? meus.map(a => { const r = docs[a.entidade_id]; return `
       <div class="cartao" data-ap="${a.id}"${fAttr('tipo', { reembolso: 'Reembolso', fundo_fixo: 'Despesa do Fundo Fixo', adiantamento: 'Prestação de contas' }[r.forma_custeio || 'reembolso'])}${fAttr('colab', nomeColab(r))}${fAttr('cat', r.conta?.nome || r.categoria)}${fAttr('cc', r.cc?.nome)}${fAttr('data', r.data_despesa)}${fAttr('valor', r.valor)}${fAttr('busca', [r.numero, nomeColab(r), r.fornecedor_nome, r.descricao, r.categoria, r.observacoes].filter(Boolean).join(' '))}>
         <div class="topo" style="margin-bottom:8px"><label class="check"><input type="checkbox" class="sel-ap" value="${a.id}">
-          <span><b>Reembolso ${esc(r.numero)}</b> · ${esc(nomeColab(r))}</span></label><b style="font-size:18px">${brl(r.valor)}</b></div>
+          <span><b>${{ fundo_fixo: 'Despesa paga pelo Fundo Fixo', adiantamento: 'Prestação de contas' }[r.forma_custeio] || 'Reembolso'} ${esc(r.numero)}</b> · ${r.forma_custeio === 'fundo_fixo' ? 'lançada por ' : r.forma_custeio === 'adiantamento' ? 'de ' : 'para '}${esc(nomeColab(r))}${r.forma_custeio === 'fundo_fixo' ? ' <span class="tag azul">Fundo Fixo</span>' : r.forma_custeio === 'adiantamento' ? ' <span class="tag azul">Adiantamento</span>' : ''}</span></label><b style="font-size:18px">${brl(r.valor)}</b></div>
         <div class="muted">${dataBR(r.data_despesa)} · ${esc(categoriaTxt(r))} · ${esc(r.cc?.nome || '')}</div>
         <p style="margin:8px 0">${esc([r.fornecedor_nome, r.descricao].filter(Boolean).join(' — '))}</p>
         ${r.observacoes ? `<p class="alerta-obs" style="white-space:pre-line">${esc(r.observacoes)}</p>` : ''}
