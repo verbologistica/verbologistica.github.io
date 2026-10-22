@@ -11,7 +11,12 @@ const ST_AB = { lancado: ['Lançado', ''], aguardando_fechamento: ['Na fatura do
 const ST_FAT = { em_conferencia: ['Em formação', 'azul'], com_divergencia: ['Com divergência', 'vermelho'], conferido: ['Conferida', 'verde'],
   aguardando_aprovacao: ['Aguardando aprovação', 'amarelo'], aprovado: ['Aprovada', 'verde'], pago: ['Paga', 'verde'], cancelado: ['Cancelada', ''] };
 const ST_RMB_AB = { aguardando_aprovacao: 'aguardando aprovação', aprovado: 'aprovado (a pagar)', em_pagamento: 'em pagamento', pago: 'pago', devolvido: 'devolvido', reprovado: 'reprovado', cancelado: 'cancelado' };
-const COMBUST = ['Diesel S10', 'Diesel S500', 'Gasolina comum', 'Gasolina aditivada', 'Etanol', 'GNV', 'ARLA 32'];
+const COMBUST = ['Diesel S10', 'Diesel S500', 'Gasolina comum', 'Gasolina aditivada', 'Etanol', 'GNV', 'ARLA 32', 'Lubrificantes'];
+const ehLub = c => /^lubrific/i.test(c || '');
+const combTxt = a => (a.combustivel || '') + (a.lubrificante_tipo ? ` (${a.lubrificante_tipo})` : '');
+// campo "tipo de lubrificante" aparece só quando o combustível é Lubrificantes
+const htmlLub = (v = '') => `<label class="campo" data-lub hidden>Tipo de lubrificante *<input name="lubrificante" value="${esc(v)}" maxlength="120" placeholder="Ex.: óleo de motor 15W40, graxa, fluido de freio"></label>`;
+function ligarLub(f) { const sinc = () => { const on = ehLub(f.combustivel.value); f.querySelector('[data-lub]').hidden = !on; f.lubrificante.required = on; }; f.combustivel.addEventListener('change', sinc); sinc(); }
 const lt = v => v == null ? '—' : Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' L';
 const n2 = (v, d = 2) => v == null || isNaN(v) ? '—' : Number(v).toLocaleString('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d });
 const brl3 = v => v == null ? '—' : 'R$ ' + Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
@@ -50,7 +55,7 @@ rota('/operacao/abastecimentos', async tela => {
       ${ls.map(a => `<tr class="clicavel" onclick="location.hash='#/operacao/abastecimentos/ver/${a.id}'"${fAttr('mot', a.motorista)}${fAttr('placa', a.placa)}${fAttr('posto', a.posto)}${fAttr('forma', FORMA_AB[a.forma_pagamento]?.[0])}${fAttr('sit', a.status === 'cancelado' ? 'Cancelado' : a.alerta && !a.conferido_em ? 'Com alerta' : ST_AB[a.status]?.[0])}${fAttr('origem', a.origem === 'app_motorista' ? 'App do motorista' : a.origem === 'planilha' ? 'Planilha (histórico)' : 'Sistema')}${fAttr('data', a.data)}${fAttr('valor', a.status === 'cancelado' ? 0 : a.valor_total)}${fAttr('busca', [a.numero, a.motorista, a.motorista_nome, a.placa, a.modelo, a.posto, a.observacao, a.reembolso_numero, a.fatura_numero].join(' '))} data-id="${a.id}"${a.status === 'cancelado' ? ' style="opacity:.5"' : ''}>
         <td data-r="Nº" class="mono" style="white-space:nowrap"><b>${esc(a.numero)}</b>${a.alerta && !a.conferido_em && a.status !== 'cancelado' ? ' <span title="' + esc(a.alerta) + '">⚠️</span>' : ''}</td><td data-r="Data" style="white-space:nowrap">${dataBR(a.data)}</td>
         <td data-r="Motorista"${a.motorista_nome && a.motorista && a.motorista_nome.toLowerCase() !== a.motorista.toLowerCase() ? ` title="No app: ${esc(a.motorista_nome)}"` : ''}>${esc(a.motorista || '—')}</td>
-        <td data-r="Veículo" style="white-space:nowrap"><b class="mono">${esc(a.placa || '—')}</b>${a.modelo ? `<div class="muted">${esc(a.modelo)}</div>` : ''}</td><td data-r="Posto">${esc(a.posto || '—')}<div class="muted">${esc(a.combustivel || '')}</div></td>
+        <td data-r="Veículo" style="white-space:nowrap"><b class="mono">${esc(a.placa || '—')}</b>${a.modelo ? `<div class="muted">${esc(a.modelo)}</div>` : ''}</td><td data-r="Posto">${esc(a.posto || '—')}<div class="muted">${esc(combTxt(a))}</div></td>
         <td data-r="Litros" class="num">${n2(a.litros)}</td><td data-r="R$/L" class="num">${n2(a.preco_litro, 3)}</td><td data-r="Valor" class="num" style="white-space:nowrap"><b>${brl(a.valor_total)}</b></td>
         <td data-r="Km" class="num">${a.km != null ? a.km.toLocaleString('pt-BR') : '—'}</td><td data-r="km/L" class="num">${a.km_l != null ? n2(a.km_l) : '—'}</td>
         <td data-r="Pagamento">${a.status === 'cancelado' ? tagSt(ST_AB, 'cancelado') : tagSt(FORMA_AB, a.forma_pagamento)}<div style="font-size:12.5px;margin-top:3px">${vinculoAb(a)}</div></td></tr>`).join('')}</tbody></table></div>`
@@ -155,7 +160,7 @@ rota('/operacao/abastecimentos/fatura/:id', async (tela, id) => {
       <div class="cartao kpi"><div class="n">${dataBR(f.vencimento) || '—'}</div><div class="r">vencimento</div></div></div>
     <div class="cartao"><h2>Abastecimentos da fatura</h2><div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Nº</th><th>Data</th><th>Placa</th><th>Motorista</th><th>Combustível</th><th class="num">Litros</th><th class="num">R$/L</th><th class="num">Valor</th><th>Situação</th></tr></thead><tbody>
       ${itens.map(a => `<tr class="clicavel" onclick="location.hash='#/operacao/abastecimentos/ver/${a.id}'"${a.status === 'cancelado' ? ' style="opacity:.5"' : ''}><td data-r="Nº" class="mono"><b>${esc(a.numero)}</b>${a.alerta && !a.conferido_em && a.status !== 'cancelado' ? ' ⚠️' : ''}</td><td data-r="Data">${dataBR(a.data)}</td><td data-r="Placa" class="mono">${esc(a.placa || '')}</td><td data-r="Motorista">${esc(a.motorista || '')}</td>
-        <td data-r="Combustível">${esc(a.combustivel || '')}</td><td data-r="Litros" class="num">${n2(a.litros)}</td><td data-r="R$/L" class="num">${n2(a.preco_litro, 3)}</td><td data-r="Valor" class="num">${brl(a.valor_total)}</td><td data-r="Situação">${tagSt(ST_AB, a.status)}</td></tr>`).join('')}</tbody>
+        <td data-r="Combustível">${esc(combTxt(a))}</td><td data-r="Litros" class="num">${n2(a.litros)}</td><td data-r="R$/L" class="num">${n2(a.preco_litro, 3)}</td><td data-r="Valor" class="num">${brl(a.valor_total)}</td><td data-r="Situação">${tagSt(ST_AB, a.status)}</td></tr>`).join('')}</tbody>
       <tfoot><tr><td colspan="5"><b>Total</b></td><td class="num"><b>${n2(ativos.reduce((s, a) => s + Number(a.litros), 0))}</b></td><td></td><td class="num"><b>${brl(ativos.reduce((s, a) => s + Number(a.valor_total), 0))}</b></td><td></td></tr></tfoot></table></div>
       ${aberta && ativos.some(a => a.alerta && !a.conferido_em) ? '<p class="muted">⚠️ Há lançamentos com alerta: confira-os (foto do cupom) antes de registrar a nota.</p>' : ''}</div>
     <div class="cartao"><div class="topo" style="margin:0"><h2 style="margin:0">Nota/fatura do posto</h2>${pode ? '<button class="btn" id="fat-anx">📎 Anexar na fatura e nos abastecimentos</button>' : ''}</div><div id="anx-fat"></div></div>`;
@@ -236,7 +241,7 @@ rota('/operacao/abastecimentos/fechar', async tela => {
     $('#fc-lista').innerHTML = ls.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th style="width:36px"></th><th>Nº</th><th>Data</th><th>Placa</th><th>Motorista</th><th>Combustível</th><th class="num">Litros</th><th class="num">R$/L</th><th class="num">Valor</th><th>Fatura em aberto</th></tr></thead><tbody>
       ${ls.map(a => `<tr style="${marcados.has(a.id) ? '' : 'opacity:.55'}"><td data-r="Entra?"><input type="checkbox" data-id="${a.id}" ${marcados.has(a.id) ? 'checked' : ''} style="width:20px;height:20px"></td>
         <td data-r="Nº" class="mono" style="white-space:nowrap"><a href="#/operacao/abastecimentos/ver/${a.id}">${esc(a.numero)}</a>${a.alerta && !a.conferido_em ? ' ⚠️' : ''}</td><td data-r="Data">${dataBR(a.data)}${noPeriodo(a) ? '' : ' <span class="tag">fora do período</span>'}</td>
-        <td data-r="Placa" class="mono">${esc(a.placa || '')}</td><td data-r="Motorista">${esc(a.motorista || '')}</td><td data-r="Combustível">${esc(a.combustivel || '')}</td>
+        <td data-r="Placa" class="mono">${esc(a.placa || '')}</td><td data-r="Motorista">${esc(a.motorista || '')}</td><td data-r="Combustível">${esc(combTxt(a))}</td>
         <td data-r="Litros" class="num">${n2(a.litros)}</td><td data-r="R$/L" class="num">${n2(a.preco_litro, 3)}</td><td data-r="Valor" class="num">${brl(a.valor_total)}</td><td data-r="Fatura">${esc(a.fatura_numero || '')}</td></tr>`).join('')}</tbody>
       <tfoot><tr><td colspan="6"><b>Entram no fechamento: ${sel.length}</b> · ficam de fora: ${fora.length}</td><td class="num"><b>${n2(lit)}</b></td><td></td><td class="num"><b>${brl(tot)}</b></td><td></td></tr></tfoot></table></div>`
       : '<div class="vazio">Nada em aberto neste posto.</div>';
@@ -319,7 +324,7 @@ rota('/operacao/abastecimentos/ver/:id', async (tela, id) => {
     ${a.alerta && a.status !== 'cancelado' ? `<div class="cartao" style="border-left:4px solid ${a.conferido_em ? 'var(--verde)' : 'var(--vermelho)'}"><b>${a.conferido_em ? '✔ Conferido' : '⚠️ Para conferir'}</b><p style="margin:.4em 0 0">${esc(a.alerta)}</p>${a.conferido_em ? `<p class="muted" style="margin:.4em 0 0">${esc(a.conferencia_obs || '')} · ${dataHoraBR(a.conferido_em)}</p>` : ''}</div>` : ''}
     <div class="grade" style="grid-template-columns:repeat(auto-fit,minmax(340px,1fr))">
       <div class="cartao"><div class="form">${[['Data', dataHoraBR(a.data_hora)], ['Motorista', a.motorista + (a.motorista_nome && a.motorista_nome.toLowerCase() !== (a.motorista || '').toLowerCase() ? ` (no app: ${a.motorista_nome})` : '')],
-        ['Veículo', [a.placa, a.modelo].filter(Boolean).join(' · ')], ['Posto', a.posto], ['Combustível', a.combustivel], ['Litros', lt(a.litros)], ['Preço por litro', brl3(a.preco_litro)], ['Valor', brl(a.valor_total)],
+        ['Veículo', [a.placa, a.modelo].filter(Boolean).join(' · ')], ['Posto', a.posto], ['Combustível', combTxt(a)], ['Litros', lt(a.litros)], ['Preço por litro', brl3(a.preco_litro)], ['Valor', brl(a.valor_total)],
         ['Hodômetro', a.km != null ? a.km.toLocaleString('pt-BR') + ' km' : '—'], ['Desde o anterior', a.km_rodado ? `${a.km_rodado.toLocaleString('pt-BR')} km · ${n2(a.km_l)} km/L` : '—'],
         ['Observação do motorista', a.observacao], ['Registrado no celular', dataHoraBR(a.registrado_no_celular_em)], ['Cancelamento', a.motivo_cancelamento]]
         .filter(([, x]) => x !== null && x !== undefined && x !== '').map(([k, x]) => `<div><div class="muted">${k}</div><b>${esc(x)}</b></div>`).join('')}</div></div>
@@ -377,13 +382,15 @@ async function modalCorrigirAbast(a) {
     <label class="campo">Placa<input name="placa" value="${esc(a.placa || '')}"></label>
     <label class="campo">Posto<select name="posto_id"><option value="">${esc(a.posto || '—')} (como está)</option>${forn.map(f => `<option value="${f.id}" ${f.id === a.posto_id ? 'selected' : ''}>${esc(rotForn(f))}</option>`).join('')}</select></label>
     <label class="campo">Combustível<select name="combustivel">${[...new Set([a.combustivel, ...COMBUST].filter(Boolean))].map(c => `<option ${c === a.combustivel ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>
+    ${htmlLub(a.lubrificante_tipo || '')}
     <label class="campo">Litros<input name="litros" inputmode="decimal" value="${n2(a.litros, 3)}"></label>
     <label class="campo">Valor (R$)<input name="valor" inputmode="decimal" value="${n2(a.valor_total)}"></label>
     <label class="campo">Hodômetro (km)<input name="km" inputmode="numeric" value="${a.km ?? ''}"></label>
     <label class="campo">Quem pagou<select name="forma"><option value="faturado" ${a.forma_pagamento === 'faturado' ? 'selected' : ''}>Empresa (fatura do posto)</option><option value="motorista" ${a.forma_pagamento === 'motorista' ? 'selected' : ''}>Motorista (reembolso)</option></select></label>
     <label class="campo largo">Motivo da correção *<textarea name="motivo" required placeholder="Ex.: valor conferido na foto do cupom"></textarea></label></div>
     <p class="muted">Trocar "quem pagou" move o lançamento: de Empresa para Reembolso, sai da fatura do posto e vira reembolso para aprovação; o contrário cancela o reembolso e entra na fatura. Tudo fica no histórico.</p>
-    <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Salvar correção</button></div></form>`);
+    <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Salvar correção</button></div></form>`,
+    { aoAbrir: raiz => ligarLub($('form', raiz)), validar: d => ehLub(d.combustivel) && (d.lubrificante || '').trim().length < 3 ? 'Descreva o tipo de lubrificante.' : null });
   if (!r) return;
   const d = {};
   if (r.data && r.data !== a.data) d.data = r.data;
@@ -393,6 +400,7 @@ async function modalCorrigirAbast(a) {
   if (r.placa && r.placa.toUpperCase().replace(/[^A-Z0-9]/g, '') !== a.placa) d.placa = r.placa;
   if (r.posto_id && r.posto_id !== a.posto_id) d.posto_id = r.posto_id;
   if (r.combustivel !== a.combustivel) d.combustivel = r.combustivel;
+  const lubN = ehLub(r.combustivel) ? (r.lubrificante || '').trim() : ''; if (lubN !== (a.lubrificante_tipo || '')) d.lubrificante_tipo = lubN || null;
   if (num(r.litros) !== Number(a.litros)) d.litros = num(r.litros);
   if (num(r.valor) !== Number(a.valor_total)) d.valor_total = num(r.valor);
   const km = r.km === '' ? null : Number(String(r.km).replace(/\D/g, '')); if (km !== a.km) d.km = km;
@@ -412,6 +420,7 @@ rota('/operacao/abastecimentos/novo', async tela => {
       <label class="campo">Placa *<input name="placa" required list="dl-pl" autocomplete="off"><datalist id="dl-pl">${cads.veiculos.map(v => `<option value="${esc(v.placa)}">${esc(v.modelo || '')}</option>`).join('')}</datalist></label>
       <label class="campo">Posto *<input name="posto" required list="dl-po" autocomplete="off"><datalist id="dl-po">${cads.postos.map(n => `<option value="${esc(n)}">`).join('')}</datalist></label>
       <label class="campo">Combustível<select name="combustivel">${COMBUST.map(c => `<option>${c}</option>`).join('')}</select></label>
+      ${htmlLub()}
       <label class="campo">Litros *<input name="litros" required inputmode="decimal"></label>
       <label class="campo">Valor (R$) *<input name="valor" required inputmode="decimal"></label>
       <label class="campo">Hodômetro (km)<input name="km" inputmode="numeric"></label>
@@ -419,13 +428,15 @@ rota('/operacao/abastecimentos/novo', async tela => {
       <label class="campo largo">Foto do cupom<input type="file" name="arquivos" accept="image/*,application/pdf"></label>
       <label class="campo largo">Observação<textarea name="obs" rows="2"></textarea></label></div>
       <div class="acoes"><button class="btn prim">Salvar</button><a class="btn" href="#/operacao/abastecimentos">Cancelar</a></div></form>`;
+  ligarLub($('#f-ab'));
   $('#f-ab').onsubmit = async e => { e.preventDefault(); const d = formDados(e.target);
+    if (ehLub(d.combustivel) && (d.lubrificante || '').trim().length < 3) return aviso('Descreva o tipo de lubrificante.', true);
     const placa = d.placa.toUpperCase().replace(/[^A-Z0-9]/g, '');
     if (!/^[A-Z]{3}\d[A-Z0-9]\d{2}$/.test(placa)) return aviso('Placa inválida (ABC1D23 ou ABC1234).', true);
     const litros = num(d.litros), valor = num(d.valor);
     if (!(litros > 0) || !(valor > 0)) return aviso('Informe litros e valor.', true);
     await ocupado(e.submitter, async () => { try {
-      const [x] = await api.inserir('abastecimentos', { data_hora: new Date(d.data + 'T12:00:00').toISOString(), motorista_nome: d.motorista.trim(), placa, posto_nome: d.posto.trim(), combustivel: d.combustivel,
+      const [x] = await api.inserir('abastecimentos', { data_hora: new Date(d.data + 'T12:00:00').toISOString(), motorista_nome: d.motorista.trim(), placa, posto_nome: d.posto.trim(), combustivel: d.combustivel, lubrificante_tipo: ehLub(d.combustivel) ? d.lubrificante.trim() : null,
         litros, valor_total: valor, km: d.km ? Number(String(d.km).replace(/\D/g, '')) : null, observacao: d.obs || null, forma_pagamento: d.pagamento === 'Empresa' ? 'faturado' : 'motorista', origem: 'sistema' });
       if (d.arquivos?.length) {
         await anexar('abastecimento', x.id, d.arquivos);
