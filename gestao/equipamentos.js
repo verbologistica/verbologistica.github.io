@@ -67,9 +67,9 @@ async function formEquipamento(tela, e = null) {
   const [ccs, users, comps] = await Promise.all([centros(), usuarios(),
     e ? api.listar('veiculos', `equipamento_id=eq.${e.id}&ativo=eq.true&order=ordem`) : []]);
   const tipoIni = e?.tipo || '';
-  const linhaComp = (c = {}, i = 0, nomePadrao = '') => `<div class="cartao comp" style="margin:8px 0;padding:12px" data-id="${esc(c.id || '')}">
-      <div class="topo" style="margin:0 0 6px"><b>Composição ${i + 1}</b></div><div class="form">
-      <label class="campo">Descrição<input name="c_desc" value="${esc(c.descricao_composicao || nomePadrao)}"></label>
+  const linhaComp = (c = {}, i = 0, nomePadrao = '', unica = false) => `<div class="${unica ? '' : 'cartao '}comp" style="${unica ? '' : 'margin:8px 0;padding:12px'}" data-id="${esc(c.id || '')}">
+      ${unica ? '' : `<div class="topo" style="margin:0 0 6px"><b>Composição ${i + 1}</b></div>`}<div class="form">
+      <label class="campo" ${unica ? 'hidden' : ''}>Descrição<input name="c_desc" value="${esc(c.descricao_composicao || nomePadrao)}"></label>
       <label class="campo">Placa *<input name="c_placa" value="${esc(c.placa || '')}" style="text-transform:uppercase" placeholder="ABC1D23"></label>
       <label class="campo">Código de frota<input name="c_cod" value="${esc(c.codigo_frota || '')}"></label>
       <label class="campo">Renavam<input name="c_renavam" value="${esc(c.renavam || '')}" inputmode="numeric"></label>
@@ -80,7 +80,7 @@ async function formEquipamento(tela, e = null) {
       <label class="campo">Calendário do CRLV<select name="c_cat"><option value="caminhao" ${c.categoria_licenciamento === 'caminhao' ? 'selected' : ''}>Caminhão / cavalo mecânico</option>
         <option value="geral" ${c.categoria_licenciamento === 'geral' ? 'selected' : ''}>Demais (carro, moto, reboque, semirreboque)</option></select></label>
       <label class="campo">Capacidade<input name="c_cap" value="${esc(c.capacidade || '')}" placeholder="Ex.: 30 t, 60 m³"></label>
-      ${c.id ? '' : `<label class="campo">No conjunto desde<input type="date" name="c_desde" value="${hojeISO()}"></label>`}</div></div>`;
+      ${c.id || unica ? '' : `<label class="campo">No conjunto desde<input type="date" name="c_desde" value="${hojeISO()}"></label>`}</div></div>`;
   tela.innerHTML = `
     <div class="topo"><div><h1>${e ? 'Editar ' + esc(rotuloEq(e)) : 'Novo equipamento'}</h1>
       <p class="sub">Um equipamento é o conjunto que trabalha junto (ex.: um tritrem). Cada composição tem sua placa, código de frota e documentos.</p></div></div>
@@ -89,7 +89,7 @@ async function formEquipamento(tela, e = null) {
         <label class="campo">Código de frota<input name="codigo_frota" value="${esc(e?.codigo_frota || '')}" placeholder="Ex.: TT-01"></label>
         <label class="campo">Tipo *<select name="tipo" data-sem-outro required><option value="">Selecione…</option>${Object.entries(TIPOS_EQ).map(([v, t]) => `<option value="${v}" ${v === tipoIni ? 'selected' : ''}>${t[0]}</option>`).join('')}</select></label>
         <label class="campo" id="campo-outro" ${tipoIni === 'outro' ? '' : 'hidden'}>Qual?<input name="tipo_outro" value="${esc(e?.tipo_outro || '')}" placeholder="Ex.: Prancha, Caminhão-munck"></label>
-        <label class="campo">Nº de composições (placas)<input name="qtd" type="number" min="1" max="9" value="${e?.qtd_composicoes || 1}"></label>
+        <label class="campo" id="campo-qtd">Nº de composições (placas)<input name="qtd" type="number" min="1" max="9" value="${e?.qtd_composicoes || 1}"></label>
         <label class="campo">Marca<input name="marca" value="${esc(e?.marca || '')}"></label>
         <label class="campo">Modelo<input name="modelo" value="${esc(e?.modelo || '')}"></label>
         <label class="campo">Ano fabricação<input name="ano_fabricacao" type="number" value="${e?.ano_fabricacao ?? ''}"></label>
@@ -103,7 +103,7 @@ async function formEquipamento(tela, e = null) {
         <label class="campo">Situação<select name="situacao">${Object.entries(SITUACOES_EQ).map(([v, t]) => `<option value="${v}" ${v === (e?.situacao || 'operando') ? 'selected' : ''}>${t[0]}</option>`).join('')}</select></label>
         <label class="campo largo">Observações<textarea name="observacoes" rows="2">${esc(e?.observacoes || '')}</textarea></label>
       </div></div>
-      <div class="cartao"><h2>Composições</h2><p class="muted">Todas andam atreladas e formam um só equipamento, mas cada uma tem placa, código de frota e documentos próprios.</p>
+      <div class="cartao"><h2 id="tit-comps">Composições</h2><p class="muted" id="sub-comps">Todas andam atreladas e formam um só equipamento, mas cada uma tem placa, código de frota e documentos próprios.</p>
         <div id="comps"></div></div>
       <div class="acoes"><button class="btn prim" value="salvar">Salvar</button>
         ${e ? `<button class="btn ${e.ativo ? 'perigo' : ''}" value="${e.ativo ? 'desativar' : 'ativar'}">${e.ativo ? 'Desativar' : 'Reativar'}</button>` : ''}
@@ -120,8 +120,13 @@ async function formEquipamento(tela, e = null) {
       const base = a ? { id: a.id, descricao_composicao: novoTipo ? nomes[i] || a.c_desc : a.c_desc, placa: a.c_placa, codigo_frota: a.c_cod, renavam: a.c_renavam, chassi: a.c_chassi, marca: a.c_marca,
                          ano_fabricacao: a.c_ano, uf_registro: a.c_uf, categoria_licenciamento: novoTipo ? catPadrao(tipo, nomes[i]) : a.c_cat, capacidade: a.c_cap }
         : (comps[i] || { categoria_licenciamento: catPadrao(tipo, nomes[i]) });
-      return linhaComp(base, i, nomes[i] || (qtd > 1 ? `Composição ${i + 1}` : ''));
+      return linhaComp(base, i, nomes[i] || (qtd > 1 ? `Composição ${i + 1}` : ''), qtd === 1);
     }).join('');
+    // veículo de uma placa só (carro, cavalo mecânico, utilitário…): sem "composições"
+    const multi = (TIPOS_EQ[tipo]?.[1] || 1) > 1 || ['outro', ''].includes(tipo) || qtd > 1;
+    $('#campo-qtd').hidden = !multi;
+    $('#tit-comps').textContent = qtd === 1 ? 'Placa e documentação do veículo' : 'Composições';
+    $('#sub-comps').textContent = qtd === 1 ? 'Dados da placa usados no CRLV, abastecimentos e manutenção.' : 'Todas andam atreladas e formam um só equipamento, mas cada uma tem placa, código de frota e documentos próprios.';
   };
   desenhar(Math.max(Number(f.qtd.value) || 1, comps.length), tipoIni);
   f.tipo.onchange = () => { $('#campo-outro').hidden = f.tipo.value !== 'outro'; const q = TIPOS_EQ[f.tipo.value]?.[1] || 1; f.qtd.value = q; desenhar(q, f.tipo.value, true); };
@@ -135,6 +140,9 @@ async function formEquipamento(tela, e = null) {
     if (cs.some(c => !c.c_placa)) return aviso('Informe a placa de todas as composições.', true);
     const placas = cs.map(c => c.c_placa.toUpperCase().replace(/[^A-Z0-9]/g, ''));
     if (new Set(placas).size !== placas.length) return aviso('Há placas repetidas nas composições.', true);
+    const existentes = await api.listar('veiculos', `select=id,placa,equipamento_id&placa=in.(${placas.map(encodeURIComponent).join(',')})`).catch(() => []);
+    const ocupada = existentes.find(x => !cs.some(c => c.id === x.id) && (!e || x.equipamento_id !== e.id));
+    if (ocupada) return aviso(`A placa ${ocupada.placa} já está cadastrada${ocupada.equipamento_id ? ' em outro equipamento' : ' (sem conjunto)'}. Abra o cadastro existente em vez de criar um novo.`, true);
     const ano = v => { const [a, b] = String(v || '').split(/[/\- ]+/).map(Number); return [a || null, b || a || null]; };
     const dados = { codigo_frota: d.codigo_frota || null, tipo: d.tipo, tipo_outro: d.tipo === 'outro' ? d.tipo_outro : null, qtd_composicoes: cs.length,
       marca: d.marca || null, modelo: d.modelo || null, ano_fabricacao: d.ano_fabricacao ? Number(d.ano_fabricacao) : null, ano_modelo: d.ano_modelo ? Number(d.ano_modelo) : null,
@@ -269,8 +277,9 @@ async function modalDocumento(comps, equipamentoId, alvo) {
     const anoAtual = new Date().getFullYear();
     const cal = await api.listar('v_calendario_crlv_status', 'select=uf,ano_confirmado').catch(() => []);
     const r = await modal(`<form><h2>Anexar documento</h2><div class="form">
-      <label class="campo largo">De qual placa?<select name="alvo"><option value="">Conjunto (equipamento inteiro)</option>
-        ${comps.map(c => `<option value="${c.id}" ${c.id === alvo ? 'selected' : ''}>${esc((c.descricao_composicao || 'Composição ' + c.ordem) + ' · ' + c.placa)}</option>`).join('')}</select></label>
+      ${comps.length ? '' : '<div class="largo alerta-obs">Este equipamento está sem placa cadastrada. Clique em Editar no equipamento e informe a placa para poder lançar o CRLV.</div>'}
+      <label class="campo largo">De qual placa?<select name="alvo"><option value="" ${comps.length === 1 && !alvo ? '' : ''}>Conjunto (equipamento inteiro)</option>
+        ${comps.map(c => `<option value="${c.id}" ${c.id === (alvo || (comps.length === 1 ? comps[0].id : '')) ? 'selected' : ''}>${esc((c.descricao_composicao || 'Placa') + ' · ' + c.placa)}</option>`).join('')}</select></label>
       <label class="campo">Tipo de documento<select name="tipo" data-sem-outro>${DOC_TIPOS.map(([t]) => `<option>${esc(t)}</option>`).join('')}</select></label>
       <label class="campo">Nome do arquivo *<input name="nome" required placeholder="Ex.: CRLV 2026 cavalo"></label>
       <label class="campo">Número (opcional)<input name="numero"></label>
