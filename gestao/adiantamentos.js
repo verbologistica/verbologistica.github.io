@@ -126,6 +126,7 @@ rota('/adiantamentos/ver/:id', async (tela, id) => {
   const dono = a.colaborador_id === estado.usuario.id;
   const aberto = ['pago', 'prestando_contas'].includes(a.status);
   const fundo = bs.find(b => b.tipo === 'fundo_fixo');
+  const editorAdt = await api.rpc('edita_adiantamento_entregue').catch(() => false);
   const anexosEntrega = await htmlAnexos('adiantamento', id);
   const saldoRmb = a.diferenca_coberta_por === 'reembolso' ? await api.um('reembolsos', `select=id,numero,status&acerto_adiantamento_id=eq.${id}&status=neq.cancelado`).catch(() => null) : null;
   const compDev = {}; for (const dv of devs) compDev[dv.id] = await htmlAnexos('devolucao', dv.id);
@@ -137,6 +138,8 @@ rota('/adiantamentos/ver/:id', async (tela, id) => {
         ${aberto && editaFin() ? '<button class="btn" id="vincular">Trazer despesas já lançadas</button>' : ''}
         ${editaFin() && aberto && saldo > 0.004 ? '<button class="btn" id="devolver">Registrar devolução</button>' : ''}
         ${editaFin() && aberto ? '<button class="btn ok" id="acertar">Fazer o acerto</button>' : ''}
+        ${editorAdt && !['acertado', 'cancelado', 'reprovado'].includes(a.status) ? '<button class="btn" id="editar-adt">Editar adiantamento</button>' : ''}
+        ${editorAdt && aberto ? '<button class="btn perigo" id="cancelar-entregue">Cancelar adiantamento</button>' : ''}
         ${(editaFin() || dono) && ['aguardando_aprovacao', 'aprovado', 'devolvido'].includes(a.status) ? '<button class="btn perigo" id="cancelar">Cancelar</button>' : ''}
         <button class="btn" onclick="history.back()">Voltar</button></div></div>
     <div class="grade" style="margin-bottom:16px">
@@ -268,6 +271,31 @@ rota('/adiantamentos/ver/:id', async (tela, id) => {
     } catch (err) { falha(err); }
   });
 
+  $('#editar-adt')?.addEventListener('click', async () => {
+    const ccs = await centros();
+    const entregue = !!a.data_entrega;
+    const r = await modal(`<form><h2>Editar ${esc(a.numero)}</h2><div class="form">
+      <label class="campo">Valor (R$) *<input name="valor" inputmode="decimal" required value="${String(a.valor).replace('.', ',')}"></label>
+      ${entregue ? `<label class="campo">Data da entrega<input type="date" name="data" value="${a.data_entrega}" max="${hojeISO()}"></label>
+      <label class="campo">Saiu de<select name="conta">${contaOpcoes(a.conta_bancaria_id)}</select></label>
+      <label class="campo">Forma<select name="forma">${FORMAS_DIN.map(x => `<option ${x === a.forma_entrega ? 'selected' : ''}>${x}</option>`).join('')}</select></label>` : ''}
+      <label class="campo">Prestar contas até<input type="date" name="prazo" value="${a.prazo_prestacao || ''}"></label>
+      <label class="campo">Centro de custo<select name="cc">${opcoes(ccs.filter(c => c.ativo || c.id === a.centro_custo_id), null, c => c.nome, a.centro_custo_id, null)}</select></label>
+      <label class="campo largo">Motivo do adiantamento<input name="motivo" value="${esc(a.motivo || '')}"></label>
+      <label class="campo largo">Por que está alterando? *<textarea name="just" rows="2" required placeholder="Fica registrado no histórico do adiantamento"></textarea></label>
+      ${entregue ? '<p class="muted largo" style="margin:0">A saída do dinheiro no extrato da conta é ajustada junto.</p>' : ''}</div>
+      <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Salvar alterações</button></div></form>`,
+      { validar: d => !(num(d.valor) > 0) ? 'Informe o valor.' : !d.just?.trim() ? 'Informe o motivo da alteração.' : null });
+    if (!r) return;
+    try { const res = await api.rpc('editar_adiantamento', { p_id: id, p_valor: num(r.valor), p_motivo: r.motivo, p_data_entrega: entregue ? r.data : null, p_conta: entregue ? r.conta : null,
+            p_forma: entregue ? r.forma : null, p_prazo: r.prazo || null, p_cc: r.cc || null, p_justificativa: r.just });
+          aviso('Adiantamento alterado: ' + res.alterado + '.'); navegar(); } catch (err) { falha(err); }
+  });
+  $('#cancelar-entregue')?.addEventListener('click', async () => {
+    const motivo = await confirmar(`Cancelar ${a.numero}? O valor de ${brl(a.valor)} volta para ${bs.find(b => b.id === a.conta_bancaria_id)?.nome || 'a conta de onde saiu'}.`, { comMotivo: true, botao: 'Cancelar adiantamento' });
+    if (!motivo) return;
+    try { await api.rpc('cancelar_adiantamento', { p_id: id, p_motivo: motivo }); aviso('Adiantamento cancelado e valor devolvido à conta.'); navegar(); } catch (err) { falha(err); }
+  });
   $('#cancelar')?.addEventListener('click', async () => {
     const motivo = await confirmar('Cancelar este adiantamento?', { comMotivo: true, botao: 'Cancelar adiantamento' });
     if (!motivo) return;
