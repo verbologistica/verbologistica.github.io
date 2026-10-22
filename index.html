@@ -180,7 +180,8 @@ select.in{appearance:none;-webkit-appearance:none;background-image:linear-gradie
         <small>O posto fica cadastrado para as próximas vezes.</small>
       </div>
       <div class="f"><span>Combustível <em>*</em></span>
-        <div class="chips" id="chips" role="radiogroup" aria-label="Tipo de combustível"></div></div>
+        <div class="chips" id="chips" role="radiogroup" aria-label="Tipo de combustível"></div>
+        <label class="f" id="fLub" hidden style="margin-top:10px"><span>Tipo de lubrificante <em>*</em></span><input class="in" id="inLub" maxlength="120" placeholder="Ex.: óleo de motor 15W40, óleo hidráulico, graxa, fluido de freio"></label></div>
       <div class="f"><span>Quem pagou? <em>*</em></span>
         <div class="pays" id="pays" role="radiogroup" aria-label="Forma de pagamento">
           <label class="pay"><input type="radio" name="pag" value="Empresa"><span>Empresa<small>Faturado / cartão da empresa</small></span></label>
@@ -235,7 +236,7 @@ async function sbFoto(caminho,b64,mime,signal){
   if(r.ok||r.status===409)return true;
   const t=await r.text().catch(()=>"");if(/already exists|Duplicate/i.test(t))return true;
   throw new Error("Foto: HTTP "+r.status)}
-const FUEIS=["Diesel S10","Diesel S500","Gasolina comum","Gasolina aditivada","Etanol","GNV","ARLA 32"];
+const FUEIS=["Diesel S10","Diesel S500","Gasolina comum","Gasolina aditivada","Etanol","GNV","ARLA 32","Lubrificantes"];
 const NOVO="__novo__";
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -331,7 +332,7 @@ function calc(){
   const l=parseNum($("#inLitros").value),v=parseNum($("#inValor").value);const el=$("#calc");
   const u=$("#inUnit");
   if(l>0&&v>0){const p=v/l;const c=document.querySelector("input[name=comb]:checked")?.value||"";
-    const fora=c==="ARLA 32"?(p<1.5||p>8):(p<3||p>12);
+    const fora=c==="Lubrificantes"?false:c==="ARLA 32"?(p<1.5||p>8):(p<3||p>12);
     u.value=brl.format(p);u.classList.toggle("warn",fora);
     el.classList.toggle("warn",fora);el.hidden=!fora;
     el.innerHTML=`<span>⚠️ Preço por litro fora do comum. Confira se digitou os <b>litros</b> e o <b>valor total</b> do cupom.</span>`}
@@ -339,6 +340,8 @@ function calc(){
 }
 ["#inLitros","#inValor"].forEach(s=>$(s).addEventListener("input",calc));
 $("#chips").addEventListener("change",calc);
+function lubSinc(){const c=document.querySelector("input[name=comb]:checked")?.value;$("#fLub").hidden=c!=="Lubrificantes"}
+$("#chips").addEventListener("change",lubSinc);lubSinc();
 
 /* ---------- Foto ---------- */
 let FOTO=null;let KM_OK="";
@@ -388,6 +391,8 @@ $("#frm").addEventListener("submit",async e=>{
   if(!data||data>hoje())mark($("#inData"),"Informe uma data válida (não pode ser futura).");
   const comb=document.querySelector("input[name=comb]:checked")?.value;
   if(!comb){$("#chips").classList.add("bad");errs.push("Escolha o combustível.");first=first||$("#chips")}
+  const lub=comb==="Lubrificantes"?$("#inLub").value.trim():"";
+  if(comb==="Lubrificantes"&&lub.length<3)mark($("#inLub"),"Descreva o tipo de lubrificante.");
   const pag=document.querySelector("input[name=pag]:checked")?.value;
   if(!pag){$("#pays").classList.add("bad");errs.push("Informe quem pagou (empresa ou reembolso).");first=first||$("#pays")}
   const litros=parseNum($("#inLitros").value),valor=parseNum($("#inValor").value);
@@ -401,7 +406,7 @@ $("#frm").addEventListener("submit",async e=>{
   const er=$("#err");
   if(errs.length){er.hidden=false;er.textContent=errs[0]+(errs.length>1?` (+${errs.length-1})`:"");first?.scrollIntoView({behavior:"smooth",block:"center"});return}
   er.hidden=true;
-  const rec={id:uid(),data,motorista:mot,placa,modelo,posto,combustivel:comb,pagamento:pag,litros:Math.round(litros*1000)/1000,valor:Math.round(valor*100)/100,km,obs:$("#inObs").value.trim(),criadoEm:new Date().toISOString()};
+  const rec={id:uid(),data,motorista:mot,placa,modelo,posto,combustivel:comb,...(lub?{lubrificante:lub}:{}),pagamento:pag,litros:Math.round(litros*1000)/1000,valor:Math.round(valor*100)/100,km,obs:$("#inObs").value.trim(),criadoEm:new Date().toISOString()};
   const btn=$("#btnSave");btn.disabled=true;btn.textContent="Salvando…";
   try{
     await filaAdd({rec,foto:{b64:FOTO.split(",")[1],mime:"image/jpeg"},tentativas:0});
@@ -411,7 +416,7 @@ $("#frm").addEventListener("submit",async e=>{
   document.querySelectorAll("input[name=pag]").forEach(r=>r.checked=false);$("#payhint").hidden=true;
   const h=ls("verbo.hist")||[];h.unshift({...rec,st:"pend"});ls("verbo.hist",h.slice(0,40));
   // limpa para o próximo
-  ["#inLitros","#inValor","#inKm","#inObs","#inMot","#inPlaca","#inModelo","#inPosto"].forEach(s=>$(s).value="");
+  ["#inLitros","#inValor","#inKm","#inObs","#inMot","#inPlaca","#inModelo","#inPosto","#inLub"].forEach(s=>$(s).value="");
   ["#newMot","#newPlaca","#newPosto"].forEach(s=>$(s).hidden=true);
   $("#selPosto").value="";$("#selPlaca").value="";$("#selMot").value="";FOTO=null;$("#prev").hidden=true;$("#pBtns").hidden=false;$("#inData").value=hoje();
   renderSelects();renderWho();calc();renderHist();
@@ -472,7 +477,7 @@ async function renderHist(){
   const n=pend.length;
   $("#btnSync").hidden=!n;$("#btnSync").textContent=`Enviar agora (${n})`;
   setNetLabel(n);
-  $("#hist").innerHTML=h.length?h.slice(0,15).map(x=>`<div class="hi"><div class="d"><b>${fmtD(x.data)} · ${esc(fmtPlaca(x.placa))}${x.pagamento==="Reembolso"?`<span class="tagr">Reembolso</span>`:""}</b><small>${esc(x.combustivel)} · ${String(x.litros).replace(".",",")} L · ${esc(x.posto)}</small>${x.msg&&x.st==="erro"?`<small style="color:var(--bad)">${esc(x.msg)}</small>`:""}</div><div class="v">${brl.format(x.valor)}<br><span class="st ${x.st}">${x.st==="ok"?"Enviado"+(x.msg?" · "+esc(x.msg):""):x.st==="erro"?"Erro":"Aguardando internet"}</span></div></div>`).join("")
+  $("#hist").innerHTML=h.length?h.slice(0,15).map(x=>`<div class="hi"><div class="d"><b>${fmtD(x.data)} · ${esc(fmtPlaca(x.placa))}${x.pagamento==="Reembolso"?`<span class="tagr">Reembolso</span>`:""}</b><small>${esc(x.combustivel)}${x.lubrificante?" ("+esc(x.lubrificante)+")":""} · ${String(x.litros).replace(".",",")} L · ${esc(x.posto)}</small>${x.msg&&x.st==="erro"?`<small style="color:var(--bad)">${esc(x.msg)}</small>`:""}</div><div class="v">${brl.format(x.valor)}<br><span class="st ${x.st}">${x.st==="ok"?"Enviado"+(x.msg?" · "+esc(x.msg):""):x.st==="erro"?"Erro":"Aguardando internet"}</span></div></div>`).join("")
     :`<p class="muted" style="margin:0">Nenhum lançamento feito neste aparelho ainda.</p>`;
 }
 $("#btnSync").onclick=async()=>{const n=(await sync()).length;toast(n?`${n} lançamento(s) enviado(s).`:"Ainda sem conexão. Tentaremos de novo automaticamente.")};

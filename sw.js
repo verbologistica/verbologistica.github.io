@@ -1,5 +1,5 @@
 /* Service worker: deixa o app abrir sem internet. Lançamentos ficam no aparelho até sincronizar. */
-const CACHE = "verbo-abast-v4";
+const CACHE = "verbo-abast-v5";
 const SHELL = ["./", "./index.html", "./config.js", "./manifest.webmanifest", "./logo.png", "./icon-192.png", "./icon-512.png", "./instalar.html", "./gestao/api.js"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", e => {
