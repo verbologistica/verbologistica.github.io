@@ -387,6 +387,8 @@ const MENU = [
   ['Requisições', '#/compras/requisicoes', null, 'carrinho', null, true],
   ['Cotações', '#/compras/cotacoes', [...P_FIN, 'comprador', 'aprovador'], 'grafico', 'requisicoes_a_cotar', true],
   ['Pedidos', '#/compras/pedidos', null, 'caixa', 'pedidos_sem_documento', true],
+  ['Fechamentos para conferir', '#/fechamentos?etapa=em_compras', ['administrador', 'comprador'], 'checklist', 'fch_compras', true],
+  ['Contratos de fornecedores', '#/fechamentos/contratos?setor=todos', ['administrador', 'comprador', 'diretoria', 'financeiro'], 'documento', null, true],
   ['grupo', 'Financeiro', 'carteira'],
   ['Painel do financeiro', '#/financeiro/painel', P_FIN, 'painel', null, true],
   ['Contas a pagar', '#/financeiro/pagar', [...P_FIN, 'comprador'], 'cartao', 'sem_comprovante', true],
@@ -398,16 +400,19 @@ const MENU = [
   ['Projeção financeira', '#/financeiro/projecao', [...P_FIN, 'aprovador'], 'tendencia', null, true],
   ['grupo', 'Orçamento e Contratos', 'pizza'],
   ['Orçado × Realizado', '#/orcamento', ['administrador', 'diretoria', 'financeiro', 'aprovador'], 'tendencia', 'orcamento_alerta', true],
-  ['grupo', 'Operação', 'caminhao'],
-  ['sub', 'Transporte'],
+  ['grupo', 'Controle Operacional', 'monitor'],
   ['Painel do CCO', '#/operacao', [...P_OP, 'manutencao'], 'monitor', 'viagens_atrasadas', true],
+  ['Abastecimentos', '#/operacao/abastecimentos', [...P_OP, 'financeiro', 'comprador', 'manutencao'], 'combustivel', 'abast_alertas', true],
+  ['Equipamentos', '#/cadastros/equipamentos', [...P_FIN, 'operacao', 'manutencao'], 'caminhao', null, true],
+  ['Controle de vencimentos', '#/frota/documentos', [...P_FIN, 'operacao', 'manutencao'], 'doc_prazo', 'docs_vencendo', true],
+  ['Fechamentos do CCO', '#/fechamentos?setor=cco', ['administrador', 'fch:cco'], 'calendario_ok', 'fch_cco', true],
+  ['grupo', 'Operação', 'caminhao'],
   ['Viagens', '#/operacao/viagens', [...P_OP, 'financeiro', 'manutencao'], 'rota', 'viagens_em_transito', true],
   ['Controle de jornada', '#/operacao/jornadas', [...P_OP, 'rh', 'dp'], 'prancheta', 'jornada_alertas', true],
   ['Ocorrências e multas', '#/operacao/ocorrencias', [...P_OP, 'rh', 'dp', 'financeiro'], 'cone', 'multas_indicar', true],
-  ['sub', 'Frota'],
-  ['Equipamentos', '#/cadastros/equipamentos', [...P_FIN, 'operacao', 'manutencao'], 'caminhao', null, true],
-  ['Documentos a vencer', '#/frota/documentos', [...P_FIN, 'operacao', 'manutencao'], 'doc_prazo', 'docs_vencendo', true],
-  ['Abastecimentos', '#/operacao/abastecimentos', [...P_OP, 'financeiro', 'comprador', 'manutencao'], 'combustivel', 'abast_alertas', true],
+  ['grupo', 'Administrativo / Recepção', 'predio'],
+  ['Fechamentos do administrativo', '#/fechamentos?setor=administrativo', ['administrador', 'fch:administrativo'], 'calendario_ok', 'fch_administrativo', true],
+  ['Contratos e contas de consumo', '#/fechamentos/contratos?setor=administrativo', ['administrador', 'fch:administrativo'], 'documento', null, true],
   ['grupo', 'Manutenção', 'chave'],
   ['Painel da manutenção', '#/manut', P_MAN, 'painel', 'manut_preventivas_vencidas', true],
   ['Ordens de serviço', '#/manut/os', [...P_MAN, 'almoxarifado', 'financeiro'], 'maleta', 'manut_os_abertas', true],
@@ -416,6 +421,7 @@ const MENU = [
   ['Checklist do veículo', '#/manut/checklist', [...P_MAN, 'motorista'], 'checklist', null, true],
   ['Km / horímetro', '#/manut/hodometro', [...P_MAN, 'motorista'], 'velocimetro', null, true],
   ['Custos da frota', '#/manut/custos', [...P_MAN, 'financeiro'], 'queda', null, true],
+  ['Fechamentos da manutenção', '#/fechamentos?setor=manutencao', ['administrador', 'fch:manutencao'], 'calendario_ok', 'fch_manutencao', true],
   ['grupo', 'Almoxarifado e Patrimônio', 'armazem'],
   ['sub', 'Almoxarifado'],
   ['Painel do almoxarifado', '#/almox', P_ALM, 'painel', null, true],
@@ -451,6 +457,7 @@ const MENU = [
   ['Folha do mês', '#/dp/folha', ['administrador', 'dp', 'rh', 'diretoria'], 'pasta_trabalho', 'dp_lancamentos_pendentes', true],
   ['Benefícios', '#/dp/beneficios', ['administrador', 'dp', 'rh'], 'presente', null, true],
   ['Rubricas da folha', '#/dp/rubricas', ['administrador', 'dp'], 'caderno', null, true],
+  ['Fechamentos do DP', '#/fechamentos?setor=dp', ['administrador', 'fch:dp'], 'calendario_ok', 'fch_dp', true],
   ['grupo', 'SSMA', 'capacete'],
   ['Painel do SSMA', '#/ssma', P_SSMA, 'painel', 'cat_pendente', true],
   ['Acidentes e CAT', '#/ssma/acidentes', [...P_SSMA, 'operacao', 'manutencao'], 'saude', 'acidentes_abertos', true],
@@ -458,6 +465,7 @@ const MENU = [
   ['Inspeções', '#/ssma/inspecoes', [...P_SSMA, 'operacao', 'manutencao'], 'busca', null, true],
   ['DDS', '#/ssma/dds', [...P_SSMA, 'operacao', 'manutencao'], 'megafone', null, true],
   ['Extintores', '#/ssma/extintores', [...P_SSMA, 'operacao', 'manutencao'], 'extintor', 'extintores_vencendo', true],
+  ['Fechamentos do SSMA', '#/fechamentos?setor=ssma', ['administrador', 'fch:ssma'], 'calendario_ok', 'fch_ssma', true],
   ['grupo', 'Qualidade', 'selo'],
   ['Painel da qualidade', '#/qualidade', ['administrador', 'qualidade', 'diretoria'], 'painel', 'qual_auditorias_proximas', true],
   ['Não conformidades', '#/qualidade/nc', ['administrador', 'qualidade', 'diretoria'], 'exclamacao', 'qual_nc_abertas', true],
@@ -485,12 +493,13 @@ function menuPara(perfis, menus) {
   const admin = perfis.includes('administrador');
   const lista = !admin && Array.isArray(menus) && menus.length ? menus : null;
   const SEMPRE = ['#/inicio', '#/planos', '#/chamados'];   // aparecem para todos, mesmo com lista de telas restrita
-  const ok = MENU.filter(i => i[0] === 'grupo' || i[0] === 'sub' || SEMPRE.includes(i[1]) || ((!i[2] || i[2].some(p => perfis.includes(p))) && (!lista || lista.includes(i[1]))));
+  const fch = i => Array.isArray(i[2]) && i[2].some(p => p.startsWith('fch:') && perfis.includes(p));   // responsável pelo fechamento do setor
+  const ok = MENU.filter(i => i[0] === 'grupo' || i[0] === 'sub' || SEMPRE.includes(i[1]) || fch(i) || ((!i[2] || i[2].some(p => perfis.includes(p))) && (!lista || lista.includes(i[1]))));
   const semSub = ok.filter((i, k) => i[0] !== 'sub' || (ok[k + 1] && !['sub', 'grupo'].includes(ok[k + 1][0])));
   return semSub.filter((i, k) => i[0] !== 'grupo' || (semSub[k + 1] && semSub[k + 1][0] !== 'grupo'));
 }
 function menu() {
-  return menuPara(estado.perfis, estado.usuario?.menus).map(i => i[0] === 'grupo' ? ['grupo', i[1], true, i[2]] : i[0] === 'sub' ? ['sub', i[1]] : [i[0], i[1], true, i[3], i[4], i[5]]);
+  return menuPara([...estado.perfis, ...(estado.fch || []).map(c => 'fch:' + c)], estado.usuario?.menus).map(i => i[0] === 'grupo' ? ['grupo', i[1], true, i[2]] : i[0] === 'sub' ? ['sub', i[1]] : [i[0], i[1], true, i[3], i[4], i[5]]);
 }
 const telaPermitida = h => { const r = '#' + h; return !MENU.some(i => i[0] !== 'grupo' && i[0] !== 'sub' && i[1] === r) || menu().some(i => i[1] === r); };
 
@@ -543,13 +552,18 @@ function ligarMenu(raiz) {
     salvarMenuAbertos(abrir ? [g.dataset.g] : []);
   }));
 }
+let _ultimoMelhor = null;
 async function desenharCasca() {
   const pend = {};
   try { (await api.rpc('minhas_pendencias')).forEach(p => (pend[p.tipo] = Number(p.quantidade))); } catch {}
   try { pend.acoes_pendentes = (await api.rpc('minhas_acoes')).length; } catch {}
   estado.pendencias = pend;
   const atual = location.hash || '#/inicio';
-  const melhor = menu().filter(i => i[0] !== 'grupo' && (atual === i[1] || atual.startsWith(i[1] + '/') || atual.startsWith(i[1] + '?'))).sort((a, b) => b[1].length - a[1].length)[0]?.[1];
+  let melhor = menu().filter(i => i[0] !== 'grupo' && (atual === i[1] || atual.startsWith(i[1] + '/') || atual.startsWith(i[1] + '?'))).sort((a, b) => b[1].length - a[1].length)[0]?.[1];
+  // abrir um item (ver/novo/editar…) a partir de outro menu mantém o menu de onde veio — ex.: Financeiro › Reembolsos › abrir reembolso
+  const grupoDoItem = r => { let g = null; for (const i of MENU) { if (i[0] === 'grupo') g = i[1]; else if (i[1] === r) return g; } return null; };
+  if (_ultimoMelhor && atual !== melhor && (!melhor || (grupoDoItem(melhor) === 'Meu espaço' && grupoDoItem(_ultimoMelhor) !== 'Meu espaço'))) melhor = _ultimoMelhor;
+  _ultimoMelhor = melhor;
   const ehMot = tem('motorista') && !veTudo() && !tem('comprador', 'aprovador');
   const casca = $('#app .casca');
   if (casca && casca.dataset.usuario === estado.usuario.id) {
@@ -817,6 +831,9 @@ async function iniciar() {
     if (!perfil.ativo) { await api.sair(); return telaLogin('!Seu acesso está desativado. Fale com o administrador.'); }
     estado.usuario = perfil;
     estado.perfis = (await api.listar('usuario_perfis', `usuario_id=eq.${u.id}&select=perfil`)).map(p => p.perfil);
+    // setores em que a pessoa faz ou aprova fechamento de contratos
+    estado.fch = (await api.listar('setores_fechamento', 'select=codigo,aprovadores,lancadores&ativo=is.true').catch(() => []))
+      .filter(s => [...s.aprovadores, ...s.lancadores].includes(u.id)).map(s => s.codigo);
     estado.cache = {};
     if (!location.hash || location.hash === '#') location.hash = '#/inicio';
     await navegar();
@@ -878,6 +895,10 @@ rota('/inicio', async tela => {
     <div class="inicio-kpis">
       <a class="cartao kpi ${minhasReq.some(r => r.status === 'devolvida') ? 'alerta' : ''}" href="#${minhasReq.length ? '/inicio' : '/compras/requisicoes'}" ${minhasReq.length ? 'onclick="event.preventDefault();document.getElementById(\'minhas-req\').scrollIntoView({behavior:\'smooth\'})"' : ''}><div class="n">${minhasReq.length}</div><div class="r">minha(s) requisição(ões) de compra em andamento</div></a>
       ${p.aprovar || veTudo() || tem('aprovador', 'financeiro') ? `<a class="cartao kpi ${p.aprovar ? 'alerta' : ''}" href="#/aprovacoes"><div class="n">${p.aprovar || 0}</div><div class="r">para você aprovar</div></a>` : ''}
+      ${p.fch_aprovar ? `<a class="cartao kpi alerta" href="#/fechamentos?etapa=em_aprovacao"><div class="n">${p.fch_aprovar}</div><div class="r">fechamento(s) de contrato para você aprovar</div></a>` : ''}
+      ${p.fch_compras ? `<a class="cartao kpi alerta" href="#/fechamentos?etapa=em_compras"><div class="n">${p.fch_compras}</div><div class="r">fechamento(s) de contrato para o Compras conferir</div></a>` : ''}
+      ${(() => { const n = Object.keys(p).filter(k => /^fch_/.test(k) && !['fch_aprovar', 'fch_compras'].includes(k)).reduce((a, k) => a + p[k], 0);
+        return n ? `<a class="cartao kpi alerta" href="#/fechamentos?etapa=pendente,devolvido"><div class="n">${n}</div><div class="r">fechamento(s) de contrato de meses anteriores para fazer</div></a>` : ''; })()}
       <a class="cartao kpi ${p.devolvidos ? 'alerta' : ''}" href="#/reembolsos"><div class="n">${p.devolvidos || 0}</div><div class="r">reembolsos devolvidos para correção</div></a>
       ${editaFin() ? `<a class="cartao kpi" href="#/financeiro/reembolsos?status=aprovado"><div class="n">${p.reembolsos_a_pagar || 0}</div><div class="r">reembolsos aprovados a pagar</div></a>` : ''}
       ${editaFin() ? `<a class="cartao kpi ${p.sem_comprovante ? 'alerta' : ''}" href="#/financeiro/pagar?status=semcomp"><div class="n">${p.sem_comprovante || 0}</div><div class="r">pagamentos sem comprovante</div></a>` : ''}
