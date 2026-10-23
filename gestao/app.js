@@ -1141,6 +1141,7 @@ function ligarMinhasAcoes(tela, acs) {
 
 // ===================== Planos de ação (todos) =====================
 // Toda ação geral nasce de um PLANO (reunião, auditoria, visita…): é a referência dela.
+const PERIOD_TXT = { semanal: 'semanal', quinzenal: 'quinzenal', mensal: 'mensal' };
 const TIPOS_PLANO = { reuniao: 'Reunião', auditoria: 'Auditoria', inspecao: 'Inspeção', visita: 'Visita', indicador: 'Análise de indicador', projeto: 'Projeto', outro: 'Outro' };
 const SETORES_PLANO = ['Diretoria', 'Financeiro', 'Compras', 'Operação', 'Manutenção', 'Almoxarifado', 'RH', 'DP', 'Segurança', 'Qualidade', 'Administrativo'];
 const linhaAcaoHtml = (us, i) => `<tr data-linha="${i}"><td><input name="d_${i}" placeholder="O que fazer"></td>
@@ -1163,9 +1164,9 @@ function ligarLinhasAcao(f, us) {
 const lerLinhasAcao = d => Object.keys(d).filter(k => /^d_\d+$/.test(k) && String(d[k]).trim()).map(k => { const i = k.slice(2); return { descricao: String(d[k]).trim(), responsaveis: lerPessoas(d['r_' + i]), prazo: d['p_' + i] || null, _arq: d['a_' + i] || [] }; });
 const validarLinhas = (d, obrigatoria) => { const ls = lerLinhasAcao(d); if (obrigatoria && !ls.length) return 'Inclua pelo menos uma ação.';
   return ls.some(l => !l.responsaveis.length) ? 'Inclua o responsável de cada ação.' : ls.some(l => !l.prazo) ? 'Informe o prazo de cada ação.' : null; };
-async function salvarAcoesDoPlano(planoId, linhas) {
+async function salvarAcoesDoPlano(planoId, linhas, reuniaoId = null) {
   if (linhas.length) {
-    const criadas = await api.inserir('acoes_gerais', linhas.map(({ _arq, ...l }) => ({ ...l, plano_id: planoId })));
+    const criadas = await api.inserir('acoes_gerais', linhas.map(({ _arq, ...l }) => ({ ...l, plano_id: planoId, ...(reuniaoId ? { reuniao_id: reuniaoId } : {}) })));
     for (let k = 0; k < linhas.length; k++) if (linhas[k]._arq?.length && criadas[k]) await anexar('acao_geral', criadas[k].id, linhas[k]._arq);
   }
   return linhas.some(l => l.responsaveis.some(p => p.usuario_id && p.usuario_id !== estado.usuario.id));
@@ -1175,7 +1176,9 @@ async function modalPlano(p = null) {
   const partIni = p?.participantes_lista?.length ? p.participantes_lista : String(p?.participantes || '').split(/[,;\n]+/).map(x => x.trim()).filter(Boolean).map(nome => ({ nome, externo: true }));
   const r = await modal(`<form><h2>${p ? 'Editar plano' : 'Novo plano de ação'}</h2><div class="form">
       <label class="campo">Origem<select name="tipo" required>${Object.entries(TIPOS_PLANO).map(([k, t]) => `<option value="${k}" ${k === (p?.tipo || 'reuniao') ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
-      <label class="campo">Data<input type="date" name="data" value="${p?.data || hojeISO()}" required></label>
+      <label class="campo"><span data-rot-data>${p?.recorrente ? 'Data da 1ª reunião' : 'Data'}</span><input type="date" name="data" value="${p?.data || hojeISO()}" required></label>
+      <div class="campo largo" data-recorr ${(p?.tipo || 'reuniao') === 'reuniao' ? '' : 'hidden'}><label class="check"><input type="checkbox" name="recorrente" ${p?.recorrente ? 'checked' : ''}> Reunião ordinária (se repete): um plano só, com cada encontro registrado na sua data</label>
+        <select name="periodicidade" style="max-width:220px;margin-top:6px" ${p?.recorrente ? '' : 'hidden'}>${[['semanal', 'Semanal'], ['quinzenal', 'Quinzenal'], ['mensal', 'Mensal']].map(([k, t]) => `<option value="${k}" ${k === (p?.periodicidade || 'semanal') ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
       <label class="campo">Setor<select name="setor"><option value="">—</option>${SETORES_PLANO.map(x => `<option ${x === p?.setor ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
       <label class="campo largo">Título / assunto<input name="titulo" required value="${esc(p?.titulo || '')}" placeholder="Ex.: Reunião de resultados de outubro; Auditoria interna ISO 9001"></label>
       <div class="campo largo">Participantes${htmlSelPessoas('participantes', partIni, 'Buscar colaborador, usuário ou incluir externo…')}</div>
@@ -1183,36 +1186,83 @@ async function modalPlano(p = null) {
       ${camposAnexoHtml('arquivos_plano', 'links_plano')}</div>
     ${p ? '' : blocoAcoesHtml(us)}
     <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">${p ? 'Salvar' : 'Criar plano'}</button></div></form>`,
-    { aoAbrir: f => { $('.modal', f).classList.add('modal-largo'); ligarSelPessoas(f, us); if (!p) ligarLinhasAcao(f, us); }, validar: d => !d.titulo?.trim() ? 'Informe o título.' : p ? null : validarLinhas(d, true) });
+    { aoAbrir: f => { $('.modal', f).classList.add('modal-largo'); ligarSelPessoas(f, us); if (!p) ligarLinhasAcao(f, us);
+        const fm = $('form', f), sinc = () => { const reu = fm.tipo.value === 'reuniao'; $('[data-recorr]', f).hidden = !reu; if (!reu) fm.recorrente.checked = false;
+          fm.periodicidade.hidden = !fm.recorrente.checked; $('[data-rot-data]', f).textContent = fm.recorrente.checked ? 'Data da 1ª reunião' : 'Data'; };
+        fm.tipo.addEventListener('change', sinc); fm.recorrente.addEventListener('change', sinc); }, validar: d => !d.titulo?.trim() ? 'Informe o título.' : p ? null : validarLinhas(d, true) });
   if (!r) return null;
-  const dados = { tipo: r.tipo, data: r.data, setor: r.setor || null, titulo: r.titulo.trim(), participantes: nomesPessoas(lerPessoas(r.participantes)) || null, participantes_lista: lerPessoas(r.participantes), descricao: r.descricao?.trim() || null };
+  const recorr = r.tipo === 'reuniao' && !!r.recorrente;
+  const dados = { tipo: r.tipo, data: r.data, setor: r.setor || null, titulo: r.titulo.trim(), participantes: nomesPessoas(lerPessoas(r.participantes)) || null, participantes_lista: lerPessoas(r.participantes), descricao: r.descricao?.trim() || null,
+    recorrente: recorr, periodicidade: recorr ? r.periodicidade || 'semanal' : null };
+  // reunião ordinária: o 1º encontro fica registrado na data do plano (e as ações sem reunião passam a apontar para ele)
+  const primeiraReuniao = async planoId => {
+    let [reu] = await api.listar('plano_reunioes', `plano_id=eq.${planoId}&data=eq.${r.data}`);
+    if (!reu) [reu] = await api.inserir('plano_reunioes', { plano_id: planoId, data: r.data, participantes_lista: dados.participantes_lista, ata: dados.descricao });
+    return reu.id;
+  };
   try {
-    if (p) { await api.alterar('planos', `id=eq.${p.id}`, dados); await salvarAnexosForm('plano', p.id, r, 'arquivos_plano', 'links_plano'); aviso('Plano atualizado.'); return p.id; }
+    if (p) { await api.alterar('planos', `id=eq.${p.id}`, dados); await salvarAnexosForm('plano', p.id, r, 'arquivos_plano', 'links_plano');
+      if (recorr && !p.recorrente) { const rid = await primeiraReuniao(p.id); await api.alterar('acoes_gerais', `plano_id=eq.${p.id}&reuniao_id=is.null`, { reuniao_id: rid }).catch(() => {}); }
+      aviso('Plano atualizado.'); return p.id; }
     const [np] = await api.inserir('planos', dados);
     await salvarAnexosForm('plano', np.id, r, 'arquivos_plano', 'links_plano');
-    const avisou = await salvarAcoesDoPlano(np.id, lerLinhasAcao(r));
+    const avisou = await salvarAcoesDoPlano(np.id, lerLinhasAcao(r), recorr ? await primeiraReuniao(np.id) : null);
     aviso(`Plano ${np.numero} criado${avisou ? ' e responsáveis avisados' : ''}.`); return np.id;
   } catch (err) { falha(err); return null; }
 }
-async function modalAcoesNoPlano(planoId) {
+// registrar (ou abrir) um encontro de reunião ordinária: data, participantes, ata e as ações novas que surgiram nele
+async function modalReuniao(p, reus, acs, x = null) {
+  const us = await pessoasAcao();
+  const ult = reus[0];
+  const partIni = x ? x.participantes_lista : ult?.participantes_lista?.length ? ult.participantes_lista : p.participantes_lista || [];
+  const pend = acs.filter(a => ['aberta', 'em_andamento'].includes(a.status) && (!x || a.reuniao_id !== x.id));
+  const podeEd = !x || x.criado_por === estado.usuario.id || p.criado_por === estado.usuario.id || tem('administrador', 'diretoria') || (x.participantes_lista || []).some(q => q.usuario_id === estado.usuario.id);
+  const r = await modal(`<form><h2>${x ? 'Reunião de ' + dataBR(x.data) : 'Registrar reunião'}</h2><p class="muted">${esc(p.titulo)}</p><div class="form">
+      <label class="campo">Data da reunião<input type="date" name="data" required value="${x?.data || hojeISO()}" ${x ? 'disabled' : ''}></label>
+      <div class="campo largo">Participantes${htmlSelPessoas('participantes', partIni, 'Buscar colaborador, usuário ou incluir externo…')}</div>
+      <label class="campo largo">Ata / assuntos tratados<textarea name="ata" rows="4" placeholder="O que foi discutido e decidido nesta reunião">${esc(x?.ata || '')}</textarea></label></div>
+    ${!x && pend.length ? `<div class="ma-det" style="margin-top:10px"><b>${pend.length} ação(ões) em aberto de reuniões anteriores</b> — atualize na lista de ações do plano.<ul class="ac-hist">${pend.slice(0, 8).map(a => `<li>${esc(a.descricao)} <span class="muted">· ${esc(a.responsavel || '')}${a.prazo ? ' · prazo ' + dataBR(a.prazo) : ''}</span></li>`).join('')}${pend.length > 8 ? `<li class="muted">e mais ${pend.length - 8}…</li>` : ''}</ul></div>` : ''}
+    ${x ? '' : blocoAcoesHtml(us).replace('<h3 style="margin:14px 0 6px">Ações</h3>', '<h3 style="margin:14px 0 6px">Ações novas desta reunião <span class="muted" style="font-weight:400;font-size:13px">(opcional)</span></h3>')}
+    <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button>${x ? `<button type="button" class="btn" data-acoes-reu>+ Ações nesta reunião</button>` : ''}${podeEd ? `<button class="btn prim">${x ? 'Salvar' : 'Registrar reunião'}</button>` : ''}</div></form>`,
+    { aoAbrir: (f, fechar) => { $('.modal', f).classList.add('modal-largo'); ligarSelPessoas(f, us); if (!x) ligarLinhasAcao(f, us);
+        $('[data-acoes-reu]', f)?.addEventListener('click', async () => { fechar(null); if (await modalAcoesNoPlano(p.id, x.id)) navegar(); }); },
+      validar: d => { if (!x && reus.some(q => q.data === d.data)) return `Já existe a reunião de ${dataBR(d.data)}: abra-a na lista de reuniões.`;
+        return x ? null : validarLinhas(d, false); } });
+  if (!r) return false;
+  const dados = { participantes_lista: lerPessoas(r.participantes), ata: r.ata?.trim() || null };
+  try {
+    if (x) { await api.alterar('plano_reunioes', `id=eq.${x.id}`, dados); aviso('Reunião atualizada.'); return true; }
+    const [nr] = await api.inserir('plano_reunioes', { plano_id: p.id, data: r.data, ...dados });
+    const linhas = lerLinhasAcao(r);
+    const avisou = await salvarAcoesDoPlano(p.id, linhas, nr.id);
+    aviso(`Reunião de ${dataBR(r.data)} registrada${linhas.length ? ` com ${linhas.length} ação(ões)` : ''}${avisou ? ' · responsáveis avisados' : ''}.`); return true;
+  } catch (err) { falha(err); return false; }
+}
+async function modalAcoesNoPlano(planoId, reuniaoIni = null) {
   const us = await pessoasAcao();
   let pid = planoId;
   let opPlanos = '';
+  const plano = pid ? await api.um('planos', `id=eq.${pid}&select=recorrente`).catch(() => null) : null;
+  const reus = plano?.recorrente ? await api.listar('plano_reunioes', `plano_id=eq.${pid}&ativo=eq.true&order=data.desc&select=id,data`).catch(() => []) : [];
+  if (reus.length) opPlanos = `<label class="campo">Surgiu na reunião de<select name="reuniao">${reus.map((x, i) => `<option value="${x.id}" ${(reuniaoIni ? x.id === reuniaoIni : i === 0) ? 'selected' : ''}>${dataBR(x.data)}</option>`).join('')}</select></label>`;
   if (!pid) { const ps = await api.rpc('planos_lista').catch(() => []);
-    opPlanos = `<label class="campo largo">Plano de origem (referência)<select name="plano" required><option value="">Escolha a reunião, auditoria…</option><option value="__novo">+ Criar novo plano</option>${ps.map(p => `<option value="${p.id}">${esc(TIPOS_PLANO[p.tipo] + ' ' + dataBR(p.data) + ' · ' + p.titulo)}</option>`).join('')}</select></label>`; }
+    opPlanos = `<label class="campo largo">Plano de origem (referência)<select name="plano" required><option value="">Escolha a reunião, auditoria…</option><option value="__novo">+ Criar novo plano</option>${ps.map(p => `<option value="${p.id}">${esc(p.recorrente ? p.titulo + ' (' + (PERIOD_TXT[p.periodicidade] || 'ordinária') + ')' : TIPOS_PLANO[p.tipo] + ' ' + dataBR(p.data) + ' · ' + p.titulo)}</option>`).join('')}</select></label>`; }
   const r = await modal(`<form><h2>Lançar ações</h2>${opPlanos ? `<div class="form">${opPlanos}</div>` : ''}${blocoAcoesHtml(us)}
     <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Lançar</button></div></form>`,
     { aoAbrir: f => { $('.modal', f).classList.add('modal-largo'); ligarLinhasAcao(f, us); }, validar: d => !pid && !d.plano ? 'Escolha o plano de origem da ação.' : d.plano === '__novo' ? null : validarLinhas(d, true) });
   if (!r) return null;
   if (r.plano === '__novo') return (await modalPlano()) ? 'novo' : null;
   pid = pid || r.plano;
-  try { const avisou = await salvarAcoesDoPlano(pid, lerLinhasAcao(r)); aviso(`Ações lançadas${avisou ? ' e responsáveis avisados' : ''}.`); return pid; } catch (err) { falha(err); return null; }
+  let reuniaoId = r.reuniao || null;
+  if (!reuniaoId && !planoId) { const pl = await api.um('planos', `id=eq.${pid}&select=recorrente`).catch(() => null);   // plano escolhido na lista: usa a reunião mais recente
+    if (pl?.recorrente) reuniaoId = (await api.listar('plano_reunioes', `plano_id=eq.${pid}&ativo=eq.true&order=data.desc&limit=1&select=id`).catch(() => []))[0]?.id || null; }
+  try { const avisou = await salvarAcoesDoPlano(pid, lerLinhasAcao(r), reuniaoId); aviso(`Ações lançadas${avisou ? ' e responsáveis avisados' : ''}.`); return pid; } catch (err) { falha(err); return null; }
 }
 function tabelaAcoesHtml(acs, { mostrarResp = true, mostrarOrigem = true } = {}) {
   return `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Ação</th>${mostrarOrigem ? '<th>Referência</th>' : ''}${mostrarResp ? '<th>Responsável</th>' : ''}<th>Prazo</th><th>Situação</th><th></th></tr></thead><tbody>
     ${acs.map((a, i) => { const [pt, pc] = prazoTxt(a.prazo); const fim = ['concluida', 'cancelada'].includes(a.status); const [st, sc] = ST_ACAO_TXT[a.status] || [a.status, ''];
-      return `<tr class="clicavel" data-i="${i}"${fAttr('origem', (a.origem || '').split(' · ')[0])}${fAttr('resp', a.responsavel)}${fAttr('sit', !fim && pc === 'atr' ? 'Atrasada' : st)}${fAttr('data', a.prazo)}${fAttr('busca', [a.descricao, a.origem, a.responsavel, a.evidencia].filter(Boolean).join(' '))}>
-        <td data-r="Ação"><b>${esc(a.descricao)}</b>${a.evidencia ? `<div class="muted">${esc(a.evidencia)}</div>` : ''}</td>
+      return `<tr class="clicavel" data-i="${i}"${fAttr('origem', (a.origem || '').split(' · ')[0])}${fAttr('reun', a.reuniao_txt)}${fAttr('resp', a.responsavel)}${fAttr('sit', !fim && pc === 'atr' ? 'Atrasada' : st)}${fAttr('data', a.prazo)}${fAttr('busca', [a.descricao, a.origem, a.responsavel, a.evidencia].filter(Boolean).join(' '))}>
+        <td data-r="Ação"><b>${esc(a.descricao)}</b>${a.reuniao_txt ? `<div class="pl-reu-tag">Reunião de ${esc(a.reuniao_txt)}</div>` : ''}${a.evidencia ? `<div class="muted">${esc(a.evidencia)}</div>` : ''}</td>
         ${mostrarOrigem ? `<td data-r="Referência">${a.plano_id ? `<a href="#/planos/ver/${a.plano_id}" data-ref>${esc(a.origem)}</a>` : esc(a.origem)}</td>` : ''}${mostrarResp ? `<td data-r="Responsável">${esc(a.responsavel || '—')}</td>` : ''}
         <td data-r="Prazo" class="nowrap">${a.prazo ? dataBR(a.prazo) : '—'}${!fim && a.prazo ? `<div class="ma-pt ${pc}">${pt}</div>` : ''}${htmlRepact(a)}</td>
         <td data-r="Situação"><span class="tag ${!fim && pc === 'atr' ? 'vermelho' : sc}">${!fim && pc === 'atr' ? 'Atrasada' : st}</span></td>
@@ -1236,8 +1286,8 @@ rota('/planos', async tela => {
     tela.innerHTML = `${topo(`${ps.length} plano(s)`)}
       <div class="cartao">${ps.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Nº</th><th>Data</th><th>Origem</th><th>Título</th><th>Setor</th><th>Andamento</th></tr></thead><tbody>
         ${ps.map(p => { const pct = p.total ? Math.round(100 * p.concluidas / p.total) : 0;
-          return `<tr class="clicavel" data-p="${p.id}"${fAttr('origem', TIPOS_PLANO[p.tipo])}${fAttr('setor', p.setor)}${fAttr('data', p.data)}${fAttr('busca', [p.numero, p.titulo, p.setor, p.criado_por].filter(Boolean).join(' '))}>
-          <td data-r="Nº" class="mono">${esc(p.numero || '')}</td><td data-r="Data" class="nowrap">${dataBR(p.data)}</td><td data-r="Origem">${esc(TIPOS_PLANO[p.tipo] || p.tipo)}</td>
+          return `<tr class="clicavel" data-p="${p.id}"${fAttr('origem', p.recorrente ? 'Reunião ordinária' : TIPOS_PLANO[p.tipo])}${fAttr('setor', p.setor)}${fAttr('data', p.ultima_reuniao || p.data)}${fAttr('busca', [p.numero, p.titulo, p.setor, p.criado_por].filter(Boolean).join(' '))}>
+          <td data-r="Nº" class="mono">${esc(p.numero || '')}</td><td data-r="Data" class="nowrap">${p.recorrente ? `${dataBR(p.ultima_reuniao || p.data)}<div class="muted">última de ${p.reunioes}</div>` : dataBR(p.data)}</td><td data-r="Origem">${esc(TIPOS_PLANO[p.tipo] || p.tipo)}${p.recorrente ? ` <span class="tag azul">${esc(PERIOD_TXT[p.periodicidade] || 'ordinária')}</span>` : ''}</td>
           <td data-r="Título"><b>${esc(p.titulo)}</b>${p.criado_por ? `<div class="muted">por ${esc(p.criado_por)}</div>` : ''}</td><td data-r="Setor">${esc(p.setor || '—')}</td>
           <td data-r="Andamento"><div class="pl-prog"><span style="width:${pct}%"></span></div><span class="muted">${p.concluidas}/${p.total} concluída(s)${p.atrasadas ? ` · <b class="txt-verm">${p.atrasadas} atrasada(s)</b>` : ''}</span></td></tr>`; }).join('')}
         </tbody></table></div>` : '<div class="vazio">Nenhum plano. Crie um a partir de uma reunião, auditoria ou visita.</div>'}</div>`;
@@ -1260,29 +1310,52 @@ rota('/planos', async tela => {
 rota('/planos/ver/:id', async (tela, id) => {
   const p = await api.um('planos', `id=eq.${id}`).catch(() => null);
   if (!p) { tela.innerHTML = '<div class="cartao vazio">Plano não encontrado ou sem acesso.</div>'; return; }
-  const [autor, linhas] = await Promise.all([p.criado_por ? api.um('usuarios', `id=eq.${p.criado_por}&select=nome`).catch(() => null) : null,
-    api.listar('acoes_gerais', `plano_id=eq.${id}&ativo=eq.true&select=id,descricao,prazo,prazo_original,status,evidencia,concluida_em,responsavel_id,responsaveis,responsaveis_ids,criado_por,criado_em,u:usuarios!acoes_gerais_responsavel_id_fkey(nome)`).catch(() => [])]);
+  const [autor, linhas, reus] = await Promise.all([p.criado_por ? api.um('usuarios', `id=eq.${p.criado_por}&select=nome`).catch(() => null) : null,
+    api.listar('acoes_gerais', `plano_id=eq.${id}&ativo=eq.true&select=id,descricao,prazo,prazo_original,status,evidencia,concluida_em,responsavel_id,responsaveis,responsaveis_ids,criado_por,criado_em,reuniao_id,u:usuarios!acoes_gerais_responsavel_id_fkey(nome)`).catch(() => []),
+    p.recorrente ? api.listar('plano_reunioes', `plano_id=eq.${id}&ativo=eq.true&order=data.desc`).catch(() => []) : []]);
+  const REU = porId(reus);
   p.autor = autor;
   const acs = linhas.map(a => ({ modulo: 'geral', id: a.id, descricao: a.descricao, prazo: a.prazo, status: a.status, evidencia: a.evidencia, concluida_em: a.concluida_em,
     responsavel_id: a.responsavel_id, responsaveis: a.responsaveis, responsaveis_ids: a.responsaveis_ids, prazo_original: a.prazo_original,
-    responsavel: nomesPessoas(a.responsaveis) || a.u?.nome, criado_por_id: a.criado_por, plano_criado_por: p.criado_por, plano_id: id, origem: `${TIPOS_PLANO[p.tipo] || 'Plano'} ${dataBR(p.data)} · ${p.titulo}` }));
+    responsavel: nomesPessoas(a.responsaveis) || a.u?.nome, criado_por_id: a.criado_por, plano_criado_por: p.criado_por, plano_id: id, reuniao_id: a.reuniao_id,
+    reuniao_txt: REU[a.reuniao_id] ? dataBR(REU[a.reuniao_id].data) : null,
+    origem: `${TIPOS_PLANO[p.tipo] || 'Plano'} ${dataBR(REU[a.reuniao_id]?.data || p.data)} · ${p.titulo}` }));
   acs.sort((x, y) => (['concluida', 'cancelada'].includes(x.status) - ['concluida', 'cancelada'].includes(y.status)) || String(x.prazo || '9').localeCompare(String(y.prazo || '9')));
   const vivas = acs.filter(a => a.status !== 'cancelada'), conc = vivas.filter(a => a.status === 'concluida').length;
   const atr = vivas.filter(a => ['aberta', 'em_andamento'].includes(a.status) && a.prazo && a.prazo < hojeISO()).length;
   const podeEditar = p.criado_por === estado.usuario.id || tem('administrador', 'diretoria');
   const pct = vivas.length ? Math.round(100 * conc / vivas.length) : 0;
   tela.innerHTML = `
-    <div class="topo"><div><h1>${esc(p.titulo)}</h1><p class="sub">${esc(p.numero || '')} · ${esc(TIPOS_PLANO[p.tipo] || p.tipo)} de ${dataBR(p.data)}${p.setor ? ' · ' + esc(p.setor) : ''}</p></div>
-      <div class="acoes">${podeEditar ? '<button class="btn" id="ed-plano">Editar</button>' : ''}<button class="btn prim" id="mais-acoes">+ Ações</button></div></div>
+    <div class="topo"><div><h1>${esc(p.titulo)}</h1><p class="sub">${esc(p.numero || '')} · ${p.recorrente
+        ? `Reunião ${esc(PERIOD_TXT[p.periodicidade] || 'ordinária')} · desde ${dataBR(p.data)} · ${reus.length} reunião(ões) registrada(s)${reus[0] ? ' · última em ' + dataBR(reus[0].data) : ''}`
+        : `${esc(TIPOS_PLANO[p.tipo] || p.tipo)} de ${dataBR(p.data)}`}${p.setor ? ' · ' + esc(p.setor) : ''}</p></div>
+      <div class="acoes">${podeEditar ? '<button class="btn" id="ed-plano">Editar</button>' : ''}${p.recorrente ? '<button class="btn" id="mais-acoes">+ Ações</button><button class="btn prim" id="nova-reuniao">+ Registrar reunião</button>' : '<button class="btn prim" id="mais-acoes">+ Ações</button>'}</div></div>
     <div class="cartao pl-cab"><div class="form">
       <div><div class="muted">Andamento</div><div class="pl-prog grande"><span style="width:${pct}%"></span></div><b>${conc} de ${vivas.length} concluída(s)</b>${atr ? ` · <b class="txt-verm">${atr} atrasada(s)</b>` : ''}</div>
       <div><div class="muted">Aberto por</div><b>${esc(p.autor?.nome || '—')}</b></div>
-      ${p.participantes_lista?.length || p.participantes ? `<div class="largo"><div class="muted">Participantes</div>${esc(nomesPessoas(p.participantes_lista) || p.participantes)}</div>` : ''}
+      ${p.participantes_lista?.length || p.participantes ? `<div class="largo"><div class="muted">${p.recorrente ? 'Participantes fixos' : 'Participantes'}</div>${esc(nomesPessoas(p.participantes_lista) || p.participantes)}</div>` : ''}
       ${p.descricao ? `<div class="largo"><div class="muted">Resumo / pauta</div><div style="white-space:pre-line">${esc(p.descricao)}</div></div>` : ''}</div></div>
     <div class="cartao"><div class="topo" style="margin:0 0 8px"><h2 style="margin:0">Anexos do plano</h2><button class="btn peq" id="anx-plano">📎 Anexar</button></div><div id="pl-anx"></div></div>
-    <div class="cartao"><h2>Ações deste plano</h2>${acs.length ? tabelaAcoesHtml(acs, { mostrarOrigem: false }) : '<div class="vazio">Nenhuma ação lançada.</div>'}</div>`;
+    ${p.recorrente ? `<div class="cartao"><div class="topo" style="margin:0 0 8px"><div><h2 style="margin:0">Reuniões</h2><p class="muted" style="margin:2px 0 0">Cada encontro com a sua data, participantes e ata. As ações em aberto seguem para acompanhamento nas próximas reuniões.</p></div></div>
+      ${reus.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Data</th><th>Participantes</th><th>Ata / assuntos</th><th class="num">Ações</th><th></th></tr></thead><tbody>
+        ${reus.map(x => { const da = acs.filter(a => a.reuniao_id === x.id), ab = da.filter(a => ['aberta', 'em_andamento'].includes(a.status)).length;
+          return `<tr><td data-r="Data" class="nowrap"><b>${dataBR(x.data)}</b></td><td data-r="Participantes">${esc(nomesPessoas(x.participantes_lista) || '—')}</td>
+            <td data-r="Ata / assuntos"><div class="pl-ata">${esc(x.ata || '—')}</div></td><td data-r="Ações" class="num">${da.length}${ab ? `<div class="muted">${ab} em aberto</div>` : ''}</td>
+            <td class="nowrap"><button class="btn peq" data-reu-ver="${x.id}">Ações</button> <button class="btn peq" data-reu-ed="${x.id}">Abrir</button></td></tr>`; }).join('')}</tbody></table></div>`
+        : '<div class="vazio">Nenhuma reunião registrada.</div>'}</div>` : ''}
+    <div class="cartao" id="pl-acoes"><h2>Ações deste plano</h2>${acs.length ? tabelaAcoesHtml(acs, { mostrarOrigem: false }) : '<div class="vazio">Nenhuma ação lançada.</div>'}</div>`;
   ligarTabelaAcoes(tela, acs);
+  const fl = acs.length ? filtroLocal(tela, { itens: '#pl-acoes tbody tr[data-i]', antes: '#pl-acoes .tabela-wrap', busca: true,
+    campos: [...(p.recorrente ? [{ k: 'reun', rotulo: 'Reunião' }] : []), { k: 'resp', rotulo: 'Responsável' }, { k: 'sit', rotulo: 'Situação' }] }) : null;
   $('#mais-acoes').onclick = async () => { if (await modalAcoesNoPlano(id)) navegar(); };
+  $('#nova-reuniao')?.addEventListener('click', async () => { if (await modalReuniao(p, reus, acs)) navegar(); });
+  $$('[data-reu-ed]', tela).forEach(b => (b.onclick = async () => { if (await modalReuniao(p, reus, acs, REU[b.dataset.reuEd])) navegar(); }));
+  // "Ações" de uma reunião: filtra a tabela de ações por aquela data
+  $$('[data-reu-ver]', tela).forEach(b => (b.onclick = () => {
+    const txt = dataBR(REU[b.dataset.reuVer].data), m = $('#pl-acoes [data-flm="reun"]', tela);
+    if (m) { $$('.flm-op input', m).forEach(c => { c.checked = c.value === txt; }); fl?.aplicar(); $('#pl-acoes .filtro-local', tela)?.classList.remove('fl-fechado'); }
+    $('#pl-acoes', tela).scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }));
   $('#pl-anx').innerHTML = await htmlAnexos('plano', id).catch(() => '<span class="muted">—</span>');
   $('#anx-plano').onclick = async () => {
     const r = await modal(`<form><h2>Anexar no plano</h2><div class="form">${camposAnexoHtml()}<label class="campo largo">Descrição<input name="desc"></label></div>

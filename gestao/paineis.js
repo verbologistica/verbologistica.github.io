@@ -183,20 +183,30 @@ const pnTopo = (tit, sub, dados) => `<section class="vx-topo"><div class="vx-tit
 
 // ---------- alertas ----------
 const PN_NIVEL = { critico: ['Crítico', 'critico'], atencao: ['Atenção', 'atencao'], info: ['Informativo', 'info'] };
+const PN_AL_IC = {
+  critico: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>',
+  atencao: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+  info: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>',
+  ok: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg>' };
+// alertas em cartões: agrupados por nível, com quantidade e valor em destaque e acesso direto aos itens
 function pnAlertas(lista, itens = {}) {
-  if (!lista.length) return `<div class="cartao pn-alertas ok"><div class="pn-al-cab"><span class="pn-st bom" aria-hidden="true">✓</span><b>Nenhum alerta</b><span class="muted">Nada parado, vencido ou pendente fora do prazo.</span></div></div>`;
+  if (!lista.length) return `<div class="cartao pn-alertas ok"><div class="al-vazio"><span class="al-ic bom">${PN_AL_IC.ok}</span><div><b>Nenhum alerta</b><div class="muted">Nada parado, vencido ou pendente fora do prazo.</div></div></div></div>`;
   const n = k => lista.filter(a => a.nivel === k).length;
+  const tile = a => { const [rot, cls] = PN_NIVEL[a.nivel] || PN_NIVEL.info;
+    const neg = a.valor != null && Number(a.valor) < 0;
+    return `<div class="al-t ${cls}"><div class="al-cab"><span class="al-ic">${PN_AL_IC[cls] || PN_AL_IC.info}</span><span class="al-nv">${rot}</span></div>
+      <div class="al-tit">${esc(a.titulo)}</div>${a.detalhe ? `<div class="al-det" title="${esc(a.detalhe)}">${esc(a.detalhe)}</div>` : ''}
+      <div class="al-rod"><div class="al-num">${a.qtd != null ? `<b>${pnInt(a.qtd)}</b><small>${a.qtd === 1 ? 'item' : 'itens'}</small>` : ''}${a.valor != null ? `<span class="${neg ? 'neg' : ''}">${brl(a.valor)}</span>` : ''}</div>${pnAbrir(a, itens[a.titulo] || [])}</div></div>`; };
+  const grupo = (k, tit) => n(k) ? `<div class="al-gr"><div class="al-gr-t ${k}">${tit} <span>${n(k)}</span></div><div class="al-grade">${lista.filter(a => a.nivel === k).map(tile).join('')}</div></div>` : '';
   return `<details class="cartao pn-alertas" ${n('critico') ? 'open' : ''}><summary class="pn-al-cab"><h2>Alertas</h2><span class="pn-chip critico">${n('critico')} crítico(s)</span><span class="pn-chip atencao">${n('atencao')} de atenção</span>${n('info') ? `<span class="pn-chip info">${n('info')} informativo(s)</span>` : ''}<span class="pn-al-abrir muted">mostrar / esconder</span></summary>
-    <ul class="pn-al">${lista.map(a => { const [rot, cls] = PN_NIVEL[a.nivel] || PN_NIVEL.info;
-      return `<li class="${cls}"><span class="pn-st ${cls}" aria-hidden="true">${cls === 'info' ? 'i' : '!'}</span><div class="pn-al-t"><b>${esc(a.titulo)}</b><span class="pn-al-nv">${rot}</span>${a.detalhe ? `<div class="muted">${esc(a.detalhe)}</div>` : ''}</div>
-        <div class="pn-al-n">${a.qtd != null ? `<b>${pnInt(a.qtd)}</b>` : ''}${a.valor != null ? `<span>${brl(a.valor)}</span>` : ''}</div>${pnAbrir(a, itens[a.titulo] || [])}</li>`; }).join('')}</ul></details>`;
+    ${grupo('critico', 'Críticos')}${grupo('atencao', 'Atenção')}${grupo('info', 'Informativos')}</details>`;
 }
 let _pnAl = 0;
 function pnAbrir(a, its) {
-  if (its.length === 1) return `<a class="btn peq" href="${esc(its[0].link)}">Abrir</a>`;
-  if (!its.length) return a.link ? `<a class="btn peq" href="${esc(a.link)}">Abrir</a>` : '';
+  if (its.length === 1) return `<a class="al-btn" href="${esc(its[0].link)}">Abrir ›</a>`;
+  if (!its.length) return a.link ? `<a class="al-btn" href="${esc(a.link)}">Abrir ›</a>` : '';
   const id = 'pn-al-' + (++_pnAl);
-  return `<button type="button" class="btn peq" data-al-itens="${id}" aria-expanded="false">Ver ${its.length} itens</button>
+  return `<button type="button" class="al-btn" data-al-itens="${id}" aria-expanded="false">Ver itens ›</button>
     <ul class="pn-al-itens" id="${id}" hidden>${its.map(i => `<li><a href="${esc(i.link)}"><span>${esc(i.rot)}</span><b>Abrir ›</b></a></li>`).join('')}${a.link ? `<li class="pn-al-lista"><a href="${esc(a.link)}">Ver a lista completa no menu ›</a></li>` : ''}</ul>`;
 }
 function pnLigarAlertas(raiz) {
