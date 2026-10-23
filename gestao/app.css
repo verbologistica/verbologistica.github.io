@@ -876,3 +876,15 @@ a.pn-kpi:hover { border-color: var(--azul); }
   table.t-contas td[data-r="Descrição"] { width: 40%; }
   table.t-contas td[data-r="Favorecido"], table.t-contas td[data-r="Cliente"] { width: 22%; }
 }
+
+/* itens da nota: marcação de ponto de atenção */
+.it-desc { display: flex; align-items: center; gap: 6px; }
+.it-desc input { flex: 1; min-width: 0; }
+.it-atencao { flex: 0 0 auto; width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 1px solid var(--borda); border-radius: 6px; background: #fff; color: #9aa3ae; cursor: pointer; }
+.it-atencao svg, .it-ic svg, .it-aviso svg { width: 16px; height: 16px; }
+.it-atencao:hover { color: #b45309; border-color: #f59e0b; }
+.it-atencao[aria-pressed="true"] { color: #b45309; border-color: #f59e0b; background: #fff7ed; }
+tr.it-destaque td { background: #fff7ed; }
+tr.it-destaque td:first-child { box-shadow: inset 3px 0 0 #f59e0b; }
+.it-ic { display: inline-flex; vertical-align: -3px; color: #b45309; }
+.it-aviso { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; color: #b45309; font-weight: 600; }

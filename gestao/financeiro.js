@@ -140,8 +140,10 @@ const txtEncargos = p => { const j = Number(p.juros || 0), m = Number(p.multa ||
 // ---------- Itens da nota/fatura (descrição, quantidade, valor unitário, desconto → total da linha) ----------
 const itR = v => Math.round((Number(v) || 0) * 100) / 100;
 const itV = v => v == null || v === '' ? '' : Number(v).toFixed(2).replace('.', ',');
+// ícone de atenção (só contorno)
+const IC_ATENCAO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>';
 function htmlItensNota(itens = []) {
-  const linha = (i = {}) => `<tr class="it-linha"><td data-r="Descrição"><input data-it="descricao" value="${esc(i.descricao || '')}" placeholder="Produto ou serviço"></td>
+  const linha = (i = {}) => `<tr class="it-linha${i.atencao ? ' it-destaque' : ''}"><td data-r="Descrição"><div class="it-desc"><button type="button" class="it-atencao" data-it-at aria-pressed="${!!i.atencao}" title="Marcar este ponto para atenção">${IC_ATENCAO}</button><input data-it="descricao" value="${esc(i.descricao || '')}" placeholder="Produto ou serviço"></div></td>
     <td data-r="Qtd" class="num"><input data-it="quantidade" inputmode="decimal" value="${i.quantidade != null ? String(i.quantidade).replace('.', ',') : ''}" style="max-width:80px;text-align:right"></td>
     <td data-r="Valor unitário" class="num"><input data-it="valor_unitario" inputmode="decimal" value="${itV(i.valor_unitario)}" placeholder="0,00" style="max-width:110px;text-align:right"></td>
     <td data-r="Desconto (R$)" class="num"><input data-it="desconto" inputmode="decimal" value="${itV(i.desconto)}" placeholder="0,00" style="max-width:100px;text-align:right"></td>
@@ -176,6 +178,8 @@ function ligarItensNota(raiz, campoValor) {
   raiz.addEventListener('input', e => { if (e.target.closest('.it-nota') || e.target === campoValor) calc(); });
   raiz.addEventListener('click', e => {
     if (e.target.closest('[data-it-add]')) { corpo.insertAdjacentHTML('beforeend', $('[data-it-modelo]', raiz).innerHTML); calc(); }
+    const at = e.target.closest('[data-it-at]');
+    if (at) { const on = at.getAttribute('aria-pressed') !== 'true'; at.setAttribute('aria-pressed', String(on)); at.closest('tr').classList.toggle('it-destaque', on); at.title = on ? 'Tirar a marcação de atenção' : 'Marcar este ponto para atenção'; }
     const del = e.target.closest('[data-it-del]'); if (del) { if ($$('.it-linha', corpo).length > 1) del.closest('tr').remove(); else $$('input', del.closest('tr')).forEach(i => (i.value = '')); calc(); }
     if (e.target.closest('[data-it-usar]') && campoValor) { campoValor.value = itV(raiz._itSoma); campoValor.dispatchEvent(new Event('input', { bubbles: true })); calc(); }
   });
@@ -185,14 +189,16 @@ function lerItensNota(raiz) {
   return $$('[data-it-corpo] .it-linha', raiz).map(l => {
     const g = k => $(`[data-it="${k}"]`, l).value.trim();
     const q = num(g('quantidade')), u = num(g('valor_unitario')), d = num(g('desconto')) || 0;
-    return { descricao: g('descricao'), quantidade: q, valor_unitario: u, desconto: d, total: q != null && u != null ? itR(q * u - d) : null };
+    const atencao = $('[data-it-at]', l)?.getAttribute('aria-pressed') === 'true';
+    return { descricao: g('descricao'), quantidade: q, valor_unitario: u, desconto: d, total: q != null && u != null ? itR(q * u - d) : null, ...(atencao ? { atencao: true } : {}) };
   }).filter(i => i.descricao || i.quantidade != null || i.valor_unitario != null);
 }
-function htmlItensVer(itens) {
+function htmlItensVer(itens, editavel = false) {
   if (!itens?.length) return '';
   const soma = itR(itens.reduce((a, i) => a + Number(i.total || 0), 0));
-  return `<div class="largo"><div class="muted">Itens da nota / fatura</div><div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Descrição</th><th class="num">Qtd</th><th class="num">Valor unitário</th><th class="num">Desconto</th><th class="num">Total</th></tr></thead><tbody>
-    ${itens.map(i => `<tr><td data-r="Descrição">${esc(i.descricao || '—')}</td><td data-r="Qtd" class="num">${i.quantidade != null ? String(i.quantidade).replace('.', ',') : '—'}</td><td data-r="Valor unitário" class="num">${i.valor_unitario != null ? brl(i.valor_unitario) : '—'}</td>
+  const nAt = itens.filter(i => i.atencao).length;
+  return `<div class="largo"><div class="muted">Itens da nota / fatura${nAt ? ` <span class="it-aviso">${IC_ATENCAO} ${nAt} ponto(s) de atenção</span>` : ''}</div><div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Descrição</th><th class="num">Qtd</th><th class="num">Valor unitário</th><th class="num">Desconto</th><th class="num">Total</th></tr></thead><tbody>
+    ${itens.map((i, k) => `<tr${i.atencao ? ' class="it-destaque"' : ''}><td data-r="Descrição">${editavel ? `<span class="it-desc"><button type="button" class="it-atencao" data-it-ver="${k}" aria-pressed="${!!i.atencao}" title="${i.atencao ? 'Tirar a marcação de atenção' : 'Marcar este ponto para atenção'}">${IC_ATENCAO}</button>${esc(i.descricao || '—')}</span>` : `${i.atencao ? `<span class="it-ic" title="Ponto de atenção">${IC_ATENCAO}</span> ` : ''}${esc(i.descricao || '—')}`}</td><td data-r="Qtd" class="num">${i.quantidade != null ? String(i.quantidade).replace('.', ',') : '—'}</td><td data-r="Valor unitário" class="num">${i.valor_unitario != null ? brl(i.valor_unitario) : '—'}</td>
       <td data-r="Desconto" class="num">${Number(i.desconto) ? brl(i.desconto) : '—'}</td><td data-r="Total" class="num"><b>${i.total != null ? brl(i.total) : '—'}</b></td></tr>`).join('')}</tbody>
     <tfoot><tr><td colspan="4" class="num"><b>Soma</b></td><td class="num"><b>${brl(soma)}</b></td></tr></tfoot></table></div></div>`;
 }
@@ -328,7 +334,7 @@ async function verTitulo(tela, id, tipo) {
       <div><div class="muted">Centro de custo</div><b>${esc(t.cc?.nome || '—')}</b></div>
       <div><div class="muted">Origem</div><b>${esc(origens[t.origem] || t.origem)}</b>${t.id_legado?.startsWith('planilha') ? '<div class="muted">Planilha de controle anterior</div>' : ''}</div>
       ${receb ? `<div><div class="muted">Pedido / recebimento do produto</div><a href="#/compras/pedidos/ver/${receb.ped.id}">${esc(receb.ped.numero)}</a> · ${receb.completo ? `<span class="tag ${receb.div ? 'vermelho' : 'verde'}">${receb.div ? 'Recebido com divergência' : 'Produto recebido'} em ${dataBR(receb.data)}</span>` : receb.parcial ? '<span class="tag amarelo">Recebido em parte</span>' : '<span class="tag amarelo">Produto ainda não chegou</span>'}</div>` : ''}
-      ${htmlItensVer(t.itens)}
+      ${htmlItensVer(t.itens, editaFin())}
       ${blocoObservacao(t.observacoes, editaFin())}
       <div class="largo"><div class="muted">Anexos</div>${await htmlAnexos('titulo', id)}
         ${editaFin() ? '<label class="campo" style="margin-top:8px">Incluir anexo<input type="file" id="mais" multiple></label>' : ''}</div>
@@ -345,6 +351,11 @@ async function verTitulo(tela, id, tipo) {
         ${editaFin() ? `<label class="btn peq" style="margin-left:6px">Anexar comprovante<input type="file" hidden accept="image/*,application/pdf" multiple data-comp="${b.id}"></label>
         <button class="btn peq" data-din="${b.id}">Foi em dinheiro</button>` : ''}` : `<span class="muted">Comprovante:</span> ${b.forma_pagamento === 'Dinheiro' && compBaixa[b.id].includes('Sem anexos') ? '<span class="muted">pagamento em dinheiro (sem comprovante)</span>' : compBaixa[b.id]}`}</div></li>`).join('')}</ul></div>` : ''}`;
   ligarObservacao('titulos', id, t.observacoes);
+  // marcar/desmarcar ponto de atenção direto na conta
+  $$('[data-it-ver]', tela).forEach(b => (b.onclick = async () => {
+    const itens = (t.itens || []).map((x, k) => k === Number(b.dataset.itVer) ? { ...x, atencao: !x.atencao } : x).map(({ atencao, ...x }) => (atencao ? { ...x, atencao: true } : x));
+    try { await api.alterar('titulos', `id=eq.${id}`, { itens }); navegar(); } catch (err) { falha(err); }
+  }));
   $$('[data-copiar]', tela).forEach(b => (b.onclick = async () => { const v = b.dataset.copiar;
     try { await navigator.clipboard.writeText(v); } catch { const ta = document.createElement('textarea'); ta.value = v; document.body.append(ta); ta.select(); document.execCommand('copy'); ta.remove(); }
     aviso('Copiado: ' + (v.length > 40 ? v.slice(0, 40) + '…' : v)); }));
