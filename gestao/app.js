@@ -1070,14 +1070,33 @@ async function repactuarAcao(a) {
   if (!r) return false;
   try { await api.rpc('repactuar_acao', { p_modulo: a.modulo, p_id: a.id, p_prazo: r.prazo, p_motivo: r.motivo }); aviso('Prazo repactuado para ' + dataBR(r.prazo) + '.'); return true; } catch (err) { falha(err); return false; }
 }
+async function devolverAcao(a) {
+  const r = await modal(`<form><h2>Devolver ação</h2><p class="muted">${esc(a.descricao)}</p>
+    ${a.evidencia ? `<div class="ma-det"><div class="muted">O que foi informado como feito</div><div style="white-space:pre-line">${esc(a.evidencia)}</div></div>` : ''}
+    <div class="form">
+      <div class="campo largo"><span>Motivo da devolução *</span>
+        <label class="check"><input type="radio" name="tipo" value="mais_informacoes" checked> Pedir mais informações / evidência</label>
+        <label class="check"><input type="radio" name="tipo" value="nao_atendeu"> Não atendeu ao pedido da ação</label></div>
+      <label class="campo largo">O que falta ou o que precisa ser refeito *<textarea name="motivo" rows="3" required placeholder="Ex.: falta o modelo do kit com fotos e orçamento; o que foi enviado foi só a sugestão"></textarea></label>
+      <label class="campo">Novo prazo (opcional)<input type="date" name="prazo" min="${hojeISO()}" value="${somaDias(hojeISO(), 7)}"></label>
+      <p class="muted largo" style="margin:0">A ação volta para "Em andamento" e os responsáveis recebem o aviso com o seu comentário.</p></div>
+    <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn perigo">Devolver</button></div></form>`,
+    { validar: d => !d.motivo?.trim() ? 'Explique o que falta ou por que não atendeu.' : null });
+  if (!r) return false;
+  try { await api.rpc('devolver_acao', { p_modulo: a.modulo, p_id: a.id, p_tipo: r.tipo, p_motivo: r.motivo.trim(), p_prazo: r.prazo || null });
+    aviso('Ação devolvida aos responsáveis.'); return true; } catch (err) { falha(err); return false; }
+}
 async function abrirAcao(a) {
   const tabela = TAB_ACAO[a.modulo];
   const gestor = tem('administrador', 'diretoria');
   const podeEditar = a.modulo === 'geral' && (a.criado_por_id === estado.usuario.id || gestor);
   const ehResp = ehRespAcao(a);
   const linkMod = a.modulo === 'ssma' ? '' : a.modulo === 'qual' && a.nc_id && telaPermitida('/qualidade/nc') ? '#/qualidade/nc/ver/' + a.nc_id : '';
-  const [pes, hist] = await Promise.all([podeEditar ? pessoasAcao() : [],
-    api.listar('acao_repactuacoes', `modulo=eq.${a.modulo}&acao_id=eq.${a.id}&order=criado_em&select=prazo_anterior,prazo_novo,motivo,criado_em,u:usuarios(nome)`).catch(() => [])]);
+  const [pes, hist, devs] = await Promise.all([podeEditar ? pessoasAcao() : [],
+    api.listar('acao_repactuacoes', `modulo=eq.${a.modulo}&acao_id=eq.${a.id}&order=criado_em&select=prazo_anterior,prazo_novo,motivo,criado_em,u:usuarios(nome)`).catch(() => []),
+    api.listar('acao_devolucoes', `modulo=eq.${a.modulo}&acao_id=eq.${a.id}&order=criado_em&select=tipo,motivo,evidencia_anterior,criado_em,u:usuarios(nome)`).catch(() => [])]);
+  // quem abriu a ação, a gestão e o SSMA/Qualidade nos seus módulos podem devolver uma ação concluída (o servidor confere o dono do plano)
+  const podeDevolver = a.status === 'concluida' && (podeEditar || gestor || a.criado_por_id === estado.usuario.id || (a.modulo === 'ssma' && tem('ssma')) || (a.modulo === 'qual' && tem('qualidade')) || (!!a.plano_criado_por && a.plano_criado_por === estado.usuario.id));
   const [pt] = prazoTxt(a.prazo);
   const aberta = ['aberta', 'em_andamento'].includes(a.status);
   const podeRepact = aberta && (podeEditar || ehResp || gestor || (a.modulo === 'ssma' && tem('ssma')) || (a.modulo === 'qual' && tem('qualidade')));
@@ -1091,6 +1110,7 @@ async function abrirAcao(a) {
         ${a.prazo ? `<div class="campo"><span>Prazo</span><b style="padding:8px 0">${dataBR(a.prazo)} <span class="muted">(${pt})</span></b></div>` : '<label class="campo">Prazo<input type="date" name="prazo"></label>'}</div>`
       : `<div class="ma-det"><p><b>${esc(a.descricao)}</b></p><p class="muted">${esc(a.origem)}${nomesResp ? ' · ' + esc(nomesResp) : ''}${a.criado_por ? ' · aberta por ' + esc(a.criado_por) : ''} · ${a.prazo ? 'prazo ' + dataBR(a.prazo) + ' (' + pt + ')' : 'sem prazo'}</p></div>`}
     ${podeRepact && a.prazo ? '<p style="margin:8px 0 0"><button type="button" class="btn peq" id="ac-repact">↻ Repactuar prazo</button></p>' : ''}
+    ${devs.length ? `<div class="ac-dev"><div class="muted">Devoluções</div><ul class="ac-hist">${devs.map(d => `<li><span class="tag ${d.tipo === 'nao_atendeu' ? 'vermelho' : 'amarelo'}">${d.tipo === 'nao_atendeu' ? 'Não atendeu' : 'Faltam informações'}</span> ${esc(d.motivo)} <span class="muted">· ${esc(d.u?.nome || '')} em ${dataHoraBR(d.criado_em)}</span>${d.evidencia_anterior ? `<div class="muted" style="font-size:12px">O que tinha sido informado: ${esc(d.evidencia_anterior)}</div>` : ''}</li>`).join('')}</ul></div>` : ''}
     ${hist.length ? `<div style="margin-top:10px"><div class="muted">Repactuações</div><ul class="ac-hist">${hist.map(h => `<li>${h.prazo_anterior ? dataBR(h.prazo_anterior) : 'sem prazo'} → <b>${dataBR(h.prazo_novo)}</b> · ${esc(h.motivo)} <span class="muted">· ${esc(h.u?.nome || '')} em ${dataHoraBR(h.criado_em)}</span></li>`).join('')}</ul></div>` : ''}
     <div class="form" style="margin-top:12px">
       <label class="campo">Situação<select name="status">${['aberta', 'em_andamento', 'concluida', ...(podeEditar ? ['cancelada'] : [])].map(k => `<option value="${k}" ${k === a.status ? 'selected' : ''}>${ST_ACAO_TXT[k][0]}</option>`).join('')}</select></label>
@@ -1099,9 +1119,10 @@ async function abrirAcao(a) {
       ${podeEditar || ehResp || gestor ? camposAnexoHtml() : ''}</div>
     ${linkMod ? `<p class="muted"><a href="${linkMod}" data-fechar>Ver no módulo de ${a.modulo === 'ssma' ? 'Segurança' : 'Qualidade'}</a></p>` : ''}
     ${a.plano_id && !location.hash.startsWith('#/planos/ver/') ? `<p class="muted">Referência: <a href="#/planos/ver/${a.plano_id}" data-fechar>${esc(a.origem)}</a></p>` : ''}
-    <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button>${podeEditar || ehResp || gestor ? `<button class="btn${aberta ? '' : ' prim'}" value="salvar">Salvar</button>${aberta ? '<button class="btn ok" value="concluir">✔ Concluir ação</button>' : ''}` : ''}</div></form>`,
+    <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button>${podeDevolver ? '<button type="button" class="btn perigo" id="ac-devolver">↩ Devolver ação</button>' : ''}${podeEditar || ehResp || gestor ? `<button class="btn${aberta ? '' : ' prim'}" value="salvar">Salvar</button>${aberta ? '<button class="btn ok" value="concluir">✔ Concluir ação</button>' : ''}` : ''}</div></form>`,
     { aoAbrir: (f, fechar) => { if (podeEditar) { $('.modal', f).classList.add('modal-largo'); ligarSelPessoas(f, pes); }
-        $('#ac-repact', f)?.addEventListener('click', async () => { if (await repactuarAcao(a)) { fechar(null); navegar(); } }); },
+        $('#ac-repact', f)?.addEventListener('click', async () => { if (await repactuarAcao(a)) { fechar(null); navegar(); } });
+        $('#ac-devolver', f)?.addEventListener('click', async () => { if (await devolverAcao(a)) { fechar(null); navegar(); } }); },
       validar: d => (d._acao === 'concluir' || d.status === 'concluida') && !d.evidencia?.trim() && !d.arquivos?.length && !d.links?.trim() && !anxHtml.includes('data-arquivo') ? 'Para concluir, descreva o que foi feito ou anexe a evidência.'
         : podeEditar && !lerPessoas(d.resp).length ? 'Inclua pelo menos um responsável.' : null });
   if (!r) return false;
@@ -1244,7 +1265,7 @@ rota('/planos/ver/:id', async (tela, id) => {
   p.autor = autor;
   const acs = linhas.map(a => ({ modulo: 'geral', id: a.id, descricao: a.descricao, prazo: a.prazo, status: a.status, evidencia: a.evidencia, concluida_em: a.concluida_em,
     responsavel_id: a.responsavel_id, responsaveis: a.responsaveis, responsaveis_ids: a.responsaveis_ids, prazo_original: a.prazo_original,
-    responsavel: nomesPessoas(a.responsaveis) || a.u?.nome, criado_por_id: a.criado_por, plano_id: id, origem: `${TIPOS_PLANO[p.tipo] || 'Plano'} ${dataBR(p.data)} · ${p.titulo}` }));
+    responsavel: nomesPessoas(a.responsaveis) || a.u?.nome, criado_por_id: a.criado_por, plano_criado_por: p.criado_por, plano_id: id, origem: `${TIPOS_PLANO[p.tipo] || 'Plano'} ${dataBR(p.data)} · ${p.titulo}` }));
   acs.sort((x, y) => (['concluida', 'cancelada'].includes(x.status) - ['concluida', 'cancelada'].includes(y.status)) || String(x.prazo || '9').localeCompare(String(y.prazo || '9')));
   const vivas = acs.filter(a => a.status !== 'cancelada'), conc = vivas.filter(a => a.status === 'concluida').length;
   const atr = vivas.filter(a => ['aberta', 'em_andamento'].includes(a.status) && a.prazo && a.prazo < hojeISO()).length;
