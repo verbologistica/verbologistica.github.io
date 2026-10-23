@@ -671,6 +671,7 @@ async function navegar() {
   guardarRolagem();
   const telaAtual = location.hash || '#/inicio';
   const mesmaRota = _ultimaTela && _ultimaTela.split('?')[0] === telaAtual.split('?')[0];
+  _mesmaTela = !!mesmaRota;   // filtros da tela continuam quando ela é redesenhada
   const yAntes = window.scrollY;
   atualizarPilha(telaAtual);
   const [h, qs] = (location.hash || '#/inicio').slice(1).split('?');
@@ -1480,13 +1481,16 @@ addEventListener('hashchange', () => _cbAberto?.fechar());
 // campos: [{ k: 'colab', rotulo: 'Colaborador' }, …] — as opções saem dos próprios itens.
 const _txt = h => String(h ?? '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 const fAttr = (k, v) => v == null || v === '' ? '' : ` data-f-${k}="${esc(String(v))}"`;
+let _mesmaTela = false;
 function filtroLocal(tela, { itens, antes, campos = [], busca = true, periodo = false, rotuloPeriodo = 'Data', aoMudar } = {}) {
   const els = () => $$(itens, tela);
   const todos = els();
   if (!todos.length) return null;
   const chave = 'filtro:' + location.hash.split('?')[0] + ':' + itens;
-  const salvo = {};   // a tela sempre abre mostrando tudo; quem quiser algo específico filtra
-  const usados = campos.map(c => ({ ...c, valores: [...new Set(todos.map(e => e.dataset['f' + c.k[0].toUpperCase() + c.k.slice(1)]).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR')) }))
+  // a tela abre mostrando tudo; mas quando a MESMA tela é redesenhada (ex.: depois de aprovar um item) o filtro escolhido continua
+  let salvo = {};
+  if (_mesmaTela) { try { salvo = JSON.parse(sessionStorage.getItem(chave) || '{}') || {}; } catch { salvo = {}; } }
+  const usados = campos.map(c => ({ ...c, valores: [...new Set([...todos.map(e => e.dataset['f' + c.k[0].toUpperCase() + c.k.slice(1)]), ...(Array.isArray(salvo[c.k]) ? salvo[c.k] : [])].filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR')) }))
     .filter(c => c.valores.length > 1 || salvo[c.k]);
   const barra = document.createElement('div');
   barra.className = 'filtros filtro-local' + (Object.keys(salvo).some(k => k !== 'q' && salvo[k]) ? '' : ' fl-fechado');
@@ -1494,7 +1498,7 @@ function filtroLocal(tela, { itens, antes, campos = [], busca = true, periodo = 
     ${busca ? `<input type="search" data-fl="q" placeholder="Buscar…" value="${esc(salvo.q || '')}" aria-label="Buscar">` : ''}
     ${usados.map(c => `<div class="flm" data-flm="${c.k}" data-rot="${esc(c.rotulo)}"><button type="button" class="flm-btn" aria-haspopup="true"><span class="flm-txt">${esc(c.rotulo)}: todos</span></button>
       <div class="flm-pan" hidden><input type="text" class="flm-q" placeholder="Digite para buscar…" autocomplete="off" aria-label="Buscar ${esc(c.rotulo)}">
-        <div class="flm-ops">${c.valores.map(v => `<label class="flm-op"><input type="checkbox" value="${esc(v)}"><span>${esc(v)}</span></label>`).join('')}</div>
+        <div class="flm-ops">${c.valores.map(v => `<label class="flm-op"><input type="checkbox" value="${esc(v)}"${Array.isArray(salvo[c.k]) && salvo[c.k].includes(v) ? ' checked' : ''}><span>${esc(v)}</span></label>`).join('')}</div>
         <div class="flm-rod"><button type="button" class="btn peq" data-flm-todos>Marcar visíveis</button><button type="button" class="btn peq" data-flm-limpar>Limpar</button></div></div></div>`).join('')}
     ${periodo ? `<label class="fl-data">${esc(rotuloPeriodo)} de<input type="date" data-fl="de" value="${esc(salvo.de || '')}"></label><label class="fl-data">até<input type="date" data-fl="ate" value="${esc(salvo.ate || '')}"></label>` : ''}
     <button type="button" class="btn peq" data-fl-limpar>Limpar</button>
