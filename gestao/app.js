@@ -672,6 +672,8 @@ async function navegar() {
   const telaAtual = location.hash || '#/inicio';
   const mesmaRota = _ultimaTela && _ultimaTela.split('?')[0] === telaAtual.split('?')[0];
   _mesmaTela = !!mesmaRota;   // filtros da tela continuam quando ela é redesenhada
+  // telas de apresentação (Início e painéis): fundo escuro da marca
+  document.body.classList.toggle('tema-vx', /^#?\/(inicio|financeiro\/painel|compras\/painel)(\?|$)/.test(telaAtual.replace(/^#/, '')));
   const yAntes = window.scrollY;
   atualizarPilha(telaAtual);
   const [h, qs] = (location.hash || '#/inicio').slice(1).split('?');
@@ -891,6 +893,7 @@ rota('/inicio', async tela => {
         ${(() => { const [f, a, o] = fraseDoDia(); return `<figure class="ih-frase"><blockquote>“${esc(f)}”</blockquote><figcaption>— <b>${esc(a)}</b>${o ? `, <cite>${esc(o)}</cite>` : ''}</figcaption></figure>`; })()}
       </div>
     </section>
+    ${veTudo() || tem('administrador', 'comprador') ? '<section class="vx-ini" id="vx-ini"><div class="vx-ini-cab"><h2>Visão executiva</h2></div><div class="pn-vazio">Carregando indicadores…</div></section>' : ''}
     ${typeof htmlChamadosInicio === 'function' ? htmlChamadosInicio(chamadosAb) : ''}${blocoAcoes}${blocoDiarias}
     ${blocoGestao}
     <div class="inicio-kpis">
@@ -944,6 +947,7 @@ rota('/inicio', async tela => {
       ${notifs.length ? `<ul class="lista-simples">${notifs.map(n => `<li class="${n.lida ? '' : 'nao-lida'}"><span>${n.link ? `<a href="${esc(n.link)}">${esc(n.titulo)}</a>` : esc(n.titulo)}${n.corpo ? `<br><span class="muted">${esc(n.corpo)}</span>` : ''}${n.resolvida_em ? ` <span class="tag verde">resolvido</span>` : ''}</span>
         <span class="muted nowrap">${dataHoraBR(n.criado_em)}${!n.lida ? ` <button class="btn peq" data-lida="${n.id}" title="Marcar como lido">✓</button>` : ''}</span></li>`).join('')}</ul>`
         : `<div class="vazio">${verAnt ? 'Nenhum aviso.' : 'Nenhum aviso pendente.'}</div>`}</div>`;
+  if (typeof vxInicio === 'function') vxInicio($('#vx-ini', tela));
   // painel do dia: indicadores agrupados por área, com ícone de traço e situação (ação necessária / em dia)
   const SECOES = [['fin', 'Financeiro e aprovações', 'carteira'], ['com', 'Compras', 'carrinho'], ['ope', 'Operação e frota', 'caminhao'], ['alm', 'Almoxarifado e patrimônio', 'armazem'],
     ['pes', 'Pessoas', 'pessoas'], ['seg', 'Segurança do trabalho', 'capacete'], ['qua', 'Qualidade', 'selo']];
