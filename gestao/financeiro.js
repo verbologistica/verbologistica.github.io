@@ -61,7 +61,7 @@ async function listaTitulos(tela, tipo) {
   const nome = p => (tipo === 'pagar' ? pessoas[p.fornecedor_id]?.razao_social : pessoas[p.cliente_id]?.nome) || p.favorecido_nome || '—';
   const pesBusca = p => { const x = pessoas[tipo === 'pagar' ? p.fornecedor_id : p.cliente_id]; return x ? [x.nome_fantasia, x.documento, x.documento && fmtDoc(x.documento)].filter(Boolean).join(' ') : ''; };
   if (faixas.some(f => FAIXAS[f])) ps = ps.filter(p => faixas.some(f => FAIXAS[f]?.[1](p)));
-  if (busca) ps = ps.filter(p => casaBusca(nome(p) + ' ' + pesBusca(p) + ' ' + (p.descricao || '') + ' ' + p.titulo_numero, busca));
+  if (busca) ps = ps.filter(p => casaBusca(nome(p) + ' ' + pesBusca(p) + ' ' + (p.descricao || '') + ' ' + p.titulo_numero + ' ' + (p.documento || ''), busca));
   const pagas = st === 'pagas' || st === 'semcomp';
   const podeSel = editaFin() && (st === 'abertas' || st === 'previsoes');
   const urlCom = mud => { const q = new URLSearchParams(estado.params); Object.entries(mud).forEach(([k, v]) => (v == null || v === '' ? q.delete(k) : q.set(k, v))); return T.rota + '?' + q.toString(); };
@@ -92,7 +92,7 @@ async function listaTitulos(tela, tipo) {
       <input type="hidden" name="de" value="${per?.de || ''}"><input type="hidden" name="ate" value="${per?.ate || ''}"><input type="hidden" name="periodo" value="${per ? '' : 'tudo'}">
       <select name="status">${[['abertas', 'Em aberto'], ['previsoes', tipo === 'pagar' ? 'Previsões de gasto' : 'Receitas previstas'], ['pagas', T.feitas], ...(tipo === 'pagar' ? [['semcomp', 'Pagas sem comprovante']] : []), ['todas', 'Todas']].map(([v, t]) => `<option value="${v}" ${v === st ? 'selected' : ''}>${t}</option>`).join('')}</select>
       <select name="faixa"><option value="">Qualquer vencimento</option>${Object.entries(FAIXAS).filter(([k]) => k !== 'vencidos').map(([k, [t]]) => `<option value="${k}" ${k === faixa ? 'selected' : ''}>${t}</option>`).join('')}</select>
-      <input name="q" placeholder="Buscar ${T.pessoa.toLowerCase()} ou descrição" value="${esc(estado.params.get('q') || '')}">
+      <input name="q" placeholder="Buscar ${T.pessoa.toLowerCase()}, descrição ou nº do documento" value="${esc(estado.params.get('q') || '')}">
       <button class="btn">Filtrar</button></form>
     ${podeSel && ps.length ? `<div class="sel-barra" id="sel-barra" hidden><span id="sel-txt"></span>${st === 'abertas' ? '<button class="btn peq" id="virar-prev">Transformar em previsão</button>' : '<button class="btn ok peq" id="conf-prev">Confirmar como conta (nota/boleto chegou)</button>'}</div>` : ''}
     <div class="cartao">${ps.length ? `<div class="tabela-wrap"><table class="responsiva t-contas"><thead><tr>${podeSel ? '<th class="sel-cel"><input type="checkbox" id="sel-todos" aria-label="Selecionar todos"></th>' : ''}<th>Vencimento</th><th>${T.pessoa}</th><th>Descrição</th><th>Título</th><th>Nº documento</th><th class="num">Valor</th><th class="num">${colValor}</th><th>Situação</th></tr></thead><tbody>
