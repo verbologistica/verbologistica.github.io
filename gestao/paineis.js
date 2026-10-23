@@ -250,11 +250,14 @@ async function pnMapa(el) {
   if (!document.body.contains(el)) return;
   el.innerHTML = '';
   const mapa = L.map(el, { zoomControl: true, attributionControl: true, scrollWheelZoom: false, worldCopyJump: false, minZoom: 3, maxZoom: 12 }).setView([-21.5, -50.5], 5);
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { subdomains: 'abcd', maxZoom: 19,
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>' }).addTo(mapa);
+  // base escura (Esri World Dark Gray) + nomes de cidades/estados por cima
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', { maxZoom: 16,
+    attribution: 'Mapa &copy; Esri, HERE, Garmin, &copy; OpenStreetMap' }).addTo(mapa);
+  mapa.createPane('rotulos'); mapa.getPane('rotulos').style.zIndex = 350; mapa.getPane('rotulos').style.pointerEvents = 'none';
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}', { maxZoom: 16, pane: 'rotulos' }).addTo(mapa);
   el.addEventListener('click', () => mapa.scrollWheelZoom.enable(), { once: true });
   const tipo = f => f.contratos > 0 ? 'contrato' : f.abastecimentos > 0 && !f.pedidos ? 'posto' : 'compra';
-  const valor = f => Math.max(Number(f.pago) || 0, Number(f.valor_pedidos) || 0, Number(f.valor_abast) || 0);
+  const valor = f => Math.max(Number(f.pago) || 0, Number(f.valor_pedidos) || 0, Number(f.valor_abast) || 0, Number(f.valor_contas) || 0);
   const maxV = Math.max(1, ...fs.map(valor));
   const camada = L.layerGroup().addTo(mapa); const pontos = [];
   const porCidade = {};
@@ -268,7 +271,7 @@ async function pnMapa(el) {
       const [rot, cor] = MAPA_TIPO[tipo(f)], v = valor(f);
       const m = L.circleMarker([lat, lng], { radius: 5 + 13 * Math.sqrt(v / maxV), color: cor, weight: 1.5, opacity: .95, fillColor: cor, fillOpacity: .55, className: 'vx-ponto' }).addTo(camada);
       const linhas = [f.pedidos ? `${f.pedidos} pedido(s) · ${brl(f.valor_pedidos)}` : '', Number(f.pago) ? `Pago: ${brl(f.pago)}` : '', f.contratos ? `${f.contratos} contrato(s) / conta(s) fixa(s)` : '',
-        f.abastecimentos ? `${f.abastecimentos} abastecimento(s) · ${brl(f.valor_abast)}` : '', !f.pedidos && !Number(f.pago) && f.contas ? `${f.contas} conta(s) a pagar lançada(s)` : ''].filter(Boolean);
+        f.abastecimentos ? `${f.abastecimentos} abastecimento(s) · ${brl(f.valor_abast)}` : '', f.contas ? `${f.contas} conta(s) a pagar · ${brl(f.valor_contas)}` : ''].filter(Boolean);
       m.bindTooltip(`<div class="vx-mt"><b>${esc(f.nome)}</b><span>${esc(f.cidade || '')}${f.uf ? '/' + esc(f.uf) : ''} · ${esc(rot)}</span>${linhas.map(l => `<div>${esc(l)}</div>`).join('')}</div>`, { className: 'vx-mapa-tip', direction: 'top', offset: [0, -6] });
       pontos.push([lat, lng]);
     }));
