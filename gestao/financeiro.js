@@ -95,11 +95,12 @@ async function listaTitulos(tela, tipo) {
       <input name="q" placeholder="Buscar ${T.pessoa.toLowerCase()} ou descrição" value="${esc(estado.params.get('q') || '')}">
       <button class="btn">Filtrar</button></form>
     ${podeSel && ps.length ? `<div class="sel-barra" id="sel-barra" hidden><span id="sel-txt"></span>${st === 'abertas' ? '<button class="btn peq" id="virar-prev">Transformar em previsão</button>' : '<button class="btn ok peq" id="conf-prev">Confirmar como conta (nota/boleto chegou)</button>'}</div>` : ''}
-    <div class="cartao">${ps.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr>${podeSel ? '<th class="sel-cel"><input type="checkbox" id="sel-todos" aria-label="Selecionar todos"></th>' : ''}<th>Vencimento</th><th>${T.pessoa}</th><th>Descrição</th><th>Título</th><th class="num">Valor</th><th class="num">${colValor}</th><th>Situação</th></tr></thead><tbody>
-      ${ps.map(p => `<tr class="clicavel" data-t="${p.titulo_id}"${fAttr('pessoa', nome(p))}${fAttr('tipo', ORIG_T[p.origem] || p.origem)}${fAttr('conta', nomeConta(p.conta_id))}${fAttr('cc', nomeCC(p.centro_custo_id))}${fAttr('sit', _txt(tagParcela(p, tipo)))}${fAttr('data', p.vencimento)}${fAttr('valor', pagas ? p.total_pago : p.saldo)}${fAttr('busca', [nome(p), pesBusca(p), p.descricao, p.titulo_numero, p.observacoes].filter(Boolean).join(' '))}>${podeSel ? `<td class="sel-cel" data-r=""><input type="checkbox" class="sel-t" value="${p.titulo_id}" aria-label="Selecionar"></td>` : ''}<td data-r="Vencimento" class="nowrap">${dataBR(p.vencimento)}${Number(p.renegociacoes) ? `<div class="enc" title="Vencimento renegociado">renegociada · orig. ${dataBR(p.vencimento_original)}</div>` : ''}</td><td data-r="${T.pessoa}">${esc(nome(p))}</td>
+    <div class="cartao">${ps.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr>${podeSel ? '<th class="sel-cel"><input type="checkbox" id="sel-todos" aria-label="Selecionar todos"></th>' : ''}<th>Vencimento</th><th>${T.pessoa}</th><th>Descrição</th><th>Título</th><th>Nº documento</th><th class="num">Valor</th><th class="num">${colValor}</th><th>Situação</th></tr></thead><tbody>
+      ${ps.map(p => `<tr class="clicavel" data-t="${p.titulo_id}"${fAttr('pessoa', nome(p))}${fAttr('tipo', ORIG_T[p.origem] || p.origem)}${fAttr('conta', nomeConta(p.conta_id))}${fAttr('cc', nomeCC(p.centro_custo_id))}${fAttr('sit', _txt(tagParcela(p, tipo)))}${fAttr('data', p.vencimento)}${fAttr('valor', pagas ? p.total_pago : p.saldo)}${fAttr('busca', [nome(p), pesBusca(p), p.documento, p.descricao, p.titulo_numero, p.observacoes].filter(Boolean).join(' '))}>${podeSel ? `<td class="sel-cel" data-r=""><input type="checkbox" class="sel-t" value="${p.titulo_id}" aria-label="Selecionar"></td>` : ''}<td data-r="Vencimento" class="nowrap">${dataBR(p.vencimento)}${Number(p.renegociacoes) ? `<div class="enc" title="Vencimento renegociado">renegociada · orig. ${dataBR(p.vencimento_original)}</div>` : ''}</td><td data-r="${T.pessoa}">${esc(nome(p))}</td>
         <td data-r="Descrição">${temVerificar(p.observacoes) ? '<span title="A verificar">⚠️</span> ' : ''}${esc(p.descricao || '')}</td><td data-r="Título" class="nowrap">${esc(p.titulo_numero)}${p.parcela > 1 ? ` <span class="muted">${p.parcela}ª</span>` : ''}</td>
+        <td data-r="Nº documento">${p.documento ? esc(p.documento) : '<span class="muted">—</span>'}</td>
         <td data-r="Valor" class="num">${brl(p.valor)}${Number(p.encargos) ? `<div class="enc ${Number(p.encargos) > 0 ? 'mais' : 'menos'}" title="${esc(txtEncargos(p))}">${Number(p.encargos) > 0 ? '+' : '−'} ${brl(Math.abs(p.encargos))} ${Number(p.encargos) > 0 ? 'juros/multa' : 'desconto'}</div><div class="enc">${tipo === 'receber' ? 'recebido' : 'pago'} ${brl(p.total_pago)}</div>` : ''}</td><td data-r="${colValor}" class="num"><b>${brl(pagas ? p.total_pago : p.saldo)}</b></td><td data-r="Situação">${tagParcela(p, tipo)}${tipo === 'pagar' && semCompIds.has(p.id) ? ' <span class="tag amarelo">Sem comprovante</span>' : ''}</td></tr>`).join('')}
-      </tbody><tfoot><tr><td colspan="${podeSel ? 6 : 5}">Total</td><td class="num">${brl(total)}</td><td></td></tr></tfoot></table></div>` : '<div class="vazio">Nenhuma conta encontrada.</div>'}</div>`;
+      </tbody><tfoot><tr><td colspan="${podeSel ? 7 : 6}">Total</td><td class="num">${brl(total)}</td><td></td></tr></tfoot></table></div>` : '<div class="vazio">Nenhuma conta encontrada.</div>'}</div>`;
   $('#filtros').onsubmit = e => { e.preventDefault(); const d = formDados(e.target);
     location.hash = T.rota + '?' + new URLSearchParams(Object.entries(d).filter(([, v]) => v)).toString(); };
   $$('tr[data-t]', tela).forEach(tr => (tr.onclick = e => { if (e.target.closest('.sel-cel')) return; location.hash = T.rota + '/ver/' + tr.dataset.t; }));
@@ -136,6 +137,73 @@ const tagParcela = (p, tipo) => p.paga_atraso ? `<span class="tag amarelo" title
 const txtEncargos = p => { const j = Number(p.juros || 0), m = Number(p.multa || 0), d = Number(p.desconto || 0);
   return [j ? 'juros ' + brl(j) : '', m ? 'multa ' + brl(m) : '', d ? 'desconto ' + brl(d) : ''].filter(Boolean).join(' · '); };
 
+// ---------- Itens da nota/fatura (descrição, quantidade, valor unitário, desconto → total da linha) ----------
+const itR = v => Math.round((Number(v) || 0) * 100) / 100;
+const itV = v => v == null || v === '' ? '' : Number(v).toFixed(2).replace('.', ',');
+function htmlItensNota(itens = []) {
+  const linha = (i = {}) => `<tr class="it-linha"><td data-r="Descrição"><input data-it="descricao" value="${esc(i.descricao || '')}" placeholder="Produto ou serviço"></td>
+    <td data-r="Qtd" class="num"><input data-it="quantidade" inputmode="decimal" value="${i.quantidade != null ? String(i.quantidade).replace('.', ',') : ''}" style="max-width:80px;text-align:right"></td>
+    <td data-r="Valor unitário" class="num"><input data-it="valor_unitario" inputmode="decimal" value="${itV(i.valor_unitario)}" placeholder="0,00" style="max-width:110px;text-align:right"></td>
+    <td data-r="Desconto (R$)" class="num"><input data-it="desconto" inputmode="decimal" value="${itV(i.desconto)}" placeholder="0,00" style="max-width:100px;text-align:right"></td>
+    <td data-r="Total da linha" class="num nowrap" data-it-tot>—</td><td><button type="button" class="btn peq" data-it-del title="Tirar linha">✕</button></td></tr>`;
+  return `<div class="largo it-nota"><div class="muted" style="margin-bottom:4px">Itens da nota / fatura <span class="muted">(opcional — o total de cada linha e a soma são calculados sozinhos)</span></div>
+    <div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Descrição</th><th class="num">Qtd</th><th class="num">Valor unitário</th><th class="num">Desconto (R$)</th><th class="num">Total da linha</th><th></th></tr></thead>
+      <tbody data-it-corpo>${(itens.length ? itens : [{}]).map(linha).join('')}</tbody>
+      <tfoot><tr><td colspan="4" class="num"><b>Soma dos itens</b></td><td class="num nowrap"><b data-it-soma>—</b></td><td></td></tr></tfoot></table></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:6px"><button type="button" class="btn peq" data-it-add>+ Item</button><span data-it-status></span></div>
+    <template data-it-modelo>${linha()}</template></div>`;
+}
+function ligarItensNota(raiz, campoValor) {
+  const corpo = $('[data-it-corpo]', raiz); if (!corpo) return;
+  const calc = () => {
+    let soma = 0, tem_ = false;
+    $$('.it-linha', corpo).forEach(l => {
+      const g = k => num($(`[data-it="${k}"]`, l).value);
+      const q = g('quantidade'), u = g('valor_unitario'), d = g('desconto') || 0;
+      const t = q != null && u != null ? itR(q * u - d) : null;
+      $('[data-it-tot]', l).textContent = t != null ? brl(t) : '—';
+      if (t != null) { soma += t; tem_ = true; }
+    });
+    soma = itR(soma);
+    $('[data-it-soma]', raiz).textContent = tem_ ? brl(soma) : '—';
+    const v = num(campoValor?.value), st = $('[data-it-status]', raiz);
+    if (!tem_) st.innerHTML = '';
+    else if (v == null) st.innerHTML = `<span class="muted">Informe o valor total da nota para comparar.</span> <button type="button" class="btn peq" data-it-usar>Usar ${brl(soma)} como valor total</button>`;
+    else if (Math.abs(itR(v) - soma) < 0.005) st.innerHTML = '<span class="tag verde">✓ Soma dos itens bate com o valor total</span>';
+    else st.innerHTML = `<span class="tag vermelho">Não bate: soma dos itens ${brl(soma)} × valor total ${brl(v)} (diferença ${brl(itR(v - soma))})</span> <button type="button" class="btn peq" data-it-usar>Usar ${brl(soma)} como valor total</button>`;
+    raiz._itSoma = tem_ ? soma : null;
+  };
+  raiz.addEventListener('input', e => { if (e.target.closest('.it-nota') || e.target === campoValor) calc(); });
+  raiz.addEventListener('click', e => {
+    if (e.target.closest('[data-it-add]')) { corpo.insertAdjacentHTML('beforeend', $('[data-it-modelo]', raiz).innerHTML); calc(); }
+    const del = e.target.closest('[data-it-del]'); if (del) { if ($$('.it-linha', corpo).length > 1) del.closest('tr').remove(); else $$('input', del.closest('tr')).forEach(i => (i.value = '')); calc(); }
+    if (e.target.closest('[data-it-usar]') && campoValor) { campoValor.value = itV(raiz._itSoma); campoValor.dispatchEvent(new Event('input', { bubbles: true })); calc(); }
+  });
+  calc();
+}
+function lerItensNota(raiz) {
+  return $$('[data-it-corpo] .it-linha', raiz).map(l => {
+    const g = k => $(`[data-it="${k}"]`, l).value.trim();
+    const q = num(g('quantidade')), u = num(g('valor_unitario')), d = num(g('desconto')) || 0;
+    return { descricao: g('descricao'), quantidade: q, valor_unitario: u, desconto: d, total: q != null && u != null ? itR(q * u - d) : null };
+  }).filter(i => i.descricao || i.quantidade != null || i.valor_unitario != null);
+}
+function htmlItensVer(itens) {
+  if (!itens?.length) return '';
+  const soma = itR(itens.reduce((a, i) => a + Number(i.total || 0), 0));
+  return `<div class="largo"><div class="muted">Itens da nota / fatura</div><div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Descrição</th><th class="num">Qtd</th><th class="num">Valor unitário</th><th class="num">Desconto</th><th class="num">Total</th></tr></thead><tbody>
+    ${itens.map(i => `<tr><td data-r="Descrição">${esc(i.descricao || '—')}</td><td data-r="Qtd" class="num">${i.quantidade != null ? String(i.quantidade).replace('.', ',') : '—'}</td><td data-r="Valor unitário" class="num">${i.valor_unitario != null ? brl(i.valor_unitario) : '—'}</td>
+      <td data-r="Desconto" class="num">${Number(i.desconto) ? brl(i.desconto) : '—'}</td><td data-r="Total" class="num"><b>${i.total != null ? brl(i.total) : '—'}</b></td></tr>`).join('')}</tbody>
+    <tfoot><tr><td colspan="4" class="num"><b>Soma</b></td><td class="num"><b>${brl(soma)}</b></td></tr></tfoot></table></div></div>`;
+}
+const itensConferem = async (itens, valor) => {
+  if (!itens.length) return true;
+  if (itens.some(i => i.total == null)) { aviso('Itens da nota: preencha quantidade e valor unitário de cada linha (ou apague a linha).', true); return false; }
+  const soma = itR(itens.reduce((a, i) => a + i.total, 0));
+  if (Math.abs(soma - itR(valor)) < 0.005) return true;
+  return confirmar(`A soma dos itens (${brl(soma)}) não bate com o valor total (${brl(valor)}). Salvar assim mesmo?`, { botao: 'Salvar assim mesmo' });
+};
+
 async function novoTitulo(tela, tipo) {
   const T = TIPO[tipo];
   if (!editaFin()) { tela.innerHTML = '<div class="cartao vazio">Sem permissão.</div>'; return; }
@@ -157,6 +225,8 @@ async function novoTitulo(tela, tipo) {
       <label class="campo">Intervalo<select name="intervalo"><option value="mes">Mensal</option><option value="30">A cada 30 dias</option><option value="15">A cada 15 dias</option><option value="7">Semanal</option></select></label>
       <label class="check"><input type="checkbox" name="avista"> Pago/pagar à vista (vence na data de emissão)</label>
       <div class="largo" id="prazo-info"></div>
+      ${tipo === 'pagar' ? htmlItensNota() : ''}
+      <label class="campo largo">Observações<textarea name="observacoes" rows="2" placeholder="Informações para o Financeiro (condição combinada, referência, contrato…)"></textarea></label>
       <label class="check largo"><input type="checkbox" name="previsao"> ${tipo === 'pagar' ? 'Previsão de gasto' : 'Receita prevista'}</label>
       <label class="check largo"><input type="checkbox" name="legado"> ${T.legado}</label>
       <label class="campo largo">Anexos (${tipo === 'pagar' ? 'boleto, nota' : 'nota, CT-e, comprovante'})<input type="file" name="arquivos" accept="image/*,application/pdf" multiple></label>
@@ -173,6 +243,7 @@ async function novoTitulo(tela, tipo) {
   const prev = () => { const d = formDados(f); $('#campo-fav').hidden = !!d.pessoa_id;
     $('#previa').innerHTML = num(d.valor) ? plano(d).map(x => `${x.parcela}ª ${dataBR(x.vencimento)} · ${brl(x.valor)}`).join(' &nbsp;|&nbsp; ') : ''; };
   f.oninput = prev; prev();
+  ligarItensNota(f, f.valor);
   // vencimento automático pelo prazo de faturamento do cadastro (editável em caso extraordinário)
   let vencManual = false;
   f.vencimento.addEventListener('input', () => { vencManual = true; });
@@ -198,9 +269,10 @@ async function novoTitulo(tela, tipo) {
     const d = formDados(f);
     if (!d.pessoa_id && !d.favorecido_nome) return aviso(`Escolha o ${T.cadastro.toLowerCase()} ou digite o nome.`, true);
     const v = num(d.valor); if (!v || v <= 0) return aviso('Informe o valor.', true);
+    const itens = lerItensNota(f); if (!await itensConferem(itens, v)) return;
     await ocupado(e.submitter, async () => {
       try {
-        const [t] = await api.inserir('titulos', { tipo, origem: d.legado ? 'legado' : 'avulso',
+        const [t] = await api.inserir('titulos', { tipo, itens, observacoes: d.observacoes || null, origem: d.legado ? 'legado' : 'avulso',
           fornecedor_id: tipo === 'pagar' ? d.pessoa_id || null : null, cliente_id: tipo === 'receber' ? d.pessoa_id || null : null,
           favorecido_nome: d.pessoa_id ? null : d.favorecido_nome, descricao: d.descricao, documento: d.documento || null,
           data_emissao: d.data_emissao, competencia: d.data_emissao.slice(0, 8) + '01', conta_id: d.conta_id, centro_custo_id: d.centro_custo_id || null, valor_total: v, status: d.previsao ? 'previsto' : 'aberto' });
@@ -256,6 +328,7 @@ async function verTitulo(tela, id, tipo) {
       <div><div class="muted">Centro de custo</div><b>${esc(t.cc?.nome || '—')}</b></div>
       <div><div class="muted">Origem</div><b>${esc(origens[t.origem] || t.origem)}</b>${t.id_legado?.startsWith('planilha') ? '<div class="muted">Planilha de controle anterior</div>' : ''}</div>
       ${receb ? `<div><div class="muted">Pedido / recebimento do produto</div><a href="#/compras/pedidos/ver/${receb.ped.id}">${esc(receb.ped.numero)}</a> · ${receb.completo ? `<span class="tag ${receb.div ? 'vermelho' : 'verde'}">${receb.div ? 'Recebido com divergência' : 'Produto recebido'} em ${dataBR(receb.data)}</span>` : receb.parcial ? '<span class="tag amarelo">Recebido em parte</span>' : '<span class="tag amarelo">Produto ainda não chegou</span>'}</div>` : ''}
+      ${htmlItensVer(t.itens)}
       ${blocoObservacao(t.observacoes, editaFin())}
       <div class="largo"><div class="muted">Anexos</div>${await htmlAnexos('titulo', id)}
         ${editaFin() ? '<label class="campo" style="margin-top:8px">Incluir anexo<input type="file" id="mais" multiple></label>' : ''}</div>
@@ -455,7 +528,8 @@ async function editarTitulo(tela, id, tipo) {
       <label class="campo">Nº do documento<input name="documento" value="${esc(t.documento || '')}"></label>
       <label class="campo">Data de emissão<input type="date" name="data_emissao" required value="${t.data_emissao}"></label>
       <label class="campo">Conta do plano<select name="conta_id">${await opcoesContas(t.conta_id, T.tiposConta)}</select></label>
-      <label class="campo">Centro de custo<select name="centro_custo_id">${opcoes(ccs.filter(c => c.ativo || c.id === t.centro_custo_id), null, c => c.nome, t.centro_custo_id, '—')}</select></label></div>
+      <label class="campo">Centro de custo<select name="centro_custo_id">${opcoes(ccs.filter(c => c.ativo || c.id === t.centro_custo_id), null, c => c.nome, t.centro_custo_id, '—')}</select></label>
+      ${tipo === 'pagar' ? `<input type="hidden" id="ed-total" value="${itV(t.valor_total)}">${htmlItensNota(t.itens || [])}` : ''}</div>
       <h2 style="margin-top:14px">Parcelas</h2>
       <div class="tabela-wrap"><table><thead><tr><th>Parcela</th><th>Vencimento</th><th class="num">Valor (R$)</th><th>Situação</th></tr></thead><tbody>
         ${ps.map(p => { const trava = p.status === 'paga' || Number(p.valor_pago) > 0;
@@ -470,14 +544,21 @@ async function editarTitulo(tela, id, tipo) {
   const f = $('#f-ed');
   const favVis = () => { if (f.pessoa_id) $('#ed-fav').hidden = !!f.pessoa_id.value; };
   f.pessoa_id?.addEventListener('change', favVis); favVis();
+  if (tipo === 'pagar') ligarItensNota(f, $('#ed-total'));
   f.onsubmit = async e => { e.preventDefault(); const d = formDados(f);
+    const itens = tipo === 'pagar' ? lerItensNota(f) : null;
+    const mudouItens = itens && JSON.stringify(itens) !== JSON.stringify(t.itens || []);
     const dados = { descricao: d.descricao, documento: d.documento || '', data_emissao: d.data_emissao, conta_id: d.conta_id || '', centro_custo_id: d.centro_custo_id || '' };
     if (!pessoaFixa) { dados.pessoa_id = d.pessoa_id || ''; dados.favorecido_nome = d.favorecido_nome || ''; }
     const parcelas = ps.filter(p => !(p.status === 'paga' || Number(p.valor_pago) > 0)).map(p => ({ id: p.id, vencimento: d['v_' + p.id], valor: valorLivre ? num(d['x_' + p.id]) : Number(p.valor) }));
     if (parcelas.some(p => !p.vencimento || !(p.valor > 0))) return aviso('Confira vencimentos e valores.', true);
+    if (mudouItens && !await itensConferem(itens, ps.reduce((a, p) => a + (parcelas.find(x => x.id === p.id)?.valor ?? Number(p.valor)), 0))) return;
     await ocupado(e.submitter, async () => { try {
-      const r = await api.rpc('editar_titulo', { p_id: id, p_dados: dados, p_parcelas: parcelas, p_motivo: d.motivo });
-      aviso('Conta corrigida: ' + (r.alteracoes || []).join('; ')); location.hash = T.rota + '/ver/' + id;
+      if (mudouItens) await api.alterar('titulos', `id=eq.${id}`, { itens });
+      let r;
+      try { r = await api.rpc('editar_titulo', { p_id: id, p_dados: dados, p_parcelas: parcelas, p_motivo: d.motivo }); }
+      catch (err) { if (mudouItens && /nada|nenhum/i.test(err.message || '')) r = { alteracoes: [] }; else throw err; }
+      aviso('Conta corrigida: ' + [...(r.alteracoes || []), ...(mudouItens ? ['itens da nota'] : [])].join('; ')); location.hash = T.rota + '/ver/' + id;
     } catch (err) { falha(err); } }); };
 }
 
