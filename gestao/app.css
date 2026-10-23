@@ -1030,3 +1030,4 @@ details.pn-alertas[open] > summary { margin-bottom: 6px; } .pn-al-abrir { margin
 .al-t .pn-al-itens a { color: #DCE6E1; font-size: 12.5px; } .al-t .pn-al-itens a b { color: #F2C866; }
 .al-vazio { display: flex; align-items: center; gap: 12px; } .al-vazio .al-ic { width: 32px; height: 32px; } .al-vazio .al-ic svg { width: 26px; height: 26px; }
 .al-rod { flex-wrap: wrap; } .al-rod .pn-al-itens { flex-basis: 100%; order: 3; margin: 6px 0 0; }
+.ik-pend-w { margin: 0 0 22px; } .ik-pend .ik-tit h2 { color: var(--ouro) !important; } body.tema-vx .ik-pend .ik-ic { color: #F2C866; }

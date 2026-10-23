@@ -893,8 +893,9 @@ rota('/inicio', async tela => {
         ${(() => { const [f, a, o] = fraseDoDia(); return `<figure class="ih-frase"><blockquote>“${esc(f)}”</blockquote><figcaption>— <b>${esc(a)}</b>${o ? `, <cite>${esc(o)}</cite>` : ''}</figcaption></figure>`; })()}
       </div>
     </section>
+    <div class="inicio-kpis ik-pend-w" hidden><section class="ik-sec ik-pend" id="ik-pend"></section></div>
+    ${blocoAcoes}${blocoDiarias}${typeof htmlChamadosInicio === 'function' ? htmlChamadosInicio(chamadosAb) : ''}
     ${veTudo() || tem('administrador', 'comprador') ? '<section class="vx-ini" id="vx-ini"><div class="vx-ini-cab"><h2>Visão executiva</h2></div><div class="pn-vazio">Carregando indicadores…</div></section>' : ''}
-    ${typeof htmlChamadosInicio === 'function' ? htmlChamadosInicio(chamadosAb) : ''}${blocoAcoes}${blocoDiarias}
     ${blocoGestao}
     <div class="inicio-kpis">
       <a class="cartao kpi ${minhasReq.some(r => r.status === 'devolvida') ? 'alerta' : ''}" href="#${minhasReq.length ? '/inicio' : '/compras/requisicoes'}" ${minhasReq.length ? 'onclick="event.preventDefault();document.getElementById(\'minhas-req\').scrollIntoView({behavior:\'smooth\'})"' : ''}><div class="n">${minhasReq.length}</div><div class="r">minha(s) requisição(ões) de compra em andamento</div></a>
@@ -953,7 +954,7 @@ rota('/inicio', async tela => {
     ['pes', 'Pessoas', 'pessoas'], ['seg', 'Segurança do trabalho', 'capacete'], ['qua', 'Qualidade', 'selo']];
   const secaoDe = h => /^#\/(compras|inicio)/.test(h) ? 'com' : /^#\/(almox|patrimonio)/.test(h) ? 'alm' : /^#\/(rh|dp|clima)/.test(h) ? 'pes'
     : /^#\/ssma/.test(h) ? 'seg' : /^#\/qualidade/.test(h) ? 'qua' : /^#\/(operacao|frota|manut|config)/.test(h) ? 'ope' : 'fin';
-  const caixa = $('.inicio-kpis', tela), grupos = {};
+  const caixa = $('.inicio-kpis:not(.ik-pend-w)', tela), grupos = {}, pendentes = [];
   $$('.kpi', caixa).forEach(k => {
     const href = k.getAttribute('href') || '', base = href.split('?')[0];
     if (base && !telaPermitida(base.slice(1))) { k.remove(); return; }   // não mostra indicador de tela que a pessoa não pode abrir
@@ -964,7 +965,8 @@ rota('/inicio', async tela => {
     k.classList.toggle('zero', zero);
     k.insertAdjacentHTML('afterbegin', `<div class="k-topo"><span class="k-ic">${ico(icone)}</span><span class="k-st ${alerta ? 'acao' : zero ? 'ok' : 'neutro'}">${alerta ? 'Ação necessária' : zero ? 'Em dia' : 'Acompanhar'}</span></div>`);
     k.insertAdjacentHTML('beforeend', `<span class="k-ver">Ver detalhes ${ico('seta')}</span>`);
-    (grupos[secaoDe(href)] ||= []).push(k);
+    // o que depende da pessoa (aprovar, fechar, corrigir, responder…) vai para o topo do Início
+    if (alerta && !zero) pendentes.push(k); else (grupos[secaoDe(href)] ||= []).push(k);
   });
   // a aprovação em destaque (cartão escuro, como a faixa do topo)
   const kAprovar = $$('.kpi', caixa).find(k => k.getAttribute('href') === '#/aprovacoes');
@@ -976,6 +978,12 @@ rota('/inicio', async tela => {
       <span class="ik-cont ${nAcao ? 'acao' : ''}">${nAcao ? `${nAcao} ${nAcao > 1 ? 'pontos' : 'ponto'} de atenção` : 'em dia'}</span></header>
       <div class="ik-grade"></div></section>`; }).join('');
   for (const [c] of SECOES) if (grupos[c]?.length) { const g = $(`.ik-sec[data-sec="${c}"] .ik-grade`, caixa); grupos[c].forEach(k => g.append(k)); }
+  { const sp = $('#ik-pend', tela);
+    if (pendentes.length) {
+      pendentes.sort((x, y) => (y.classList.contains('destaque') - x.classList.contains('destaque')));
+      sp.innerHTML = `<header class="ik-tit"><span class="ik-ic">${ico('alerta')}</span><h2>Pendências com você</h2><span class="ik-cont acao">${pendentes.length} ${pendentes.length > 1 ? 'itens dependem' : 'item depende'} de você</span></header><div class="ik-grade"></div>`;
+      pendentes.forEach(k => $('.ik-grade', sp).append(k)); sp.parentElement.hidden = false;
+    } else sp.parentElement.remove(); }
   { const al = $$('.inicio-kpis .kpi.alerta', tela).length, ap = Number(p.aprovar || 0);
     const nAc = (minhasAcoes || []).length;
     const partes = [ap ? `<b>${ap}</b> item(ns) para aprovar` : '', nAc ? `<b>${nAc}</b> ação(ões) no seu nome` : '', al ? `<b>${al}</b> ponto(s) de atenção` : ''].filter(Boolean);
