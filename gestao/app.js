@@ -1010,7 +1010,7 @@ function htmlMinhasAcoes(acs) {
     <ul class="ma-lista">${acs.map(a => { const [pt, pc] = prazoTxt(a.prazo); const [st, sc] = ST_ACAO_TXT[a.status] || [a.status, ''];
       return `<li class="${pc}"><div class="ma-txt"><b>${esc(a.descricao)}</b><span class="muted">${esc(a.origem)}${a.criado_por ? ' · por ' + esc(a.criado_por) : ''}</span></div>
         <div class="ma-prazo"><span>${a.prazo ? 'Prazo ' + dataBR(a.prazo) : 'Sem prazo'}</span><span class="ma-pt ${pc}">${pt}</span></div>
-        <span class="tag ${sc}">${st}</span><button class="btn prim peq" data-acao="${a.modulo}:${a.id}">Abrir ação</button></li>`; }).join('')}</ul></div>`;
+        <span class="tag ${sc}">${st}</span>${(pg => pg ? `<span class="ac-prog">${pg.enviaram} de ${pg.total} enviaram</span>` : '')(progEntregas(a))}<button class="btn prim peq" data-acao="${a.modulo}:${a.id}">Abrir ação</button></li>`; }).join('')}</ul></div>`;
 }
 const TAB_ACAO = { ssma: 'ssma_acoes', qual: 'qual_acoes', geral: 'acoes_gerais' };
 
@@ -1064,6 +1064,13 @@ function ligarSelPessoas(raiz, pessoas) {
 }
 const respsDaAcao = a => a.responsaveis?.length ? a.responsaveis : a.responsavel_id ? [{ usuario_id: a.responsavel_id, nome: a.responsavel || '' }] : [];
 const ehRespAcao = a => (a.responsaveis_ids?.length ? a.responsaveis_ids : [a.responsavel_id]).includes(estado.usuario.id);
+// ação com vários responsáveis: cada um envia a sua parte; só conclui quando todos enviarem
+function progEntregas(a) {
+  const ids = a.modulo === 'geral' ? (a.responsaveis_ids || []) : []; if (ids.length < 2) return null;
+  const env = new Map((a.entregas || []).map(e => [e.usuario_id, e]));
+  return { total: ids.length, enviaram: ids.filter(i => env.has(i)).length, env, minha: env.get(estado.usuario.id) };
+}
+const htmlRespsEntrega = (a, pg) => respsDaAcao(a).map(p => p.usuario_id && pg.env.has(p.usuario_id) ? `<span class="ac-p ok" title="Enviou">${esc(p.nome)}</span>` : `<span class="ac-p" title="${p.usuario_id ? 'Falta enviar' : 'Externo'}">${esc(p.nome)}</span>`).join(' ');
 function htmlRepact(a) {
   const n = Number(a.repactuacoes || 0) || (a.prazo_original && a.prazo && a.prazo_original !== a.prazo ? 1 : 0);
   return n ? `<div class="muted" style="font-size:12px">repactuada${a.prazo_original && a.prazo_original !== a.prazo ? ' · orig. ' + dataBR(a.prazo_original) : Number(a.repactuacoes) > 1 ? ` (${a.repactuacoes}×)` : ''}</div>` : '';
@@ -1107,6 +1114,9 @@ async function abrirAcao(a) {
   const podeDevolver = a.status === 'concluida' && (podeEditar || gestor || a.criado_por_id === estado.usuario.id || (a.modulo === 'ssma' && tem('ssma')) || (a.modulo === 'qual' && tem('qualidade')) || (!!a.plano_criado_por && a.plano_criado_por === estado.usuario.id));
   const [pt] = prazoTxt(a.prazo);
   const aberta = ['aberta', 'em_andamento'].includes(a.status);
+  const pg = progEntregas(a);
+  const podeForcar = !!pg && (gestor || a.criado_por_id === estado.usuario.id || (!!a.plano_criado_por && a.plano_criado_por === estado.usuario.id));
+  const minhaParte = !!pg && ehResp && aberta;
   const podeRepact = aberta && (podeEditar || ehResp || gestor || (a.modulo === 'ssma' && tem('ssma')) || (a.modulo === 'qual' && tem('qualidade')));
   const nomesResp = nomesPessoas(a.responsaveis) || a.responsavel;
   const entAnx = { geral: 'acao_geral', ssma: 'ssma_acao', qual: 'qual_acao' }[a.modulo];
@@ -1120,25 +1130,53 @@ async function abrirAcao(a) {
     ${podeRepact && a.prazo ? '<p style="margin:8px 0 0"><button type="button" class="btn peq" id="ac-repact">↻ Repactuar prazo</button></p>' : ''}
     ${devs.length ? `<div class="ac-dev"><div class="muted">Devoluções</div><ul class="ac-hist">${devs.map(d => `<li><span class="tag ${d.tipo === 'nao_atendeu' ? 'vermelho' : 'amarelo'}">${d.tipo === 'nao_atendeu' ? 'Não atendeu' : 'Faltam informações'}</span> ${esc(d.motivo)} <span class="muted">· ${esc(d.u?.nome || '')} em ${dataHoraBR(d.criado_em)}</span>${d.evidencia_anterior ? `<div class="muted" style="font-size:12px">O que tinha sido informado: ${esc(d.evidencia_anterior)}</div>` : ''}</li>`).join('')}</ul></div>` : ''}
     ${hist.length ? `<div style="margin-top:10px"><div class="muted">Repactuações</div><ul class="ac-hist">${hist.map(h => `<li>${h.prazo_anterior ? dataBR(h.prazo_anterior) : 'sem prazo'} → <b>${dataBR(h.prazo_novo)}</b> · ${esc(h.motivo)} <span class="muted">· ${esc(h.u?.nome || '')} em ${dataHoraBR(h.criado_em)}</span></li>`).join('')}</ul></div>` : ''}
+    ${pg ? `<div class="ac-ent"><div><b>${pg.enviaram} de ${pg.total}</b> responsáveis enviaram a sua parte${aberta ? ' <span class="muted">· a ação só conclui quando todos enviarem</span>' : ''}</div>
+      <ul class="ac-ent-l">${respsDaAcao(a).filter(p => p.usuario_id).map(p => { const e = pg.env.get(p.usuario_id); return `<li class="${e ? 'ok' : ''}"><b>${esc(p.nome)}</b> <span class="muted">· ${e ? 'enviou em ' + dataHoraBR(e.criado_em) : 'falta enviar'}</span>${e ? `<div class="ac-ent-t">${esc(e.evidencia)}</div>` : ''}</li>`; }).join('')}</ul></div>` : ''}
     <div class="form" style="margin-top:12px">
-      <label class="campo">Situação<select name="status">${['aberta', 'em_andamento', 'concluida', ...(podeEditar ? ['cancelada'] : [])].map(k => `<option value="${k}" ${k === a.status ? 'selected' : ''}>${ST_ACAO_TXT[k][0]}</option>`).join('')}</select></label>
-      <label class="campo largo">O que foi feito<textarea name="evidencia" rows="3">${esc(a.evidencia || '')}</textarea></label>
+      <label class="campo">Situação<select name="status">${['aberta', 'em_andamento', ...(!pg || podeForcar || a.status === 'concluida' ? ['concluida'] : []), ...(podeEditar ? ['cancelada'] : [])].map(k => `<option value="${k}" ${k === a.status ? 'selected' : ''}>${ST_ACAO_TXT[k][0]}</option>`).join('')}</select></label>
+      <label class="campo largo">${minhaParte ? 'O que você fez (a sua parte)' : 'O que foi feito'}<textarea name="evidencia" rows="3"${minhaParte ? ' placeholder="Descreva a sua parte e anexe o que for preciso"' : ''}>${esc(minhaParte ? pg.minha?.evidencia || '' : a.evidencia || '')}</textarea></label>
       <div class="campo largo"><span>Anexos da ação</span>${anxHtml}</div>
       ${podeEditar || ehResp || gestor ? camposAnexoHtml() : ''}</div>
     ${linkMod ? `<p class="muted"><a href="${linkMod}" data-fechar>Ver no módulo de ${a.modulo === 'ssma' ? 'Segurança' : 'Qualidade'}</a></p>` : ''}
     ${a.plano_id && !location.hash.startsWith('#/planos/ver/') ? `<p class="muted">Referência: <a href="#/planos/ver/${a.plano_id}" data-fechar>${esc(a.origem)}</a></p>` : ''}
-    <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button>${podeDevolver ? '<button type="button" class="btn perigo" id="ac-devolver">↩ Devolver ação</button>' : ''}${podeEditar || ehResp || gestor ? `<button class="btn${aberta ? '' : ' prim'}" value="salvar">Salvar</button>${aberta ? '<button class="btn ok" value="concluir">✔ Concluir ação</button>' : ''}` : ''}</div></form>`,
+    <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button>${podeDevolver ? '<button type="button" class="btn perigo" id="ac-devolver">↩ Devolver ação</button>' : ''}${podeEditar || ehResp || gestor ? `<button class="btn${aberta ? '' : ' prim'}" value="salvar">Salvar</button>${podeForcar && aberta ? '<button class="btn" value="forcar" title="Conclui mesmo sem a parte de todos">Concluir para todos</button>' : ''}${aberta && (!pg || ehResp) ? `<button class="btn ok" value="concluir">${!pg ? '✔ Concluir ação' : pg.minha ? '✔ Reenviar minha parte' : '✔ Enviar minha parte'}</button>` : ''}` : ''}</div></form>`,
     { aoAbrir: (f, fechar) => { if (podeEditar) { $('.modal', f).classList.add('modal-largo'); ligarSelPessoas(f, pes); }
         $('#ac-repact', f)?.addEventListener('click', async () => { if (await repactuarAcao(a)) { fechar(null); navegar(); } });
         $('#ac-devolver', f)?.addEventListener('click', async () => { if (await devolverAcao(a)) { fechar(null); navegar(); } }); },
-      validar: d => (d._acao === 'concluir' || d.status === 'concluida') && !d.evidencia?.trim() && !d.arquivos?.length && !d.links?.trim() && !anxHtml.includes('data-arquivo') ? 'Para concluir, descreva o que foi feito ou anexe a evidência.'
+      validar: d => (d._acao === 'concluir' || d._acao === 'forcar' || (d.status === 'concluida' && a.status !== 'concluida')) && !(pg?.enviaram && d._acao !== 'concluir') && !d.evidencia?.trim() && !d.arquivos?.length && !d.links?.trim() && (minhaParte || !anxHtml.includes('data-arquivo')) ? 'Para concluir, descreva o que foi feito ou anexe a evidência.'
         : podeEditar && !lerPessoas(d.resp).length ? 'Inclua pelo menos um responsável.' : null });
   if (!r) return false;
+  if (pg) return salvarAcaoVarios(a, r, { tabela, entAnx, pg, podeEditar, minhaParte });
   if (r._acao === 'concluir') r.status = 'concluida';
   if (r.status === 'concluida' && !r.evidencia?.trim()) r.evidencia = 'Evidência em anexo' + (r.arquivos?.length ? ': ' + r.arquivos.map(f => f.name).join(', ') : r.links?.trim() ? ': ' + r.links.trim() : '.');
   const dados = { status: r.status, evidencia: r.evidencia?.trim() || null };
   if (podeEditar) Object.assign(dados, { descricao: r.descricao.trim(), responsaveis: lerPessoas(r.resp), ...(a.prazo ? {} : { prazo: r.prazo || null }) });
   try { await salvarAnexosForm(entAnx, a.id, r); await api.alterar(tabela, `id=eq.${a.id}`, dados); aviso(r.status === 'concluida' ? 'Ação concluída.' : 'Ação atualizada.'); return true; } catch (err) { falha(err); return false; }
+}
+// ação com vários responsáveis: "Enviar minha parte" registra só a entrega de quem enviou; quem abriu / dono do plano / diretoria pode concluir para todos
+async function salvarAcaoVarios(a, r, { tabela, entAnx, pg, podeEditar, minhaParte }) {
+  const ed = podeEditar ? { descricao: r.descricao.trim(), responsaveis: lerPessoas(r.resp), ...(a.prazo ? {} : { prazo: r.prazo || null }) } : {};
+  const forca = r._acao === 'forcar' || (r.status === 'concluida' && a.status !== 'concluida');
+  const faltam = respsDaAcao(a).filter(p => p.usuario_id && !pg.env.has(p.usuario_id)).map(p => p.nome);
+  if (forca && faltam.length && !(await confirmar(`Concluir para todos sem a parte de ${faltam.join(', ')}?`, { botao: 'Concluir para todos' }))) return false;
+  try {
+    await salvarAnexosForm(entAnx, a.id, r);
+    if (r._acao === 'concluir') {
+      if (Object.keys(ed).length) await api.alterar(tabela, `id=eq.${a.id}`, ed);
+      const ev = r.evidencia?.trim() || 'Evidência em anexo' + (r.arquivos?.length ? ': ' + r.arquivos.map(f => f.name).join(', ') : r.links?.trim() ? ': ' + r.links.trim() : '.');
+      const x = await api.rpc('entregar_acao', { p_id: a.id, p_evidencia: ev });
+      aviso(x.concluida ? 'Todos enviaram: ação concluída.' : `Sua parte foi enviada (${x.enviaram} de ${x.total}). Falta: ${x.faltam}.`);
+      return true;
+    }
+    const dados = { ...ed, status: forca ? 'concluida' : r.status };
+    const nota = r.evidencia?.trim();
+    if (forca) dados.evidencia = [...[...pg.env.values()].map(e => `${e.nome}: ${e.evidencia}`),
+      `${estado.usuario.nome} concluiu para todos${faltam.length ? ' (sem a parte de ' + faltam.join(', ') + ')' : ''}${nota && !minhaParte ? ': ' + nota : ''}`,
+      ...(nota && minhaParte ? [`${estado.usuario.nome}: ${nota}`] : [])].join('\n\n');
+    else if (!minhaParte) dados.evidencia = nota || null;
+    await api.alterar(tabela, `id=eq.${a.id}`, dados);
+    aviso(forca ? 'Ação concluída para todos.' : 'Ação atualizada.'); return true;
+  } catch (err) { falha(err); return false; }
 }
 function ligarMinhasAcoes(tela, acs) {
   $$('[data-acao]', tela).forEach(b => (b.onclick = async () => {
@@ -1268,12 +1306,12 @@ async function modalAcoesNoPlano(planoId, reuniaoIni = null) {
 }
 function tabelaAcoesHtml(acs, { mostrarResp = true, mostrarOrigem = true } = {}) {
   return `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Ação</th>${mostrarOrigem ? '<th>Referência</th>' : ''}${mostrarResp ? '<th>Responsável</th>' : ''}<th>Prazo</th><th>Situação</th><th></th></tr></thead><tbody>
-    ${acs.map((a, i) => { const [pt, pc] = prazoTxt(a.prazo); const fim = ['concluida', 'cancelada'].includes(a.status); const [st, sc] = ST_ACAO_TXT[a.status] || [a.status, ''];
+    ${acs.map((a, i) => { const [pt, pc] = prazoTxt(a.prazo); const fim = ['concluida', 'cancelada'].includes(a.status); const [st, sc] = ST_ACAO_TXT[a.status] || [a.status, '']; const pg = progEntregas(a);
       return `<tr class="clicavel" data-i="${i}"${fAttr('origem', (a.origem || '').split(' · ')[0])}${fAttr('reun', a.reuniao_txt)}${fAttr('resp', a.responsavel)}${fAttr('sit', !fim && pc === 'atr' ? 'Atrasada' : st)}${fAttr('data', a.prazo)}${fAttr('busca', [a.descricao, a.origem, a.responsavel, a.evidencia].filter(Boolean).join(' '))}>
         <td data-r="Ação"><b>${esc(a.descricao)}</b>${a.reuniao_txt ? `<div class="pl-reu-tag">Reunião de ${esc(a.reuniao_txt)}</div>` : ''}${a.evidencia ? `<div class="muted">${esc(a.evidencia)}</div>` : ''}</td>
-        ${mostrarOrigem ? `<td data-r="Referência">${a.plano_id ? `<a href="#/planos/ver/${a.plano_id}" data-ref>${esc(a.origem)}</a>` : esc(a.origem)}</td>` : ''}${mostrarResp ? `<td data-r="Responsável">${esc(a.responsavel || '—')}</td>` : ''}
+        ${mostrarOrigem ? `<td data-r="Referência">${a.plano_id ? `<a href="#/planos/ver/${a.plano_id}" data-ref>${esc(a.origem)}</a>` : esc(a.origem)}</td>` : ''}${mostrarResp ? `<td data-r="Responsável">${pg ? htmlRespsEntrega(a, pg) : esc(a.responsavel || '—')}</td>` : ''}
         <td data-r="Prazo" class="nowrap">${a.prazo ? dataBR(a.prazo) : '—'}${!fim && a.prazo ? `<div class="ma-pt ${pc}">${pt}</div>` : ''}${htmlRepact(a)}</td>
-        <td data-r="Situação"><span class="tag ${!fim && pc === 'atr' ? 'vermelho' : sc}">${!fim && pc === 'atr' ? 'Atrasada' : st}</span></td>
+        <td data-r="Situação"><span class="tag ${!fim && pc === 'atr' ? 'vermelho' : sc}">${!fim && pc === 'atr' ? 'Atrasada' : st}</span>${pg && !fim ? `<div class="ac-prog">${pg.enviaram} de ${pg.total} enviaram${pg.minha ? ' · a sua já foi' : ''}</div>` : ''}</td>
         <td class="nowrap"><button class="btn peq" data-i="${i}">Abrir</button></td></tr>`; }).join('')}
   </tbody></table></div>`;
 }
@@ -1319,13 +1357,14 @@ rota('/planos/ver/:id', async (tela, id) => {
   const p = await api.um('planos', `id=eq.${id}`).catch(() => null);
   if (!p) { tela.innerHTML = '<div class="cartao vazio">Plano não encontrado ou sem acesso.</div>'; return; }
   const [autor, linhas, reus] = await Promise.all([p.criado_por ? api.um('usuarios', `id=eq.${p.criado_por}&select=nome`).catch(() => null) : null,
-    api.listar('acoes_gerais', `plano_id=eq.${id}&ativo=eq.true&select=id,descricao,prazo,prazo_original,status,evidencia,concluida_em,responsavel_id,responsaveis,responsaveis_ids,criado_por,criado_em,reuniao_id,u:usuarios!acoes_gerais_responsavel_id_fkey(nome)`).catch(() => []),
+    api.listar('acoes_gerais', `plano_id=eq.${id}&ativo=eq.true&select=id,descricao,prazo,prazo_original,status,evidencia,concluida_em,responsavel_id,responsaveis,responsaveis_ids,criado_por,criado_em,reuniao_id,u:usuarios!acoes_gerais_responsavel_id_fkey(nome),ent:acao_entregas(usuario_id,evidencia,criado_em,ativo,u:usuarios(nome))`).catch(() => []),
     p.recorrente ? api.listar('plano_reunioes', `plano_id=eq.${id}&ativo=eq.true&order=data.desc`).catch(() => []) : []]);
   const REU = porId(reus);
   p.autor = autor;
   const acs = linhas.map(a => ({ modulo: 'geral', id: a.id, descricao: a.descricao, prazo: a.prazo, status: a.status, evidencia: a.evidencia, concluida_em: a.concluida_em,
     responsavel_id: a.responsavel_id, responsaveis: a.responsaveis, responsaveis_ids: a.responsaveis_ids, prazo_original: a.prazo_original,
     responsavel: nomesPessoas(a.responsaveis) || a.u?.nome, criado_por_id: a.criado_por, plano_criado_por: p.criado_por, plano_id: id, reuniao_id: a.reuniao_id,
+    entregas: (a.ent || []).filter(e => e.ativo).map(e => ({ usuario_id: e.usuario_id, nome: e.u?.nome, evidencia: e.evidencia, criado_em: e.criado_em })),
     reuniao_txt: REU[a.reuniao_id] ? dataBR(REU[a.reuniao_id].data) : null,
     origem: `${TIPOS_PLANO[p.tipo] || 'Plano'} ${dataBR(REU[a.reuniao_id]?.data || p.data)} · ${p.titulo}` }));
   acs.sort((x, y) => (['concluida', 'cancelada'].includes(x.status) - ['concluida', 'cancelada'].includes(y.status)) || String(x.prazo || '9').localeCompare(String(y.prazo || '9')));

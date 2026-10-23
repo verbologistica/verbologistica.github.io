@@ -1031,3 +1031,17 @@ details.pn-alertas[open] > summary { margin-bottom: 6px; } .pn-al-abrir { margin
 .al-vazio { display: flex; align-items: center; gap: 12px; } .al-vazio .al-ic { width: 32px; height: 32px; } .al-vazio .al-ic svg { width: 26px; height: 26px; }
 .al-rod { flex-wrap: wrap; } .al-rod .pn-al-itens { flex-basis: 100%; order: 3; margin: 6px 0 0; }
 .ik-pend-w { margin: 0 0 22px; } .ik-pend .ik-tit h2 { color: var(--ouro) !important; } body.tema-vx .ik-pend .ik-ic { color: #F2C866; }
+
+/* ação com vários responsáveis: entregas de cada um */
+.ac-p { display: inline-block; padding: 1px 8px 1px 6px; margin: 1px 2px 1px 0; border-radius: 10px; font-size: 12px; background: var(--cinza-claro); color: var(--cinza); border: 1px solid transparent; white-space: nowrap; }
+.ac-p::before { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; border: 1.5px solid currentColor; margin-right: 5px; vertical-align: 1px; }
+.ac-p.ok { background: var(--verde-claro); color: var(--verde); }
+.ac-p.ok::before { width: 4px; height: 8px; border: solid currentColor; border-width: 0 2px 2px 0; border-radius: 0; transform: rotate(45deg); margin: 0 6px 0 2px; vertical-align: 2px; }
+.ac-prog { font-size: 12px; color: var(--cinza); margin-top: 3px; white-space: nowrap; }
+.ma-lista .ac-prog { margin: 0 6px; }
+.ac-ent { margin-top: 12px; padding: 10px 12px; border: 1px solid var(--borda); border-radius: 8px; }
+.ac-ent-l { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+.ac-ent-l li { padding: 6px 10px 6px 26px; border-radius: 6px; position: relative; background: var(--cinza-claro); }
+.ac-ent-l li::before { content: ''; position: absolute; left: 9px; top: 11px; width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid var(--amarelo); }
+.ac-ent-l li.ok::before { width: 4px; height: 8px; border: solid var(--verde); border-width: 0 2px 2px 0; border-radius: 0; transform: rotate(45deg); top: 9px; left: 11px; }
+.ac-ent-t { white-space: pre-line; font-size: 13px; margin-top: 3px; }
