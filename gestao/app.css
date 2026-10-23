@@ -868,3 +868,11 @@ a.pn-kpi:hover { border-color: var(--azul); }
 .cha-msgs li .muted { font-size: 12px; margin-bottom: 2px; }
 .cha-nova { display: flex; gap: 8px; align-items: flex-end; } .cha-nova textarea { flex: 1; }
 .menu a.sub-item .mi { white-space: normal; overflow: visible; line-height: 1.25; }
+
+/* lista de contas a pagar/receber: colunas curtas no tamanho do conteúdo, texto com o espaço que sobra */
+@media (min-width: 861px) {
+  table.t-contas td:not([data-r="Descrição"]):not([data-r="Favorecido"]):not([data-r="Cliente"]) { white-space: nowrap; }
+  table.t-contas th, table.t-contas td { padding-left: 10px; padding-right: 10px; }
+  table.t-contas td[data-r="Descrição"] { width: 40%; }
+  table.t-contas td[data-r="Favorecido"], table.t-contas td[data-r="Cliente"] { width: 22%; }
+}
