@@ -381,6 +381,7 @@ const MENU = [
   ['Chamados', '#/chamados', null, 'conversa', 'chamados_abertos', true],
   ['grupo', 'Biblioteca', 'livro'],
   ['Modelos de documentos', '#/modelos', null, 'documento', null, true],
+  ['Apresentações', '#/apresentacoes', null, 'monitor', null, true],
   ['Documentos da qualidade', '#/qualidade/documentos', null, 'livro_ok', 'qual_docs_ler', true],
   ['grupo', 'Compras', 'carrinho'],
   ['Painel de compras', '#/compras/painel', [...P_FIN, 'comprador', 'aprovador'], 'painel', null, true],
