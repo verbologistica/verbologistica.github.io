@@ -36,20 +36,20 @@ async function gerarTermoMulta(o) {
   const col = ctx.colaborador || { nome: o.m?.nome || '' };
   const plano = o.desconto_plano || [];
   const e = ctx.empresa || {};
-  const linha = (k, v) => `<tr><td style="padding:3px 10px 3px 0;color:#6b7378;white-space:nowrap">${k}</td><td style="padding:3px 0"><b>${v || '__________'}</b></td></tr>`;
+  const linha = (k, v) => `<tr><td style="padding:2px 10px 2px 0;color:#6b7378;white-space:nowrap">${k}</td><td style="padding:2px 0"><b>${v || '__________'}</b></td></tr>`;
   const forma = o.desconto_tipo === 'parcelado' && plano.length > 1
     ? `em <b>${plano.length} parcelas</b>, descontadas nas folhas de pagamento abaixo:</p>
-       <table style="width:100%;border:1px solid #c9ced2;margin:6px 0 10px"><tr style="background:#eef1f3"><th style="text-align:left;padding:5px 8px">Parcela</th><th style="text-align:left;padding:5px 8px">Folha de pagamento (competência)</th><th style="text-align:right;padding:5px 8px">Valor</th></tr>
-       ${plano.map((p, i) => `<tr><td style="padding:4px 8px;border-top:1px solid #e1e4e6">${i + 1}ª</td><td style="padding:4px 8px;border-top:1px solid #e1e4e6">${esc(mesAnoBR(p.competencia))}</td><td style="padding:4px 8px;border-top:1px solid #e1e4e6;text-align:right">${brl(p.valor)}</td></tr>`).join('')}</table><p>`
+       ${`<table style="width:100%;border:1px solid #c9ced2;margin:6px 0 10px;font-size:10.5px">${Array.from({ length: Math.ceil(plano.length / 3) }, (_, r) => `<tr>${[0, 1, 2].map(c => { const i = r * 3 + c, p = plano[i];
+           return `<td style="padding:3px 8px;border-top:${r ? '1px solid #e1e4e6' : '0'};width:33%">${p ? `<b>${i + 1}ª</b> · ${esc(mesAnoBR(p.competencia))} · ${brl(p.valor)}` : ''}</td>`; }).join('')}</tr>`).join('')}</table>`}<p>`
     : `de uma só vez, na folha de pagamento de <b>${esc(mesAnoBR(plano[0]?.competencia || hojeISO()))}</b>.`;
-  const via = n => `
-    <div style="${n === 2 ? 'page-break-before:always;' : ''}text-align:right;font-size:9pt;color:#6b7378;margin-bottom:4px"><b>${n}ª via — ${n === 1 ? 'Colaborador' : 'Empresa'}</b></div>
+  const via = n => `<div style="${n === 2 ? 'page-break-before:always;' : ''}font-size:11.5px;line-height:1.38">
+    <div style="text-align:right;font-size:8.5pt;color:#6b7378;margin-bottom:2px"><b>${n}ª via — ${n === 1 ? 'Colaborador' : 'Empresa'}</b> · DP-TER-MULTA · ${esc(o.numero)}</div>
     <h2 style="text-align:center;margin:0 0 4px">TERMO DE CIÊNCIA E AUTORIZAÇÃO DE DESCONTO</h2>
     <p style="text-align:center;margin:0 0 12px;color:#6b7378">Multa de trânsito · ${esc(o.numero)}${o.auto_infracao ? ' · Auto de infração ' + esc(o.auto_infracao) : ''}</p>
     <table style="width:100%;margin-bottom:8px">${linha('Empresa', esc(e.razao_social || e.nome_fantasia || 'Verbo Logística') + (e.cnpj ? ' · CNPJ ' + esc(e.cnpj) : ''))}
       ${linha('Colaborador(a)', esc(col.nome) + ((o.condutor_cpf || col.cpf) ? ' · CPF ' + esc(o.condutor_cpf ? fmtCPF(o.condutor_cpf) : col.cpf) : ''))}${linha('Função / matrícula', esc([col.cargo, col.matricula && 'matr. ' + col.matricula].filter(Boolean).join(' · ')))}
       ${linha('CNH', esc([o.cnh_numero, o.cnh_categoria && 'cat. ' + o.cnh_categoria, o.cnh_uf].filter(Boolean).join(' · ')))}</table>
-    <h3 style="margin:10px 0 4px">Dados da infração</h3>
+    <h3 style="margin:8px 0 2px">Dados da infração</h3>
     <table style="width:100%">${linha('Auto de infração', esc(o.auto_infracao))}${linha('Órgão autuador', esc(o.orgao_autuador))}${linha('Data e hora', dataHoraBR(o.data_hora))}
       ${linha('Local', esc(o.local))}${linha('Enquadramento', esc(o.enquadramento) + (o.pontos ? ` · ${o.pontos} ponto(s)` : ''))}${linha('Veículo', esc([o.placa, o.eq?.codigo_frota && 'frota ' + o.eq.codigo_frota].filter(Boolean).join(' · ')))}
       ${linha('Valor da multa', brl(o.valor_multa))}</table>
@@ -61,13 +61,13 @@ async function gerarTermoMulta(o) {
       <b>${brl(o.desconto_valor)}</b> (${esc(extensoReais(o.desconto_valor))}), ${forma}</p>
     <p style="text-align:justify">Se o meu contrato de trabalho terminar antes da quitação, autorizo o desconto do saldo nas verbas rescisórias, respeitado o limite do art. 477, §5º, da CLT.
       Este termo não impede a apresentação de defesa ou recurso ao órgão autuador: se a multa for cancelada ou reduzida, a diferença já descontada será devolvida.</p>
-    <p style="margin-top:14px">${esc((e.cidade || '') ? e.cidade + ', ' : '')}${esc(ctx.hoje_extenso)}.</p>
-    <table style="width:100%;margin-top:34px"><tr>
+    <p style="margin-top:10px">${esc((e.cidade || '') ? e.cidade + ', ' : '')}${esc(ctx.hoje_extenso)}.</p>
+    <table style="width:100%;margin-top:24px"><tr>
       <td style="width:50%;padding-right:14px;text-align:center"><div style="border-top:1px solid #252e35;padding-top:4px"><b>${esc(col.nome)}</b><br><span style="color:#6b7378">Colaborador(a) / condutor(a)${(o.condutor_cpf || col.cpf) ? ' · CPF ' + esc(o.condutor_cpf ? fmtCPF(o.condutor_cpf) : col.cpf) : ''}</span></div></td>
       <td style="width:50%;padding-left:14px;text-align:center"><div style="border-top:1px solid #252e35;padding-top:4px"><b>${esc(o.aplicador_nome || '')}</b><br><span style="color:#6b7378">Responsável pela aplicação${o.aplicador_cargo ? ' · ' + esc(o.aplicador_cargo) : ''}</span></div></td></tr>
-      <tr><td style="padding:34px 14px 0 0;text-align:center"><div style="border-top:1px solid #252e35;padding-top:4px;color:#6b7378">Testemunha 1 · nome e CPF</div></td>
-      <td style="padding:34px 0 0 14px;text-align:center"><div style="border-top:1px solid #252e35;padding-top:4px;color:#6b7378">Testemunha 2 · nome e CPF</div></td></tr></table>`;
-  abrirParaImprimir(paginaDocumento('Termo de desconto ' + o.numero, via(1) + via(2), ctx, 'DP-TER-MULTA · ' + o.numero));
+      <tr><td style="padding:24px 14px 0 0;text-align:center"><div style="border-top:1px solid #252e35;padding-top:4px;color:#6b7378">Testemunha 1 · nome e CPF</div></td>
+      <td style="padding:24px 0 0 14px;text-align:center"><div style="border-top:1px solid #252e35;padding-top:4px;color:#6b7378">Testemunha 2 · nome e CPF</div></td></tr></table></div>`;
+  abrirParaImprimir(paginaDocumento('Termo de desconto ' + o.numero, via(1) + via(2), ctx, ''));
 }
 
 // ---------- bloco do processo na tela da ocorrência ----------
