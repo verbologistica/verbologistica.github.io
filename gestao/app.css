@@ -1208,3 +1208,7 @@ button.og-kpi { cursor: pointer; } button.og-kpi:hover { border-color: var(--azu
 .form > * { min-width: 0; }
 .cartao b, .cartao .form > div, .ma-det, .kv b { overflow-wrap: anywhere; }
 .passos-inst { margin: 6px 0 10px; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; line-height: 1.45; } .passos-inst b { overflow-wrap: anywhere; }
+.og-arvore li.og-grupo { padding-left: 14px; padding-right: 14px; }
+.og-grade { display: grid; grid-template-columns: repeat(var(--cols, 3), 220px); gap: 10px; padding: 12px; border-radius: 14px; border: 1px dashed rgba(185,201,194,.22); background: rgba(255,255,255,.02); }
+.og-grade-t { grid-column: 1 / -1; color: #b9c9c2; font: 700 11px var(--f-body); letter-spacing: .1em; text-transform: uppercase; }
+@media print { .og-grade { border-color: #c9d4d0; background: #fff; } .og-grade-t { color: #5a6a77; } }

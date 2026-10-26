@@ -784,10 +784,15 @@ function orgCard(n, abertos) {
 }
 function orgArvore(n, abertos, vis) {
   if (vis && !vis.has(n.k)) return '';
-  const fs = n.filhos.filter(f => !vis || vis.has(f.k));
-  const aberto = abertos.has(n.k) && fs.length;
-  const folhas = fs.every(f => !f.filhos.some(g => !vis || vis.has(g.k)));
-  return `<li>${orgCard(n, abertos)}${aberto ? `<ul class="${folhas && fs.length > 3 ? 'og-vert' : ''}">${fs.map(f => orgArvore(f, abertos, vis)).join('')}</ul>` : ''}</li>`;
+  return `<li>${orgCard(n, abertos)}${abertos.has(n.k) ? orgFilhos(n.filhos, abertos, vis, 'Equipe direta') : ''}</li>`;
+}
+// galhos (quem tem equipe) seguem como árvore; quem não tem equipe vira uma grade compacta abaixo do gestor
+function orgFilhos(lista, abertos, vis, rotulo) {
+  const fs = lista.filter(f => !vis || vis.has(f.k)); if (!fs.length) return '';
+  const temEq = f => f.filhos.some(g => !vis || vis.has(g.k));
+  const galhos = fs.filter(temEq), folhas = fs.filter(f => !temEq(f));
+  const grade = folhas.length > 3 ? `<li class="og-grupo"><div class="og-grade" style="--cols:${Math.min(4, Math.ceil(Math.sqrt(folhas.length)))}">${rotulo ? `<div class="og-grade-t">${esc(rotulo)} · ${folhas.length}</div>` : ''}${folhas.map(f => orgCard(f, abertos)).join('')}</div></li>` : folhas.map(f => orgArvore(f, abertos, vis)).join('');
+  return `<ul>${galhos.map(f => orgArvore(f, abertos, vis)).join('')}${grade}</ul>`;
 }
 rota('/rh/organograma', async tela => {
   const [cs, cgs, ss] = await Promise.all([colabsRH('&status=in.(ativo,ferias,afastado,aviso_previo,em_admissao)'), cargosL(), setoresL()]);
@@ -824,7 +829,7 @@ rota('/rh/organograma', async tela => {
       <div class="og-kpi"><b>${kGestores}</b><span>gestores com equipe</span></div><div class="og-kpi"><b>${[...M.nos.values()].filter(n => n.tipo !== 'colab').length}</b><span>prestadores / externos</span></div>
       <button type="button" class="og-kpi ${sg > 1 ? 'alerta' : ''}" data-semg><b>${sg}</b><span>sem gestor definido ${sg ? '›' : ''}</span></button>`;
     $arv.innerHTML = `<ul class="og-raiz"><li><div class="og-empresa"><img src="logo.png" alt="Verbo Logística"><span>${cs.length} pessoas</span></div>
-      ${rs.length ? `<ul>${rs.map(r => orgArvore(r, abertos, vis)).join('')}</ul>` : ''}</li></ul>`;
+      ${orgFilhos(rs, abertos, vis, 'Sem gestor definido')}</li></ul>`;
     $arv.style.transform = `scale(${zoom})`; $('[data-zv]', tela).textContent = Math.round(zoom * 100) + '%';
     $('[data-semg]', tela).onclick = listaSemGestor;
     if (busca) destacar(busca, false);
