@@ -458,6 +458,7 @@ const MENU = [
   ['Banco de talentos', '#/rh/talentos', P_RH, 'arquivo', null, true],
   ['grupo', 'Departamento Pessoal', 'calculadora'],
   ['Painel do DP', '#/dp', ['administrador', 'dp', 'diretoria'], 'painel', 'dp_a_importar', true],
+  ['Descontos de multas', '#/dp/multas', ['administrador', 'dp', 'rh', 'diretoria'], 'cone', null, true],
   ['Folha do mês', '#/dp/folha', ['administrador', 'dp', 'rh', 'diretoria'], 'pasta_trabalho', 'dp_lancamentos_pendentes', true],
   ['Benefícios', '#/dp/beneficios', ['administrador', 'dp', 'rh'], 'presente', null, true],
   ['Rubricas da folha', '#/dp/rubricas', ['administrador', 'dp'], 'caderno', null, true],
@@ -941,7 +942,7 @@ rota('/inicio', async tela => {
       ${tem('administrador', 'ssma', 'rh') && p.cat_pendente ? `<a class="cartao kpi alerta" href="#/ssma/acidentes"><div class="n">${p.cat_pendente}</div><div class="r">CAT pendente (prazo: 1º dia útil após o acidente)</div></a>` : ''}
       ${tem('administrador', 'ssma') && p.aso_vencendo ? `<a class="cartao kpi alerta" href="#/ssma/aso?sit=pendentes"><div class="n">${p.aso_vencendo}</div><div class="r">ASO vencido, vencendo ou faltando</div></a>` : ''}
       ${p.ssma_acoes_atrasadas ? `<a class="cartao kpi alerta" href="#/planos?ver=todas"><div class="n">${p.ssma_acoes_atrasadas}</div><div class="r">ação(ões) de segurança atrasada(s)</div></a>` : ''}
-      ${tem('administrador', 'operacao') && p.multas_indicar ? `<a class="cartao kpi alerta" href="#/operacao/ocorrencias?tipo=multa"><div class="n">${p.multas_indicar}</div><div class="r">multa(s) para indicar o condutor (prazo de 30 dias)</div></a>` : ''}
+      ${tem('administrador', 'operacao') && p.multas_indicar ? `<a class="cartao kpi alerta" href="#/operacao/ocorrencias?tipo=multa"><div class="n">${p.multas_indicar}</div><div class="r">multa(s) com indicação do condutor / desconto pendente</div></a>` : ''}
       ${tem('administrador', 'operacao') && p.jornada_alertas ? `<a class="cartao kpi alerta" href="#/operacao/jornadas?alertas=1"><div class="n">${p.jornada_alertas}</div><div class="r">jornada(s) de motorista com alerta (Lei 13.103)</div></a>` : ''}
       ${p.abast_alertas ? `<a class="cartao kpi alerta" href="#/operacao/abastecimentos"><div class="n">${p.abast_alertas}</div><div class="r">abastecimento(s) com alerta para conferir</div></a>` : ''}
       ${p.faturas_postos ? `<a class="cartao kpi alerta" href="#/operacao/abastecimentos?aba=faturas"><div class="n">${p.faturas_postos}</div><div class="r">fatura(s) de posto para conferir</div></a>` : ''}

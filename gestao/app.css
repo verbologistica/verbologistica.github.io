@@ -1262,3 +1262,19 @@ tr.anulado td { opacity: .6; }
 .eg-barra.aberta { border-top-right-radius: 0; border-bottom-right-radius: 0; background: linear-gradient(90deg, var(--c) 85%, color-mix(in srgb, var(--c) 55%, transparent)); }
 .eg-barra:hover { filter: brightness(1.1); }
 @media print { .eg-conj-acoes, #eg-f, #eg-h, #eg-q, .eg-conj .btn, .eg-livre .btn { display: none !important; } .eg-tl { overflow: visible; } }
+
+/* ===== Processo da multa (indicação → termo → DP) ===== */
+.mt-proc { border-left: 4px solid var(--ouro); }
+.mt-passos { list-style: none; padding: 0; margin: 6px 0 4px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; counter-reset: p; }
+@media (max-width: 640px) { .mt-passos { grid-template-columns: 1fr 1fr; } }
+.mt-passo { display: flex; gap: 8px; align-items: center; padding: 8px 10px; border-radius: 10px; background: var(--cinza-claro, #eef1f3); }
+.mt-passo span:last-child { display: flex; flex-direction: column; min-width: 0; } .mt-passo small { color: var(--cinza); font-size: 11.5px; }
+.mt-n { flex: 0 0 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; background: var(--cartao); border: 2px solid var(--borda); color: var(--cinza); }
+.mt-passo.ok { background: var(--verde-claro); } .mt-passo.ok .mt-n { background: var(--verde); border-color: var(--verde); color: #fff; }
+.mt-sec { border-top: 1px solid var(--borda); margin-top: 14px; padding-top: 12px; }
+.mt-sec h3 { font-size: 15px; margin: 0 0 8px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.mt-sec fieldset[disabled] { opacity: .55; }
+.mt-tab { border-collapse: collapse; min-width: 320px; } .mt-tab th, .mt-tab td { padding: 5px 10px; border-bottom: 1px solid var(--borda); text-align: left; } .mt-tab .num { text-align: right; }
+.mt-fin { border: 1px dashed var(--borda); border-radius: 10px; padding: 10px 12px; }
+.mt-fin-card { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; border-left: 4px solid var(--ouro); }
+.mt-fin-card > span { flex: 1; min-width: 200px; }

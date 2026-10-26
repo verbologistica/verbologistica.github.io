@@ -44,7 +44,7 @@ rota('/operacao', async tela => {
       <a class="cartao kpi" href="#/operacao/viagens?status=planejada"><div class="n">${plan.length}</div><div class="r">viagens programadas</div></a>
       <div class="cartao kpi"><div class="n">${ativos.length}</div><div class="r">motoristas em jornada</div></div>
       <a class="cartao kpi ${alertas.length ? 'alerta' : ''}" href="#/operacao/jornadas"><div class="n">${alertas.length}</div><div class="r">jornadas com alerta (7 dias)</div></a>
-      <a class="cartao kpi ${p.multas_indicar ? 'alerta' : ''}" href="#/operacao/ocorrencias?tipo=multa"><div class="n">${p.multas_indicar || 0}</div><div class="r">multas para indicar condutor</div></a>
+      <a class="cartao kpi ${p.multas_indicar ? 'alerta' : ''}" href="#/operacao/ocorrencias?tipo=multa"><div class="n">${p.multas_indicar || 0}</div><div class="r">multas com indicação/desconto pendente</div></a>
       <a class="cartao kpi ${p.ocorrencias_abertas ? 'alerta' : ''}" href="#/operacao/ocorrencias"><div class="n">${p.ocorrencias_abertas || 0}</div><div class="r">ocorrências abertas</div></a>
     </div>
     <div class="grade" style="grid-template-columns:repeat(auto-fit,minmax(340px,1fr))">
@@ -210,7 +210,7 @@ rota('/operacao/ocorrencias', async tela => {
       <select name="status"><option value="abertas">Em aberto</option><option value="todas" ${st === 'todas' ? 'selected' : ''}>Todas</option></select><button class="btn">Filtrar</button></form>
     <div class="cartao">${os.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Nº</th><th>Data</th><th>Tipo</th><th>Descrição</th><th>Motorista</th><th>Viagem / equip.</th><th class="num">Valor</th><th>Situação</th></tr></thead><tbody>
       ${os.map(o => `<tr class="clicavel" onclick="location.hash='#/operacao/ocorrencias/ver/${o.id}'"><td data-r="Nº" class="mono"><b>${esc(o.numero)}</b></td><td data-r="Data">${dataHoraBR(o.data_hora)}</td><td data-r="Tipo">${esc(TIPO_OCO[o.tipo] || o.tipo)}</td>
-        <td data-r="Descrição">${esc((o.descricao || '').slice(0, 80))}${o.tipo === 'multa' && !o.condutor_indicado && o.prazo_indicacao ? ` <span class="tag ${o.prazo_indicacao < hojeISO() ? 'vermelho' : 'amarelo'}">indicar até ${dataBR(o.prazo_indicacao)}</span>` : ''}${o.responsabilizacao === 'em_analise' ? ' <span class="tag amarelo">apuração</span>' : ''}</td>
+        <td data-r="Descrição">${esc((o.descricao || '').slice(0, 80))}${o.tipo === 'multa' && !o.condutor_indicado && o.prazo_indicacao ? ` <span class="tag ${o.prazo_indicacao < hojeISO() ? 'vermelho' : 'amarelo'}">indicar até ${dataBR(o.prazo_indicacao)}</span>` : ''}${o.multa_etapa ? ` <span class="tag ${ETAPA_MULTA[o.multa_etapa][1]}">${ETAPA_MULTA[o.multa_etapa][0]}</span>${o.multa_etapa === 'documentos' && o.prazo_documentos ? ` <span class="tag ${o.prazo_documentos < hojeISO() ? 'vermelho' : 'azul'}">docs até ${dataBR(o.prazo_documentos)}</span>` : ''}` : o.responsabilizacao === 'em_analise' ? ' <span class="tag amarelo">apuração</span>' : ''}</td>
         <td data-r="Motorista">${esc(o.m?.nome || '—')}</td><td data-r="Viagem">${esc([o.v?.numero, o.eq?.codigo_frota].filter(Boolean).join(' · ') || '—')}</td><td data-r="Valor" class="num">${o.valor_multa ? brl(o.valor_multa) : o.custo ? brl(o.custo) : '—'}</td><td data-r="Situação">${tagSt(ST_OCO, o.status)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="vazio">Nenhuma ocorrência.</div>'}</div>`;
   $('#filtros').onsubmit = e => { e.preventDefault(); const d = formDados(e.target); location.hash = '#/operacao/ocorrencias?' + new URLSearchParams(Object.entries(d).filter(([, v]) => v)); };
 });
@@ -255,17 +255,19 @@ rota('/operacao/ocorrencias/ver/:id', async (tela, id) => {
   if (!o) { tela.innerHTML = '<div class="cartao vazio">Ocorrência não encontrada.</div>'; return; }
   const ed = editaOp(), multa = o.tipo === 'multa';
   tela.innerHTML = `<div class="topo"><div><h1>${esc(o.numero)} · ${esc(TIPO_OCO[o.tipo] || o.tipo)}</h1><p class="sub">${dataHoraBR(o.data_hora)} · ${tagSt(ST_OCO, o.status)}</p></div>
-      <div class="acoes">${ed && o.status !== 'encerrada' ? `${multa && !o.condutor_indicado ? '<button class="btn prim" id="indicar">Condutor indicado</button>' : ''}<button class="btn" id="tratar">Tratativa / encerrar</button>` : ''}<a class="btn" href="#/operacao/ocorrencias">Voltar</a></div></div>
-    ${multa && !o.condutor_indicado && o.prazo_indicacao ? `<div class="cartao alerta-obs">⏰ Indicar o condutor até <b>${dataBR(o.prazo_indicacao)}</b>${o.prazo_indicacao < hojeISO() ? ' — <b>prazo vencido</b>: a empresa pode receber a multa adicional (NIC)' : ''}.</div>` : ''}
+      <div class="acoes">${ed && o.status !== 'encerrada' && !o.multa_etapa ? `${multa && !o.condutor_indicado ? '<button class="btn prim" id="indicar">Condutor indicado</button>' : ''}<button class="btn" id="tratar">Tratativa / encerrar</button>` : ''}<a class="btn" href="#/operacao/ocorrencias">Voltar</a></div></div>
+    ${o.multa_etapa ? await blocoProcessoMulta(o) : ''}
+    ${multa && !o.condutor_indicado && o.prazo_indicacao && o.multa_etapa !== 'cancelada' ? `<div class="cartao alerta-obs">⏰ Indicar o condutor até <b>${dataBR(o.prazo_indicacao)}</b>${o.prazo_indicacao < hojeISO() ? ' — <b>prazo vencido</b>: a empresa pode receber a multa adicional (NIC)' : ''}.</div>` : ''}
     <div class="cartao"><div class="form"><div class="largo"><div class="muted">Descrição</div><div style="white-space:pre-line"><b>${esc(o.descricao)}</b></div></div>
       ${[['Motorista', o.m?.nome], ['Viagem', o.v?.numero], ['Equipamento', o.eq?.codigo_frota], ['Cliente', o.cl?.nome], ['Local', o.local], ['Custo', o.custo && brl(o.custo)],
         ...(multa ? [['Auto de infração', o.auto_infracao], ['Órgão', o.orgao_autuador], ['Enquadramento', o.enquadramento], ['Pontos', o.pontos], ['Valor', o.valor_multa && brl(o.valor_multa)], ['Notificação', dataBR(o.notificacao_recebida_em)],
           ['Vencimento', dataBR(o.vencimento_multa)], ['Condutor indicado', o.condutor_indicado ? 'Sim' : 'Não']] : []), ['Solução', o.solucao]]
         .map(([k, v]) => `<div><div class="muted">${k}</div><b>${v ? esc(String(v)) : '—'}</b></div>`).join('')}<div class="largo" id="anx-oco"></div></div></div>
-    ${o.responsabilizacao ? `<div class="cartao ${o.responsabilizacao === 'em_analise' ? 'alerta-obs' : ''}"><h2>Apuração de responsabilidade</h2>
+    ${o.responsabilizacao && !o.multa_etapa ? `<div class="cartao ${o.responsabilizacao === 'em_analise' ? 'alerta-obs' : ''}"><h2>Apuração de responsabilidade</h2>
       <p>${esc(o.m?.nome || '')} · ${tagSt(RESP_PAT, o.responsabilizacao)} · ${esc(CULPA[o.culpa] || '')}${o.valor_prejuizo ? ' · ' + brl(o.valor_prejuizo) : ''}</p>${o.fundamentacao ? `<p style="white-space:pre-line">${esc(o.fundamentacao)}</p>` : ''}
       ${avisoLei(multa ? 'multa' : 'desconto_dano')}${ed || tem('rh', 'dp') ? '<button class="btn" id="decidir">Registrar decisão</button>' : ''}</div>` : ''}`;
   $('#anx-oco').innerHTML = await htmlAnexos('ocorrencia_operacional', id);
+  if (o.multa_etapa) await ligarProcessoMulta(tela, o);
   $('#indicar')?.addEventListener('click', async () => { if (!await confirmar('Confirmar que o condutor foi indicado ao órgão autuador? Anexe o comprovante.', { botao: 'Confirmar' })) return;
     try { await api.alterar('ocorrencias_operacionais', `id=eq.${id}`, { condutor_indicado: true, status: o.status === 'aberta' ? 'em_tratativa' : o.status }); navegar(); } catch (err) { falha(err); } });
   $('#tratar')?.addEventListener('click', async () => {

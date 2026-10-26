@@ -232,6 +232,11 @@ async function novoTitulo(tela, tipo) {
       <label class="check"><input type="checkbox" name="avista"> Pago/pagar à vista (vence na data de emissão)</label>
       <div class="largo" id="prazo-info"></div>
       ${tipo === 'pagar' ? htmlItensNota() : ''}
+      ${tipo === 'pagar' ? `<div class="largo mt-fin"><label class="check"><input type="checkbox" name="multa"> <b>Multa de trânsito</b> — abre o processo em Ocorrências e multas (indicação do condutor, termo de desconto e DP)</label>
+        <div class="form" id="mt-fin-campos" hidden style="padding:8px 0 0">
+          <label class="campo">Placa do veículo<input name="multa_placa" style="text-transform:uppercase" placeholder="ABC1D23"></label>
+          <label class="campo">Data e hora da infração<input type="datetime-local" name="multa_data"></label>
+          <label class="campo">Nº do auto de infração<input name="multa_auto"></label></div></div>` : ''}
       <label class="campo largo">Observações<textarea name="observacoes" rows="2" placeholder="Informações para o Financeiro (condição combinada, referência, contrato…)"></textarea></label>
       <label class="check largo"><input type="checkbox" name="previsao"> ${tipo === 'pagar' ? 'Previsão de gasto' : 'Receita prevista'}</label>
       <label class="check largo"><input type="checkbox" name="legado"> ${T.legado}</label>
@@ -250,6 +255,10 @@ async function novoTitulo(tela, tipo) {
     $('#previa').innerHTML = num(d.valor) ? plano(d).map(x => `${x.parcela}ª ${dataBR(x.vencimento)} · ${brl(x.valor)}`).join(' &nbsp;|&nbsp; ') : ''; };
   f.oninput = prev; prev();
   ligarItensNota(f, f.valor);
+  if (f.multa) { let mexeu = false; const mt = () => { $('#mt-fin-campos').hidden = !f.multa.checked; };
+    f.multa.addEventListener('change', () => { mexeu = true; mt(); });
+    f.descricao.addEventListener('input', () => { if (!mexeu) { f.multa.checked = /multa/i.test(f.descricao.value) && !/contratual|rescis|juros/i.test(f.descricao.value); mt(); }
+      const pl = f.descricao.value.toUpperCase().match(/[A-Z]{3}-?\d[A-Z0-9]\d{2}/); if (pl && !f.multa_placa.value) f.multa_placa.value = pl[0].replace('-', ''); }); }
   // vencimento automático pelo prazo de faturamento do cadastro (editável em caso extraordinário)
   let vencManual = false;
   f.vencimento.addEventListener('input', () => { vencManual = true; });
@@ -281,10 +290,11 @@ async function novoTitulo(tela, tipo) {
         const [t] = await api.inserir('titulos', { tipo, itens, observacoes: d.observacoes || null, origem: d.legado ? 'legado' : 'avulso',
           fornecedor_id: tipo === 'pagar' ? d.pessoa_id || null : null, cliente_id: tipo === 'receber' ? d.pessoa_id || null : null,
           favorecido_nome: d.pessoa_id ? null : d.favorecido_nome, descricao: d.descricao, documento: d.documento || null,
-          data_emissao: d.data_emissao, competencia: d.data_emissao.slice(0, 8) + '01', conta_id: d.conta_id, centro_custo_id: d.centro_custo_id || null, valor_total: v, status: d.previsao ? 'previsto' : 'aberto' });
+          data_emissao: d.data_emissao, competencia: d.data_emissao.slice(0, 8) + '01', conta_id: d.conta_id, centro_custo_id: d.centro_custo_id || null, valor_total: v, status: d.previsao ? 'previsto' : 'aberto',
+          ...(d.multa ? { multa_transito: true, multa_placa: (d.multa_placa || '').toUpperCase().replace(/[^A-Z0-9]/g, '') || null, multa_data: d.multa_data ? new Date(d.multa_data).toISOString() : null, multa_auto: d.multa_auto || null } : {}) });
         await api.inserir('titulo_parcelas', plano(d).map(p => ({ ...p, titulo_id: t.id, status: d.previsao ? 'prevista' : 'aberta' })));
         await anexar('titulo', t.id, d.arquivos);
-        aviso(`${d.previsao ? (tipo === 'pagar' ? 'Previsão de gasto' : 'Receita prevista') : tipo === 'pagar' ? 'Conta a pagar' : 'Conta a receber'} ${t.numero} criada.`);
+        aviso(`${d.previsao ? (tipo === 'pagar' ? 'Previsão de gasto' : 'Receita prevista') : tipo === 'pagar' ? 'Conta a pagar' : 'Conta a receber'} ${t.numero} criada.${d.multa ? ' A multa foi para Ocorrências e multas (prazo de 3 dias para os documentos).' : ''}`);
         location.hash = T.rota + '/ver/' + t.id;
       } catch (err) { falha(err); }
     });
@@ -325,6 +335,7 @@ async function verTitulo(tela, id, tipo) {
     ${t.status === 'previsto' ? `<div class="cartao fr-aviso-prev">${ico('relogio')} <span><b>${tipo === 'pagar' ? 'Previsão de gasto' : 'Receita prevista'}</b></span></div>` : ''}
     ${ehDiaria ? cartaoDiarias(t, ctD, ps) : ''}
     ${tipo === 'pagar' && t.status !== 'cancelado' ? cartaoPagamento(t, ps) : ''}
+    ${tipo === 'pagar' ? await cartaoMultaTitulo(t) : ''}
     <div class="cartao"><div class="form">
       <div><div class="muted">${T.pessoa}</div><b>${esc(pessoa)}</b>${(t.cli?.documento || t.forn?.documento) ? `<div class="muted">${esc(fmtDoc(t.cli?.documento || t.forn?.documento))}</div>` : ''}${tipo === 'pagar' ? '' : t.forn ? (dadosPagamento(t.forn) ? `<div class="muted" style="white-space:pre-line">${esc(dadosPagamento(t.forn))}</div>` : '') : pix ? `<div class="muted">Pix: ${esc(pix)}</div>` : ''}</div>
       <div><div class="muted">Valor total</div><b>${brl(t.valor_total)}</b>${encT ? `<div class="enc ${encT > 0 ? 'mais' : 'menos'}">${encT > 0 ? '+' : '−'} ${brl(Math.abs(encT))} ${encT > 0 ? 'juros/multa' : 'desconto'} · ${tipo === 'receber' ? 'recebido' : 'pago'} ${brl(pagoT)}</div>` : ''}</div>
@@ -712,3 +723,28 @@ async function fecharDiariasModal(tituloId) {
   try { const x = await api.rpc('fechar_diarias', { p_titulo: tituloId, p_descontos: descontos, p_extras: parseInt(r.extras, 10) || 0, p_obs: r.obs || null });
     aviso(`Diárias fechadas: ${x.cobrados} × ${brl(ct.valor)} = ${brl(x.valor)}.`); navegar(); } catch (err) { falha(err); }
 }
+
+// ---------- multa de trânsito: ligação com Ocorrências e multas ----------
+async function cartaoMultaTitulo(t) {
+  if (t.multa_transito) {
+    const o = await api.um('ocorrencias_operacionais', `titulo_id=eq.${t.id}&ativo=eq.true&select=id,numero,multa_etapa,prazo_documentos,m:colaboradores(nome)`).catch(() => null);
+    return `<div class="cartao mt-fin-card">🚦 <span><b>Multa de trânsito</b> · ${o ? `processo <a href="#/operacao/ocorrencias/ver/${o.id}"><b>${esc(o.numero)}</b></a> ${tagSt(ETAPA_MULTA, o.multa_etapa)}${o.m?.nome ? ' · condutor ' + esc(o.m.nome) : ''}${o.multa_etapa === 'documentos' && o.prazo_documentos ? ` · documentos até ${dataBR(o.prazo_documentos)}` : ''}` : 'processo em Ocorrências e multas'}</span>
+      ${editaFin() && (!o || o.multa_etapa === 'documentos') && t.status !== 'cancelado' ? '<button class="btn peq" id="mt-desmarcar">Não é multa de trânsito</button>' : ''}</div>`;
+  }
+  return editaFin() && t.status !== 'cancelado' ? `<div class="cartao mt-fin-card muted">🚦 <span>É uma multa de trânsito? Marque para abrir o processo de indicação do condutor e desconto.</span><button class="btn peq" id="mt-marcar">Marcar como multa de trânsito</button></div>` : '';
+}
+document.addEventListener('click', async e => {
+  const b = e.target.closest('#mt-marcar, #mt-desmarcar'); if (!b) return;
+  const id = location.hash.match(/\/financeiro\/pagar\/ver\/([0-9a-f-]{36})/)?.[1]; if (!id) return;
+  if (b.id === 'mt-desmarcar') {
+    if (!await confirmar('Desmarcar como multa? O processo em Ocorrências e multas é cancelado (se ainda não foi finalizado).', { botao: 'Desmarcar' })) return;
+    try { await api.rpc('marcar_titulo_multa', { p_titulo: id, p_multa: false }); aviso('Desmarcada.'); navegar(); } catch (err) { falha(err); } return;
+  }
+  const r = await modal(`<form><h2>Multa de trânsito</h2><p class="muted">Abre o processo em Ocorrências e multas: anexar a indicação do condutor, preencher os dados e a forma de desconto e anexar o termo assinado (prazo de 3 dias). Depois segue ao DP.</p>
+    <div class="form"><label class="campo">Placa<input name="placa" style="text-transform:uppercase"></label><label class="campo">Data e hora da infração<input type="datetime-local" name="data"></label>
+      <label class="campo">Nº do auto de infração<input name="auto"></label></div>
+    <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Abrir processo</button></div></form>`);
+  if (!r) return;
+  try { const oid = await api.rpc('marcar_titulo_multa', { p_titulo: id, p_multa: true, p_placa: r.placa || null, p_data: r.data ? new Date(r.data).toISOString() : null, p_auto: r.auto || null });
+    aviso('Processo aberto em Ocorrências e multas.'); navegar(); } catch (err) { falha(err); }
+});
