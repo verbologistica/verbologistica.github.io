@@ -1314,3 +1314,4 @@ tr.anulado td { opacity: .6; }
 body.tema-vx .ss-ind { border-color: rgba(255,255,255,.08); background: rgba(255,255,255,.02); }
 body.tema-vx .ss-ind-v, body.tema-vx .ss-g-v { color: #F3F7F5; fill: #F3F7F5; } body.tema-vx .ss-g-r { fill: #8A9E96; }
 body.tema-vx .ss-vg-l:hover { background: rgba(255,255,255,.05); } body.tema-vx .ss-vg-b i { background: rgba(255,255,255,.1); }
+.fr-op { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 4px; }

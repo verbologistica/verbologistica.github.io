@@ -304,6 +304,12 @@ function ferramentasExportacao(tela) {
     barra.innerHTML = '<button type="button" class="btn peq" data-x="xls" title="Planilha com indicadores, filtros, totais e resumo">⬇ Excel</button><button type="button" class="btn peq" data-x="pdf" title="Relatório pronto para imprimir ou salvar em PDF">⬇ PDF</button>';
     barra.onclick = async e => { const b = e.target.closest('[data-x]'); if (!b) return;
       await ocupado(b, async () => { try { b.dataset.x === 'xls' ? await exportarExcel(t) : await exportarPDF(t); } catch (err) { falha(err); } }); };
+    if (w.hasAttribute('data-rel-frota') && typeof relatorioPendenciasFrota === 'function') {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'btn peq'; b.textContent = '⬇ Pendências de documentação';
+      b.title = 'Frotas com documentação ou informação principal pendente × frotas completas (PDF vertical ou horizontal, ou Excel)';
+      b.onclick = e => { e.stopPropagation(); ocupado(b, async () => { try { await relatorioPendenciasFrota(); } catch (err) { falha(err); } }); };
+      barra.prepend(b);
+    }
     w.before(barra);
   });
 }

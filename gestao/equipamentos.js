@@ -43,7 +43,7 @@ rota('/cadastros/equipamentos', async tela => {
       <div class="acoes"><a class="btn" href="#/frota/atrelamentos">Atrelamentos cavalo × carreta</a><a class="btn" href="#/frota/documentos">Documentos a vencer</a><a class="btn" href="#/cadastros/equipamentos${inativos ? '' : '?inativos=1'}">${inativos ? 'Ocultar inativos' : 'Mostrar inativos'}</a>
         ${editaFrota() ? '<a class="btn prim" href="#/cadastros/equipamentos/novo">+ Novo equipamento</a>' : ''}</div></div>
     <form class="filtros" id="filtros"><input name="q" value="${esc(estado.params.get('q') || '')}" placeholder="Buscar por código de frota, placa, marca ou modelo" style="min-width:280px"><button class="btn">Buscar</button></form>
-    <div class="cartao">${lista_.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Código de frota</th><th>Tipo</th><th>Marca / modelo</th><th>Placas</th><th>Atrelado a</th><th>Situação</th><th>Documentos</th></tr></thead><tbody>
+    <div class="cartao">${lista_.length ? `<div class="tabela-wrap" data-rel-frota><table class="responsiva"><thead><tr><th>Código de frota</th><th>Tipo</th><th>Marca / modelo</th><th>Placas</th><th>Atrelado a</th><th>Situação</th><th>Documentos</th></tr></thead><tbody>
       ${lista_.map(e => { const s = st[e.id] || {}; const cs = e.comps.filter(c => c.ativo).sort((a, b) => a.ordem - b.ordem);
         return `<tr class="clicavel" onclick="location.hash='#/cadastros/equipamentos/ver/${e.id}'"><td data-r="Código" class="nowrap"><b>${esc(e.codigo_frota || '—')}</b></td>
         <td data-r="Tipo">${esc(nomeTipoEq(e))}${e.qtd_composicoes > 1 ? ` <span class="muted">(${e.qtd_composicoes} composições)</span>` : ''}${!e.tipo ? ' <span class="tag amarelo">Completar cadastro</span>' : ''}</td>
