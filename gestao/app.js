@@ -366,6 +366,11 @@ const P_ALM = ['administrador', 'almoxarifado', 'diretoria', 'comprador', 'manut
 const P_MAN = ['administrador', 'manutencao', 'operacao', 'diretoria'];
 const P_OP = ['administrador', 'operacao', 'diretoria'];
 const P_SSMA = ['administrador', 'ssma', 'rh', 'dp', 'diretoria'];
+// Setores agrupados pelo fluxo da empresa (títulos no menu)
+const MENU_MACRO = { 'Operação': 'Operação', 'Controle Operacional': 'Operação', 'Manutenção': 'Operação', 'Almoxarifado e Patrimônio': 'Operação',
+  'Compras': 'Suprimentos e finanças', 'Orçamento e Contratos': 'Suprimentos e finanças', 'Financeiro': 'Suprimentos e finanças',
+  'RH': 'Pessoas e segurança', 'Departamento Pessoal': 'Pessoas e segurança', 'SSMA': 'Pessoas e segurança',
+  'Qualidade': 'Gestão', 'Administrativo / Recepção': 'Gestão', 'Configurações': 'Sistema' };
 const MENU = [
   // [nome, rota, perfis (null = todos), ícone, pendência, sub-item]  ·  ['grupo', nome, ícone]  ·  ['sub', título da seção]
   ['Início', '#/inicio', null, 'inicio'],
@@ -383,37 +388,16 @@ const MENU = [
   ['Modelos de documentos', '#/modelos', null, 'documento', null, true],
   ['Apresentações', '#/apresentacoes', null, 'monitor', null, true],
   ['Documentos da qualidade', '#/qualidade/documentos', null, 'livro_ok', 'qual_docs_ler', true],
-  ['grupo', 'Compras', 'carrinho'],
-  ['Painel de compras', '#/compras/painel', [...P_FIN, 'comprador', 'aprovador'], 'painel', null, true],
-  ['Requisições', '#/compras/requisicoes', null, 'carrinho', null, true],
-  ['Cotações', '#/compras/cotacoes', [...P_FIN, 'comprador', 'aprovador'], 'grafico', 'requisicoes_a_cotar', true],
-  ['Pedidos', '#/compras/pedidos', null, 'caixa', 'pedidos_sem_documento', true],
-  ['Fechamentos para conferir', '#/fechamentos?etapa=em_compras', ['administrador', 'comprador'], 'checklist', 'fch_compras', true],
-  ['Contratos de fornecedores', '#/fechamentos/contratos?setor=todos', ['administrador', 'comprador', 'diretoria', 'financeiro'], 'documento', null, true],
-  ['grupo', 'Financeiro', 'carteira'],
-  ['Painel do financeiro', '#/financeiro/painel', P_FIN, 'painel', null, true],
-  ['Contas a pagar', '#/financeiro/pagar', [...P_FIN, 'comprador'], 'cartao', 'sem_comprovante', true],
-  ['Contas a receber', '#/financeiro/receber', P_FIN, 'receber', null, true],
-  ['Reembolsos', '#/financeiro/reembolsos', [...P_FIN, 'aprovador'], 'recibo', 'reembolsos_a_pagar', true],
-  ['Adiantamentos', '#/financeiro/adiantamentos', P_FIN, 'dinheiro', 'prestacao_vencida', true],
-  ['Fundo Fixo', '#/financeiro/fundo', P_FIN, 'moedas', null, true],
-  ['A verificar', '#/financeiro/verificar', P_FIN, 'alerta', 'a_verificar', true],
-  ['Projeção financeira', '#/financeiro/projecao', [...P_FIN, 'aprovador'], 'tendencia', null, true],
-  ['grupo', 'Orçamento e Contratos', 'pizza'],
-  ['Orçado × Realizado', '#/orcamento', ['administrador', 'diretoria', 'financeiro', 'aprovador'], 'tendencia', 'orcamento_alerta', true],
+  ['grupo', 'Operação', 'caminhao'],
+  ['Viagens', '#/operacao/viagens', [...P_OP, 'financeiro', 'manutencao'], 'rota', 'viagens_em_transito', true],
+  ['Controle de jornada', '#/operacao/jornadas', [...P_OP, 'rh', 'dp'], 'prancheta', 'jornada_alertas', true],
+  ['Ocorrências e multas', '#/operacao/ocorrencias', [...P_OP, 'rh', 'dp', 'financeiro'], 'cone', 'multas_indicar', true],
   ['grupo', 'Controle Operacional', 'monitor'],
   ['Painel do CCO', '#/operacao', [...P_OP, 'manutencao'], 'monitor', 'viagens_atrasadas', true],
   ['Abastecimentos', '#/operacao/abastecimentos', [...P_OP, 'financeiro', 'comprador', 'manutencao'], 'combustivel', 'abast_alertas', true],
   ['Equipamentos', '#/cadastros/equipamentos', [...P_FIN, 'operacao', 'manutencao'], 'caminhao', null, true],
   ['Controle de vencimentos', '#/frota/documentos', [...P_FIN, 'operacao', 'manutencao'], 'doc_prazo', 'docs_vencendo', true],
   ['Fechamentos do CCO', '#/fechamentos?setor=cco', ['administrador', 'fch:cco'], 'calendario_ok', 'fch_cco', true],
-  ['grupo', 'Operação', 'caminhao'],
-  ['Viagens', '#/operacao/viagens', [...P_OP, 'financeiro', 'manutencao'], 'rota', 'viagens_em_transito', true],
-  ['Controle de jornada', '#/operacao/jornadas', [...P_OP, 'rh', 'dp'], 'prancheta', 'jornada_alertas', true],
-  ['Ocorrências e multas', '#/operacao/ocorrencias', [...P_OP, 'rh', 'dp', 'financeiro'], 'cone', 'multas_indicar', true],
-  ['grupo', 'Administrativo / Recepção', 'predio'],
-  ['Fechamentos do administrativo', '#/fechamentos?setor=administrativo', ['administrador', 'fch:administrativo'], 'calendario_ok', 'fch_administrativo', true],
-  ['Contratos e contas de consumo', '#/fechamentos/contratos?setor=administrativo', ['administrador', 'fch:administrativo'], 'documento', null, true],
   ['grupo', 'Manutenção', 'chave'],
   ['Painel da manutenção', '#/manut', P_MAN, 'painel', 'manut_preventivas_vencidas', true],
   ['Ordens de serviço', '#/manut/os', [...P_MAN, 'almoxarifado', 'financeiro'], 'maleta', 'manut_os_abertas', true],
@@ -435,6 +419,24 @@ const MENU = [
   ['sub', 'Patrimônio'],
   ['Patrimônio', '#/patrimonio', [...P_ALM, 'rh', 'financeiro'], 'etiqueta', 'patrimonio_sem_termo', true],
   ['Avarias e responsabilização', '#/patrimonio/avarias', ['administrador', 'almoxarifado', 'rh', 'dp', 'diretoria'], 'escudo_alerta', 'patrimonio_avarias', true],
+  ['grupo', 'Compras', 'carrinho'],
+  ['Painel de compras', '#/compras/painel', [...P_FIN, 'comprador', 'aprovador'], 'painel', null, true],
+  ['Requisições', '#/compras/requisicoes', null, 'carrinho', null, true],
+  ['Cotações', '#/compras/cotacoes', [...P_FIN, 'comprador', 'aprovador'], 'grafico', 'requisicoes_a_cotar', true],
+  ['Pedidos', '#/compras/pedidos', null, 'caixa', 'pedidos_sem_documento', true],
+  ['Fechamentos para conferir', '#/fechamentos?etapa=em_compras', ['administrador', 'comprador'], 'checklist', 'fch_compras', true],
+  ['Contratos de fornecedores', '#/fechamentos/contratos?setor=todos', ['administrador', 'comprador', 'diretoria', 'financeiro'], 'documento', null, true],
+  ['grupo', 'Orçamento e Contratos', 'pizza'],
+  ['Orçado × Realizado', '#/orcamento', ['administrador', 'diretoria', 'financeiro', 'aprovador'], 'tendencia', 'orcamento_alerta', true],
+  ['grupo', 'Financeiro', 'carteira'],
+  ['Painel do financeiro', '#/financeiro/painel', P_FIN, 'painel', null, true],
+  ['Contas a pagar', '#/financeiro/pagar', [...P_FIN, 'comprador'], 'cartao', 'sem_comprovante', true],
+  ['Contas a receber', '#/financeiro/receber', P_FIN, 'receber', null, true],
+  ['Reembolsos', '#/financeiro/reembolsos', [...P_FIN, 'aprovador'], 'recibo', 'reembolsos_a_pagar', true],
+  ['Adiantamentos', '#/financeiro/adiantamentos', P_FIN, 'dinheiro', 'prestacao_vencida', true],
+  ['Fundo Fixo', '#/financeiro/fundo', P_FIN, 'moedas', null, true],
+  ['A verificar', '#/financeiro/verificar', P_FIN, 'alerta', 'a_verificar', true],
+  ['Projeção financeira', '#/financeiro/projecao', [...P_FIN, 'aprovador'], 'tendencia', null, true],
   ['grupo', 'RH', 'pessoas'],
   ['sub', 'Pessoas'],
   ['Painel do RH', '#/rh', P_RH, 'painel', null, true],
@@ -472,6 +474,9 @@ const MENU = [
   ['Não conformidades', '#/qualidade/nc', ['administrador', 'qualidade', 'diretoria'], 'exclamacao', 'qual_nc_abertas', true],
   ['Auditorias', '#/qualidade/auditorias', ['administrador', 'qualidade', 'diretoria'], 'busca', null, true],
   ['Indicadores', '#/qualidade/indicadores', ['administrador', 'qualidade', 'diretoria'], 'grafico', null, true],
+  ['grupo', 'Administrativo / Recepção', 'predio'],
+  ['Fechamentos do administrativo', '#/fechamentos?setor=administrativo', ['administrador', 'fch:administrativo'], 'calendario_ok', 'fch_administrativo', true],
+  ['Contratos e contas de consumo', '#/fechamentos/contratos?setor=administrativo', ['administrador', 'fch:administrativo'], 'documento', null, true],
   ['grupo', 'Configurações', 'ajustes'],
   ['sub', 'Cadastros'],
   ['Fornecedores', '#/cadastros/fornecedores', [...P_FIN, 'comprador'], 'predio', null, true],
@@ -518,11 +523,13 @@ function htmlMenu(pend, melhor, celular = false) {
   const busca = `<div class="menu-busca"><input type="search" placeholder="Buscar no menu…" aria-label="Buscar no menu" autocomplete="off"></div>`;
   const PESSOAIS = ['Meu espaço', 'Biblioteca'];
   const vis = grupos.filter(g => g.itens.some(i => i[0] !== 'sub'));
-  let html = busca, abriuPessoal = false, fechouPessoal = false;
+  let html = busca, abriuPessoal = false, fechouPessoal = false, ultMacro = null;
   vis.forEach(g => {
     const pessoal = PESSOAIS.includes(g.nome);
     if (pessoal && !abriuPessoal) { html += '<div class="menu-pessoal">'; abriuPessoal = true; }
-    if (!pessoal && g.nome && abriuPessoal && !fechouPessoal) { html += '</div><div class="menu-rotulo">Setores</div>'; fechouPessoal = true; }
+    if (!pessoal && g.nome && abriuPessoal && !fechouPessoal) { html += '</div>'; fechouPessoal = true; }
+    const mac = !pessoal && g.nome ? MENU_MACRO[g.nome] : null;
+    if (mac && mac !== ultMacro) { html += `<div class="menu-rotulo">${esc(mac)}</div>`; ultMacro = mac; }
     html += grupoHtml(g);
   });
   if (abriuPessoal && !fechouPessoal) html += '</div>';
