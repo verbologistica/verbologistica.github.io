@@ -52,7 +52,7 @@ async function dadosPendenciasFrota({ inativos = false, q = '' } = {}) {
     const vencs = obr.filter(o => ['ok', 'vence'].includes(o.st) && o.d.tem_validade && o.d.vencimento).map(o => o.d.vencimento).sort();
     return { e, cs, pend, avisos, okDocs, completo: !pend.length, prox: vencs[0] || null,
       codigo: e.codigo_frota || '-', tipo: nomeTipoEq(e), marcaModelo: [marca, e.modelo].filter(Boolean).join(' ') || '-',
-      placas: cs.map(c => c.placa).join(', ') || '-', situacao: (SITUACOES_EQ[e.situacao]?.[0] || e.situacao || '') + (e.ativo ? '' : ' (inativo)') };
+      placas: cs.map(c => c.placa).join(', ') || '-', situacao: e.ativo ? 'Ativo' : 'Desativado' };
   });
 }
 
@@ -71,7 +71,7 @@ async function relatorioPendenciasFrota() {
   if (!r) return;
   const E = es.find(x => x.id === r.empresa) || es[0] || {};
   const todos = await dadosPendenciasFrota({ inativos, q });
-  const filtros = [inativos ? 'Inclui equipamentos inativos' : 'Somente equipamentos ativos', q && `Busca: "${q}"`].filter(Boolean);
+  const filtros = [inativos ? 'Inclui equipamentos desativados' : 'Somente equipamentos ativos', q && `Busca: "${q}"`].filter(Boolean);
   const op = { conteudo: r.conteudo, filtros, E };
   r.formato === 'xls' ? await excelPendenciasFrota(todos, op) : await pdfPendenciasFrota(todos, { ...op, paisagem: r.orientacao === 'paisagem' });
 }

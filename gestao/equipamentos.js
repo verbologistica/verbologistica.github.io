@@ -11,6 +11,7 @@ const TIPOS_EQ = {
   rodotrem: ['Carreta rodotrem', 3, ['1º semirreboque', 'Dolly', '2º semirreboque']],
   utilitario: ['Utilitário', 1, ['Utilitário']], maquina: ['Máquina / equipamento', 1, ['Máquina']], outro: ['Outro', 1, ['Composição']],
 };
+const tagAtivoEq = e => e.ativo ? '<span class="tag verde">Ativo</span>' : '<span class="tag vermelho">Desativado</span>';
 const SITUACOES_EQ = { operando: ['Operando', 'verde'], manutencao: ['Em manutenção', 'amarelo'], parado: ['Parado', ''], vendido: ['Vendido', ''], baixado: ['Baixado', ''] };
 // Documentos obrigatórios por tipo de equipamento (controle de pendências)
 const DOC_LICENCAS = ['Licença de tráfego · Federal noturna', 'Licença de tráfego · Federal diurna', 'Licença de tráfego · Estadual MS', 'Licença de tráfego · Estadual SP'];
@@ -65,7 +66,7 @@ rota('/cadastros/equipamentos', async tela => {
   const lista_ = eqs.filter(e => !q || [e.codigo_frota, nomeTipoEq(e), e.marca, e.modelo, ...e.comps.map(c => c.placa + ' ' + (c.codigo_frota || ''))].join(' ').toLowerCase().includes(q));
   tela.innerHTML = `
     <div class="topo"><div><h1>Equipamentos</h1><p class="sub">${lista_.length} equipamento(s) · ${lista_.reduce((s, e) => s + e.comps.filter(c => c.ativo).length, 0)} placa(s)</p></div>
-      <div class="acoes"><a class="btn" href="#/frota/atrelamentos">Atrelamentos cavalo × carreta</a><a class="btn" href="#/frota/documentos">Documentos a vencer</a><a class="btn" href="#/cadastros/equipamentos${inativos ? '' : '?inativos=1'}">${inativos ? 'Ocultar inativos' : 'Mostrar inativos'}</a>
+      <div class="acoes"><a class="btn" href="#/frota/atrelamentos">Atrelamentos cavalo × carreta</a><a class="btn" href="#/frota/documentos">Documentos a vencer</a><a class="btn" href="#/cadastros/equipamentos${inativos ? '' : '?inativos=1'}">${inativos ? 'Ocultar desativados' : 'Mostrar desativados'}</a>
         ${editaFrota() ? '<a class="btn prim" href="#/cadastros/equipamentos/novo">+ Novo equipamento</a>' : ''}</div></div>
     <form class="filtros" id="filtros"><input name="q" value="${esc(estado.params.get('q') || '')}" placeholder="Buscar por código de frota, placa, marca ou modelo" style="min-width:280px"><button class="btn">Buscar</button></form>
     <div class="cartao">${lista_.length ? `<div class="tabela-wrap" data-rel-frota><table class="responsiva"><thead><tr><th>Código de frota</th><th>Tipo</th><th>Marca / modelo</th><th>Placas</th><th>Atrelado a</th><th>Situação</th><th>Documentos</th></tr></thead><tbody>
@@ -75,7 +76,7 @@ rota('/cadastros/equipamentos', async tela => {
         <td data-r="Marca / modelo">${esc([e.marca, e.modelo].filter(Boolean).join(' ') || '—')}</td>
         <td data-r="Placas" class="mono">${cs.map(c => esc(c.placa)).join('<br>')}</td>
         <td data-r="Atrelado a">${comQuem(e)}</td>
-        <td data-r="Situação"><span class="tag ${SITUACOES_EQ[e.situacao]?.[1] || ''}">${esc(SITUACOES_EQ[e.situacao]?.[0] || e.situacao)}</span>${e.ativo ? '' : ' <span class="tag">Inativo</span>'}</td>
+        <td data-r="Situação">${tagAtivoEq(e)}</td>
         <td data-r="Documentos">${s.vencido ? `<span class="tag vermelho">${s.vencido} vencido(s)</span> ` : ''}${s.vence_30 ? `<span class="tag amarelo">${s.vence_30} vencendo</span>` : ''}${!s.vencido && !s.vence_30 ? '<span class="muted">ok</span>' : ''}</td></tr>`; }).join('')}
     </tbody></table></div>` : '<div class="vazio">Nenhum equipamento cadastrado.</div>'}</div>
     ${soltas.length ? `<div class="cartao"><h2>Placas sem equipamento (${soltas.length})</h2><p class="muted">Desatreladas: paradas, em manutenção ou aguardando um conjunto. Os documentos continuam com elas.</p>
@@ -129,7 +130,7 @@ async function formEquipamento(tela, e = null) {
         <label class="campo">Motorista principal<select name="motorista_padrao_id">${opcoes(users.filter(u => u.ativo), null, u => u.nome, e?.motorista_padrao_id, 'Nenhum')}</select></label>
         <label class="campo">Km atual<input name="km_atual" type="number" value="${e?.km_atual ?? ''}"></label>
         <label class="campo">Horímetro<input name="horimetro" inputmode="decimal" value="${e?.horimetro ?? ''}"></label>
-        <label class="campo">Situação<select name="situacao">${Object.entries(SITUACOES_EQ).map(([v, t]) => `<option value="${v}" ${v === (e?.situacao || 'operando') ? 'selected' : ''}>${t[0]}</option>`).join('')}</select></label>
+        <label class="campo">Situação<select name="ativo_sel"><option value="1">Ativo</option><option value="0" ${e && !e.ativo ? 'selected' : ''}>Desativado</option></select></label>
         <label class="campo largo">Observações<textarea name="observacoes" rows="2">${esc(e?.observacoes || '')}</textarea></label>
       </div></div>
       <div class="cartao" id="eg-form" hidden><h2>Atrelamento</h2><p class="muted" id="eg-form-txt"></p><div class="form">
@@ -194,7 +195,7 @@ async function formEquipamento(tela, e = null) {
     const dados = { codigo_frota: d.codigo_frota || null, tipo: d.tipo, tipo_outro: d.tipo === 'outro' ? d.tipo_outro : null, qtd_composicoes: cs.length,
       marca: d.marca || null, modelo: d.modelo || null, ano_fabricacao: d.ano_fabricacao ? Number(d.ano_fabricacao) : null, ano_modelo: d.ano_modelo ? Number(d.ano_modelo) : null,
       combustivel: d.combustivel || null, cor: d.cor || null, centro_custo_id: d.centro_custo_id || null, motorista_padrao_id: d.motorista_padrao_id || null,
-      km_atual: d.km_atual ? Number(d.km_atual) : null, horimetro: num(d.horimetro), situacao: d.situacao, observacoes: d.observacoes || null };
+      km_atual: d.km_atual ? Number(d.km_atual) : null, horimetro: num(d.horimetro), observacoes: d.observacoes || null, ativo: d.ativo_sel !== '0' };
     if (acao === 'desativar' || acao === 'ativar') dados.ativo = acao === 'ativar';
     await ocupado(ev.submitter, async () => {
       try {
@@ -261,7 +262,7 @@ rota('/cadastros/equipamentos/ver/:id', async (tela, id) => {
   tela.innerHTML = `
     <div class="topo"><div><h1>${esc(e.codigo_frota || 'Sem código')} · ${esc(nomeTipoEq(e))}</h1>
       <p class="sub">${esc([e.marca, e.modelo, e.ano_fabricacao && `${e.ano_fabricacao}/${e.ano_modelo || e.ano_fabricacao}`].filter(Boolean).join(' · '))}
-        <span class="tag ${SITUACOES_EQ[e.situacao]?.[1] || ''}">${esc(SITUACOES_EQ[e.situacao]?.[0] || '')}</span>${e.ativo ? '' : ' <span class="tag">Inativo</span>'}</p></div>
+        ${tagAtivoEq(e)}</p></div>
       <div class="acoes">${pode ? `<button class="btn prim" id="novo-doc">+ Documento</button><a class="btn" href="#/cadastros/equipamentos/editar/${id}">Editar</a>` : ''}
         <a class="btn" href="#/manut/os?eq=${id}&status=todas">Manutenção (OS)</a><a class="btn" href="#/manut/pneus?eq=${id}">Pneus</a>
         <a class="btn" href="#/cadastros/equipamentos/ver/${id}${hist ? '' : '?historico=1'}">${hist ? 'Ocultar histórico' : 'Ver histórico de documentos'}</a>
