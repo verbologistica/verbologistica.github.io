@@ -77,7 +77,7 @@ async function blocoProcessoMulta(o) {
   const tit = o.titulo_id ? await api.um('titulos', `id=eq.${o.titulo_id}&select=id,numero,status,valor_total,descricao`).catch(() => null) : null;
   const temInd = de(ANX_IND).length > 0 || !!o.sem_indicacao, temTermo = de(ANX_TERMO).length > 0;
   const plano = o.desconto_plano || [];
-  const dadosOk = !!(o.colaborador_id && o.cnh_numero && o.auto_infracao && o.orgao_autuador && o.enquadramento && o.local && (o.placa || o.equipamento_id)
+  const dadosOk = !!(o.colaborador_id && o.auto_infracao && o.orgao_autuador && o.enquadramento && o.local && (o.placa || o.equipamento_id)
     && o.desconto_tipo && Number(o.desconto_valor) > 0 && plano.length && o.aplicador_nome && o.condutor_ouvido && o.juridico_ok);
   const aberto = o.multa_etapa === 'documentos', pode = podeMulta() && aberto;
   const dias = o.prazo_documentos ? diasAte(o.prazo_documentos) : null;
@@ -103,7 +103,7 @@ async function blocoProcessoMulta(o) {
     <form id="mt-f" class="mt-sec"><h3>2 · Dados da indicação e forma de desconto</h3>
       <fieldset ${pode && temInd ? '' : 'disabled'} style="border:0;padding:0;margin:0"><div class="form">
         <label class="campo largo">Condutor (colaborador) *<select name="colaborador_id"><option value="">Selecione…</option></select></label>
-        <label class="campo">CNH nº *<input name="cnh_numero" value="${esc(o.cnh_numero || '')}"></label>
+        <label class="campo">CNH nº<input name="cnh_numero" value="${esc(o.cnh_numero || '')}"></label>
         <label class="campo">Categoria<input name="cnh_categoria" value="${esc(o.cnh_categoria || '')}" maxlength="3"></label>
         <label class="campo">UF da CNH<input name="cnh_uf" value="${esc(o.cnh_uf || '')}" maxlength="2" style="text-transform:uppercase"></label>
         <label class="campo">Validade da CNH<input type="date" name="cnh_validade" value="${o.cnh_validade || ''}"></label>
