@@ -107,7 +107,7 @@ async function formColaborador(tela, c = null) {
         ${campo('Escala', inp('escala', 'placeholder="Ex.: Turno A, 2MW"'))}
         ${campo('Salário (R$)', `<input name="salario" inputmode="decimal" value="${c?.salario != null ? Number(c.salario).toFixed(2).replace('.', ',') : ''}">`)}
         <div class="campo"><span>Gestor imediato</span>${htmlSelPessoas('gestor', c?.gestor ? [c.gestor] : [], 'Buscar colaborador, usuário ou fornecedor…', 1)}</div>
-        ${campo('Acesso ao sistema (usuário)', sel('usuario_id', us.filter(u => u.ativo).map(u => [u.id, u.nome + ' · ' + u.email]), c?.usuario_id, 'Sem acesso'))}
+        ${campo('Acesso ao sistema (usuário)', sel('usuario_id', us.filter(u => u.ativo).map(u => [u.id, u.nome + ' · ' + loginDe(u)]), c?.usuario_id, 'Sem acesso'))}
         ${c?.status === 'desligado' || c?.data_desligamento ? campo('Data do desligamento', dt('data_desligamento')) + campo('Motivo do desligamento', inp('motivo_desligamento'), true) : ''}
       </div></div>
       <div class="cartao"><h2>Dados pessoais</h2><div class="form">

@@ -2,10 +2,18 @@
 const SB_URL = 'https://qxuwokglibazfgwuhbah.supabase.co';
 const SB_KEY = 'sb_publishable_16Vb2lYj-aWyKaGVq7nh1g_LRkSCFAr';
 const APP_URL = location.origin + location.pathname.replace(/index\.html$/, '');
+// Login por CPF (pessoas sem e-mail próprio): o login interno é <cpf>@cpf.verbologistica.com.br — nunca recebe e-mail
+const DOMINIO_CPF = 'cpf.verbologistica.com.br';
+const emailDoCPF = cpf => String(cpf || '').replace(/\D/g, '') + '@' + DOMINIO_CPF;
+const ehLoginCPF = e => String(e || '').toLowerCase().endsWith('@' + DOMINIO_CPF);
+const emailReal = e => ehLoginCPF(e) ? '' : (e || '');
+const loginDe = u => ehLoginCPF(u?.email) ? 'CPF ' + String(u.email).split('@')[0].replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4') : (u?.email || '');
+// o que a pessoa digita na tela de entrada: e-mail ou CPF
+const loginDigitado = v => { v = String(v || '').trim(); const d = v.replace(/\D/g, ''); return !v.includes('@') && d.length === 11 ? emailDoCPF(d) : v.toLowerCase(); };
 const SESSAO_KEY = 'vg_sessao';
 
 const MENSAGENS = {
-  'Invalid login credentials': 'E-mail ou senha incorretos.',
+  'Invalid login credentials': 'E-mail (ou CPF) ou senha incorretos.',
   'Email not confirmed': 'E-mail ainda não confirmado. Use "Primeiro acesso".',
   'User not found': 'Usuário não encontrado.',
   'Password should be at least 6 characters.': 'A senha precisa ter pelo menos 6 caracteres.',

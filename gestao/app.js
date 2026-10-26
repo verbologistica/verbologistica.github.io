@@ -778,9 +778,9 @@ function casaLogin(titulo, sub, corpo) {
 
 function telaLogin(msg = '') {
   const h = new Date().getHours(), sauda = h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite';
-  $('#app').innerHTML = casaLogin(`${sauda}!`, 'Acesse com seu e-mail e senha.', `
+  $('#app').innerHTML = casaLogin(`${sauda}!`, 'Acesse com seu e-mail (ou CPF) e senha.', `
       <form id="f-login" class="capa-form" novalidate>
-        <label class="capa-campo"><span>E-mail</span><div class="capa-in">${ic('carta')}<input name="email" type="email" autocomplete="username" placeholder="seu.nome@empresa.com.br" required></div></label>
+        <label class="capa-campo"><span>E-mail ou CPF</span><div class="capa-in">${ic('carta')}<input name="email" type="text" inputmode="email" autocapitalize="off" spellcheck="false" autocomplete="username" placeholder="seu.nome@empresa.com.br ou CPF" required></div></label>
         <label class="capa-campo"><span>Senha</span><div class="capa-in">${ic('cadeado')}<input name="senha" type="password" autocomplete="current-password" placeholder="••••••••" required>
           <button type="button" class="capa-olho" id="ver-senha" aria-label="Mostrar senha" title="Mostrar senha">${ic('olho')}</button></div></label>
         <div id="msg" class="${msg.startsWith('!') ? 'erro-txt' : 'muted'}" role="status">${esc(msg.replace(/^!/, ''))}</div>
@@ -793,15 +793,16 @@ function telaLogin(msg = '') {
   f.onsubmit = async e => {
     e.preventDefault();
     const d = formDados(f);
-    if (!d.email || !d.senha) { $('#msg').className = 'erro-txt'; $('#msg').textContent = 'Informe e-mail e senha.'; return; }
+    if (!d.email || !d.senha) { $('#msg').className = 'erro-txt'; $('#msg').textContent = 'Informe e-mail (ou CPF) e senha.'; return; }
     await ocupado(e.submitter, async () => {
-      try { await api.entrar(d.email, d.senha); await iniciar(); }
+      try { await api.entrar(loginDigitado(d.email), d.senha); await iniciar(); }
       catch (err) { $('#msg').className = 'erro-txt'; $('#msg').textContent = err.message; }
     });
   };
   $('#primeiro').onclick = async e => {
     const email = f.email.value.trim();
     if (!email) { $('#msg').className = 'erro-txt'; $('#msg').textContent = 'Digite seu e-mail acima e clique de novo.'; return; }
+    if (ehLoginCPF(loginDigitado(email))) { $('#msg').className = 'muted'; $('#msg').textContent = 'Quem entra com CPF recebe o link de acesso pelo WhatsApp: peça ao administrador do sistema para enviar.'; return; }
     await ocupado(e.target, async () => {
       try { await api.enviarLink(email); $('#msg').className = 'muted';
             $('#msg').textContent = 'Enviamos um link para ' + email + '. Abra o e-mail e clique no link para criar sua senha.'; }
@@ -1032,7 +1033,7 @@ async function pessoasAcao() {
     (await usuarios().catch(() => [])).filter(u => u.ativo).map(u => ({ chave: 'u:' + u.id, usuario_id: u.id, nome: u.nome, email: u.email, info: 'usuário' })));
   return _pessoasAcao;
 }
-const pessoaRef = p => { const o = { nome: p.nome }; if (p.usuario_id) o.usuario_id = p.usuario_id; else if (p.colaborador_id) o.colaborador_id = p.colaborador_id; else if (p.fornecedor_id) o.fornecedor_id = p.fornecedor_id; else o.externo = true; if (p.email) o.email = p.email; if (p.info && (p.fornecedor_id || !p.usuario_id && !p.colaborador_id)) o.info = p.info; return o; };
+const pessoaRef = p => { const o = { nome: p.nome }; if (p.usuario_id) o.usuario_id = p.usuario_id; else if (p.colaborador_id) o.colaborador_id = p.colaborador_id; else if (p.fornecedor_id) o.fornecedor_id = p.fornecedor_id; else o.externo = true; if (p.email && !ehLoginCPF(p.email)) o.email = p.email; if (p.info && (p.fornecedor_id || !p.usuario_id && !p.colaborador_id)) o.info = p.info; return o; };
 let _pessoasOrg = null;
 async function pessoasOrg() { if (!_pessoasOrg) _pessoasOrg = await api.rpc('pessoas_org').catch(() => pessoasAcao()); return _pessoasOrg; }
 const chaveSelPessoa = p => p.usuario_id ? 'u:' + p.usuario_id : p.colaborador_id ? 'c:' + p.colaborador_id : p.fornecedor_id ? 'f:' + p.fornecedor_id : 'x:' + semAcento(p.nome || '');

@@ -240,7 +240,9 @@ function formUsuario(u, atuais, ccs, funcoes) {
     <div class="form"><input type="hidden" name="colab_id"><div class="largo muted" id="colab-info"></div>
       <label class="campo largo">Nome completo *<input name="nome" value="${esc(u?.nome || '')}" required autocomplete="off"></label>
       <label class="campo">CPF *<input name="cpf" value="${esc(fmtCPF(u?.cpf))}" inputmode="numeric" placeholder="000.000.000-00" required></label>
-      <label class="campo">E-mail *<input type="email" name="email" required autocomplete="off" value="${esc(u?.email || '')}">${novo ? '' : '<span class="muted">Se estiver errado, corrija aqui e salve: o login passa a ser o e-mail novo.</span>'}</label>
+      <label class="campo" id="campo-email">E-mail *<input type="email" name="email" ${ehLoginCPF(u?.email) ? '' : 'required'} autocomplete="off" value="${esc(emailReal(u?.email))}">${novo ? '' : '<span class="muted">Se estiver errado, corrija aqui e salve: o login passa a ser o e-mail novo.</span>'}</label>
+      <label class="check largo" style="align-items:flex-start"><input type="checkbox" name="login_cpf" ${ehLoginCPF(u?.email) ? 'checked' : ''}>
+        <span><b>Não tem e-mail próprio — entra com o CPF</b><br><span class="muted">Para quem usa e-mail compartilhado (ex.: e-mail do setor). A pessoa entra digitando o CPF e a senha; o link para criar a senha vai pelo WhatsApp.</span></span></label>
       <label class="campo">Função *<input name="cargo" value="${esc(u?.cargo || '')}" list="lista-funcoes" required placeholder="Ex.: Motorista, Analista financeiro"></label>
       <label class="campo">Setor *<input name="setor" value="${esc(u?.setor || '')}" list="lista-setores" required></label>
       <label class="campo">Centro de custo<select name="cc">${opcoes(ccs.filter(c => c.ativo), null, c => c.nome, u?.centro_custo_id, 'Não informar')}</select></label>
@@ -276,7 +278,14 @@ function ligarMenus(raiz) {
   raiz.addEventListener('change', atualiza); atualiza();
 }
 const menusEscolhidos = r => r.menus_padrao ? null : MENU.filter((i, k) => i[0] !== 'grupo' && i[0] !== 'sub' && r['m_' + k]).map(i => i[1]);
-const aoAbrirUsuario = raiz => { mascaras(raiz); ligarMenus(raiz); puxarDoRH(raiz); };
+function ligarLoginCPF(raiz) {
+  const cb = $('[name=login_cpf]', raiz), em = $('[name=email]', raiz); if (!cb || !em) return;
+  const at = () => { $('#campo-email', raiz).style.display = cb.checked ? 'none' : ''; em.required = !cb.checked; const b = $('button[value=reenviar]', raiz); if (b) b.hidden = cb.checked; };
+  cb.onchange = at; at();
+}
+const aoAbrirUsuario = raiz => { mascaras(raiz); ligarMenus(raiz); puxarDoRH(raiz); ligarLoginCPF(raiz); };
+// e-mail de login que o formulário vai usar (o próprio ou o login interno pelo CPF)
+const loginDoForm = r => r.login_cpf ? emailDoCPF(r.cpf) : String(r.email || '').trim().toLowerCase();
 
 function validarUsuario(r, todos, id) {
   const perfis = PERFIS.map(p => p[0]).filter(p => r['p_' + p]);
@@ -284,6 +293,8 @@ function validarUsuario(r, todos, id) {
   if (todos.some(x => x.cpf === soDigitos(r.cpf) && x.id !== id)) return 'Já existe um usuário com este CPF.';
   if (soDigitos(r.telefone).length < 10) return 'Telefone incompleto: informe DDD e número.';
   if (!perfis.length) return 'Marque pelo menos um perfil de acesso.';
+  if (!r.login_cpf && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(r.email || '').trim())) return 'Informe o e-mail ou marque "entra com o CPF".';
+  if (!r.login_cpf && ehLoginCPF(r.email)) return 'Esse endereço é reservado ao login por CPF. Marque "entra com o CPF".';
   return null;
 }
 
@@ -311,7 +322,7 @@ rota('/config/usuarios', async tela => {
       ${lista_.map(u => `<tr class="clicavel" data-id="${u.id}"><td data-r="Nome"><b>${esc(u.nome)}</b></td>
         <td data-r="Função · Setor">${esc([u.cargo, u.setor].filter(Boolean).join(' · ') || '—')}</td>
         <td data-r="CPF" class="nowrap">${esc(fmtCPF(u.cpf) || '—')}</td>
-        <td data-r="Contato">${esc(u.email)}${u.telefone ? `<br><span class="muted">${esc(fmtTel(u.telefone))}</span>` : ''}</td>
+        <td data-r="Contato">${ehLoginCPF(u.email) ? '<span class="tag">entra com CPF</span>' : esc(u.email)}${u.telefone ? `<br><span class="muted">${esc(fmtTel(u.telefone))}</span>` : ''}</td>
         <td data-r="Perfis">${perfisDe(u.id).map(p => `<span class="tag azul">${esc(nomePerfil(p))}</span>`).join(' ') || '<span class="tag amarelo">Sem perfil</span>'}</td>
         <td>${u.ativo ? '' : '<span class="tag">Inativo</span>'}</td></tr>`).join('') || '<tr><td colspan="6" class="vazio">Nenhum usuário.</td></tr>'}
     </tbody></table></div></div>`;
@@ -319,12 +330,13 @@ rota('/config/usuarios', async tela => {
 
   $('#convidar').onclick = async () => {
     const r = await modal(formUsuario(null, ['solicitante'], ccs, funcoes), { aoAbrir: aoAbrirUsuario,
-      validar: d => validarUsuario(d, us, null) || (us.some(x => x.email.toLowerCase() === d.email.toLowerCase())
-        ? 'Este e-mail já está cadastrado. Abra o usuário na lista para editar ou reenviar o convite.' : null) });
+      validar: d => validarUsuario(d, us, null) || (us.some(x => x.email.toLowerCase() === loginDoForm(d))
+        ? (d.login_cpf ? 'Já existe um login com este CPF.' : 'Este e-mail já está cadastrado. Se várias pessoas usam o mesmo e-mail, marque "entra com o CPF" para cada uma.') : null) });
     if (!r) return;
     try {
-      const email = r.email.toLowerCase();
-      try { await api.convidar(email, r.nome); }
+      const email = loginDoForm(r);
+      if (r.login_cpf) await api.acessoUsuario('criar', null, { email, nome: r.nome });   // login por CPF: não manda e-mail
+      else try { await api.convidar(email, r.nome); }
       catch (e) { console.warn('convite por e-mail falhou', e); await api.acessoUsuario('criar', null, { email, nome: r.nome }); }
       const novo = await api.um('usuarios', `email=eq.${encodeURIComponent(email)}`);
       if (!novo) throw new Error('O convite foi enviado, mas o cadastro não apareceu. Atualize a página.');
@@ -333,7 +345,7 @@ rota('/config/usuarios', async tela => {
       await salvarPerfis(novo.id, PERFIS.map(p => p[0]).filter(p => r['p_' + p]), []);
       if (r.colab_id) await api.alterar('colaboradores', `id=eq.${r.colab_id}&usuario_id=is.null`, { usuario_id: novo.id }).catch(() => null);
       delete estado.cache.usuarios; aviso('Usuário cadastrado.');
-      await enviarAcesso({ ...novo, nome: r.nome, telefone: soDigitos(r.telefone), email }, true); navegar();
+      await enviarAcesso({ ...novo, nome: r.nome, telefone: soDigitos(r.telefone), email }, !r.login_cpf ? true : 'cpf'); navegar();
     } catch (err) { falha(err); }
   };
 
@@ -343,16 +355,17 @@ rota('/config/usuarios', async tela => {
       validar: d => d._acao === 'salvar' ? validarUsuario(d, us, u.id) : null });
     if (!r) return;
     try {
+      if (r._acao === 'reenviar' && ehLoginCPF(u.email)) { aviso('Este usuário entra com o CPF: use "Enviar acesso pelo WhatsApp".', true); return; }
       if (r._acao === 'reenviar') { await api.convidar(u.email, u.nome); aviso('Convite reenviado para ' + u.email + '. Se não chegar, use "Enviar acesso pelo WhatsApp".'); return; }
       if (r._acao === 'whatsapp') return enviarAcesso(u, false);
       if (r._acao === 'desativar' || r._acao === 'ativar') {
         await api.alterar('usuarios', `id=eq.${u.id}`, { ativo: r._acao === 'ativar' });
       } else {
-        const novoEmail = String(r.email || '').trim().toLowerCase();
+        const novoEmail = loginDoForm(r);
         if (novoEmail && novoEmail !== String(u.email || '').toLowerCase()) {
-          if (us.some(x => x.id !== u.id && String(x.email).toLowerCase() === novoEmail)) throw new Error('Já existe outro usuário com esse e-mail.');
+          if (us.some(x => x.id !== u.id && String(x.email).toLowerCase() === novoEmail)) throw new Error(r.login_cpf ? 'Já existe outro login com este CPF.' : 'Já existe outro usuário com esse e-mail.');
           await api.acessoUsuario('alterar_email', u.id, { email: novoEmail });
-          aviso(`E-mail corrigido para ${novoEmail}. Envie o acesso de novo.`);
+          aviso(r.login_cpf ? `Agora ${u.nome.split(' ')[0]} entra com o CPF. A senha continua a mesma.` : `E-mail corrigido para ${novoEmail}. Envie o acesso de novo.`);
         }
         await api.alterar('usuarios', `id=eq.${u.id}`, { nome: r.nome, cpf: soDigitos(r.cpf), cargo: r.cargo, setor: r.setor,
           centro_custo_id: r.cc || null, telefone: soDigitos(r.telefone), chave_pix: r.chave_pix || null, menus: menusEscolhidos(r) });
@@ -374,13 +387,14 @@ async function enviarAcesso(u, recemCriado) {
   const fone = foneWhats(u.telefone), primeiro = String(u.nome || '').trim().split(/\s+/)[0] || '';
   const msg = `Olá, ${primeiro}! Seu acesso ao sistema *Verbo Gestão* (Verbo Logística) está pronto.\n\n` +
     `Toque no link abaixo para criar a sua senha (vale por 1 hora e só pode ser usado uma vez):\n${link}\n\n` +
-    `Depois, entre sempre por ${APP_URL} com o e-mail *${u.email}* e a senha que você criou.`;
+    (ehLoginCPF(u.email) ? `Depois, entre sempre por ${APP_URL} digitando o seu *CPF* (só os números) no lugar do e-mail, e a senha que você criou.`
+      : `Depois, entre sempre por ${APP_URL} com o e-mail *${u.email}* e a senha que você criou.`);
   const wa = `https://wa.me/${fone}?text=${encodeURIComponent(msg)}`;
   await modal(`<form><h2>${recemCriado ? 'Usuário cadastrado — enviar o acesso' : 'Enviar acesso pelo WhatsApp'}</h2>
-    <p>Para <b>${esc(u.nome)}</b> · ${fone ? `WhatsApp <b>${esc(fmtTel(u.telefone))}</b>` : '<span style="color:var(--vermelho)">sem telefone válido no cadastro</span>'} · login <b>${esc(u.email)}</b></p>
+    <p>Para <b>${esc(u.nome)}</b> · ${fone ? `WhatsApp <b>${esc(fmtTel(u.telefone))}</b>` : '<span style="color:var(--vermelho)">sem telefone válido no cadastro</span>'} · login <b>${esc(loginDe(u))}</b></p>
     ${fone ? `<p><a class="btn prim" href="${esc(wa)}" target="_blank" rel="noopener">📲 Abrir o WhatsApp com a mensagem pronta</a></p>` : ''}
     <p class="muted">A mensagem já vai escrita: é só tocar em enviar no WhatsApp. O link vale por <b>1 hora</b> e só funciona uma vez — se expirar, gere outro aqui.
-      ${recemCriado ? 'O convite também foi enviado por e-mail, mas e-mails de fora da empresa podem não chegar.' : ''}</p>
+      ${recemCriado === true ? 'O convite também foi enviado por e-mail, mas e-mails de fora da empresa podem não chegar.' : recemCriado === 'cpf' ? 'Esta pessoa entra com o <b>CPF</b>: o acesso só vai por aqui (não há e-mail).' : ''}</p>
     <label class="campo">Ou copie a mensagem e envie por outro meio<textarea rows="6" readonly id="ac-msg">${esc(msg)}</textarea></label>
     <div class="rodape"><button type="button" class="btn" id="ac-copiar">Copiar mensagem</button><button type="button" class="btn" data-fechar>Fechar</button></div></form>`,
     { aoAbrir: f => { $('#ac-copiar', f).onclick = async () => { try { await navigator.clipboard.writeText(msg); aviso('Mensagem copiada.'); } catch { $('#ac-msg', f).select(); document.execCommand('copy'); aviso('Mensagem copiada.'); } }; } });
@@ -414,7 +428,7 @@ rota('/perfil', async tela => {
   const u = estado.usuario;
   const cc = (await centros()).find(c => c.id === u.centro_custo_id);
   tela.innerHTML = `
-    <div class="topo"><div><h1>Meu perfil</h1><p class="sub">${esc(u.email)} · ${estado.perfis.map(nomePerfil).join(', ')}</p></div></div>
+    <div class="topo"><div><h1>Meu perfil</h1><p class="sub">${esc(loginDe(u))} · ${estado.perfis.map(nomePerfil).join(', ')}</p></div></div>
     <div class="cartao"><div class="form">
       <div><div class="muted">CPF</div><b>${esc(fmtCPF(u.cpf) || '—')}</b></div>
       <div><div class="muted">Função</div><b>${esc(u.cargo || '—')}</b></div>

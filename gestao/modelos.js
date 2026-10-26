@@ -22,7 +22,7 @@ async function contextoDocumento(colaboradorId, empEscolhida = null, resp = null
   const emp = empEscolhida || (typeof empresasL === 'function' ? (await empresasL().catch(() => []))[0] : (await api.listar('empresa', 'select=*&ativo=eq.true&limit=1').catch(() => [{}]))[0]) || {};
   const ctx = { empresa: { ...emp, nome_fantasia: emp.nome_fantasia || emp.razao_social || '', cnpj: emp.cnpj ? fmtCNPJ(emp.cnpj) : '', endereco: (typeof empresaEndereco === 'function' && empresaEndereco(emp)) || emp.endereco || '',
                            telefone: emp.telefone ? fmtTel(emp.telefone) : '', _bruto: emp },
-                responsavel: resp ? { ...resp, cpf: resp.cpf ? fmtCPF(resp.cpf) : '' } : { nome: estado.usuario.nome, cargo: '', cpf: '', email: estado.usuario.email || '' },
+                responsavel: resp ? { ...resp, cpf: resp.cpf ? fmtCPF(resp.cpf) : '' } : { nome: estado.usuario.nome, cargo: '', cpf: '', email: emailReal(estado.usuario.email) },
                 usuario: { nome: estado.usuario.nome },
                 hoje: dataBR(hojeISO()), hoje_extenso: dataExtenso(hojeISO()) };
   if (colaboradorId) {
