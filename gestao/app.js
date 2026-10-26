@@ -396,6 +396,7 @@ const MENU = [
   ['Painel do CCO', '#/operacao', [...P_OP, 'manutencao'], 'monitor', 'viagens_atrasadas', true],
   ['Abastecimentos', '#/operacao/abastecimentos', [...P_OP, 'financeiro', 'comprador', 'manutencao'], 'combustivel', 'abast_alertas', true],
   ['Equipamentos', '#/cadastros/equipamentos', [...P_FIN, 'operacao', 'manutencao'], 'caminhao', null, true],
+  ['Atrelamentos cavalo × carreta', '#/frota/atrelamentos', [...P_FIN, 'operacao', 'manutencao'], 'rota', null, true],
   ['Controle de vencimentos', '#/frota/documentos', [...P_FIN, 'operacao', 'manutencao'], 'doc_prazo', 'docs_vencendo', true],
   ['Fechamentos do CCO', '#/fechamentos?setor=cco', ['administrador', 'fch:cco'], 'calendario_ok', 'fch_cco', true],
   ['grupo', 'Manutenção', 'chave'],

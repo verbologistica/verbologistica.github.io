@@ -5,10 +5,10 @@ const editaFrota = () => tem('administrador', 'operacao', 'manutencao');
 // tipo: [rótulo, composições padrão, nomes das composições]
 const TIPOS_EQ = {
   carro: ['Carro', 1, ['Veículo']], motocicleta: ['Motocicleta', 1, ['Motocicleta']], caminhao: ['Caminhão', 1, ['Caminhão']],
-  cavalo_mecanico: ['Cavalo mecânico', 1, ['Cavalo mecânico']], carreta: ['Carreta (cavalo + semirreboque)', 2, ['Cavalo mecânico', 'Semirreboque']],
-  bitrem: ['Bitrem', 3, ['Cavalo mecânico', '1º semirreboque', '2º semirreboque']],
-  tritrem: ['Tritrem', 4, ['Cavalo mecânico', '1º semirreboque', '2º semirreboque', '3º semirreboque']],
-  rodotrem: ['Rodotrem', 4, ['Cavalo mecânico', '1º semirreboque', 'Dolly', '2º semirreboque']],
+  cavalo_mecanico: ['Cavalo mecânico', 1, ['Cavalo mecânico']], carreta: ['Carreta simples (1 semirreboque)', 1, ['Semirreboque']],
+  bitrem: ['Carreta bitrem', 2, ['1º semirreboque', '2º semirreboque']],
+  tritrem: ['Carreta tritrem', 3, ['1º semirreboque', '2º semirreboque', '3º semirreboque']],
+  rodotrem: ['Carreta rodotrem', 3, ['1º semirreboque', 'Dolly', '2º semirreboque']],
   utilitario: ['Utilitário', 1, ['Utilitário']], maquina: ['Máquina / equipamento', 1, ['Máquina']], outro: ['Outro', 1, ['Composição']],
 };
 const SITUACOES_EQ = { operando: ['Operando', 'verde'], manutencao: ['Em manutenção', 'amarelo'], parado: ['Parado', ''], vendido: ['Vendido', ''], baixado: ['Baixado', ''] };
@@ -33,23 +33,27 @@ rota('/cadastros/equipamentos', async tela => {
     api.listar('equipamentos', `select=*,comps:veiculos(placa,codigo_frota,ordem,ativo)${inativos ? '' : '&ativo=eq.true'}&order=codigo_frota.asc.nullslast`),
     api.listar('v_documentos_vencimento', 'select=equipamento_id,faixa').catch(() => []),
     api.listar('veiculos', 'select=id,placa,codigo_frota,descricao_composicao,modelo&equipamento_id=is.null&ativo=eq.true&order=placa').catch(() => [])]);
+  const engs = await api.listar('v_engates', 'select=cavalo_id,carreta_id,cavalo_codigo,carreta_codigo,inicio&ativo=eq.true&fim=is.null').catch(() => []);
+  const comQuem = e => { const g = engs.find(x => x.cavalo_id === e.id || x.carreta_id === e.id); if (!g) return PAPEL_EQ(e.tipo) ? '<span class="tag amarelo">Desatrelado</span>' : '<span class="muted">—</span>';
+    const oid = g.cavalo_id === e.id ? g.carreta_id : g.cavalo_id; return `<a href="#/cadastros/equipamentos/ver/${oid}" onclick="event.stopPropagation()"><b>${esc((g.cavalo_id === e.id ? g.carreta_codigo : g.cavalo_codigo) || '—')}</b></a><div class="muted">desde ${dataBR(g.inicio)}</div>`; };
   const st = {}; venc.forEach(v => { (st[v.equipamento_id] ||= { vencido: 0, vence_30: 0 }); if (v.faixa in st[v.equipamento_id]) st[v.equipamento_id][v.faixa]++; });
   const lista_ = eqs.filter(e => !q || [e.codigo_frota, nomeTipoEq(e), e.marca, e.modelo, ...e.comps.map(c => c.placa + ' ' + (c.codigo_frota || ''))].join(' ').toLowerCase().includes(q));
   tela.innerHTML = `
     <div class="topo"><div><h1>Equipamentos</h1><p class="sub">${lista_.length} equipamento(s) · ${lista_.reduce((s, e) => s + e.comps.filter(c => c.ativo).length, 0)} placa(s)</p></div>
-      <div class="acoes"><a class="btn" href="#/frota/documentos">Documentos a vencer</a><a class="btn" href="#/cadastros/equipamentos${inativos ? '' : '?inativos=1'}">${inativos ? 'Ocultar inativos' : 'Mostrar inativos'}</a>
+      <div class="acoes"><a class="btn" href="#/frota/atrelamentos">Atrelamentos cavalo × carreta</a><a class="btn" href="#/frota/documentos">Documentos a vencer</a><a class="btn" href="#/cadastros/equipamentos${inativos ? '' : '?inativos=1'}">${inativos ? 'Ocultar inativos' : 'Mostrar inativos'}</a>
         ${editaFrota() ? '<a class="btn prim" href="#/cadastros/equipamentos/novo">+ Novo equipamento</a>' : ''}</div></div>
     <form class="filtros" id="filtros"><input name="q" value="${esc(estado.params.get('q') || '')}" placeholder="Buscar por código de frota, placa, marca ou modelo" style="min-width:280px"><button class="btn">Buscar</button></form>
-    <div class="cartao">${lista_.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Código de frota</th><th>Tipo</th><th>Marca / modelo</th><th>Placas</th><th>Situação</th><th>Documentos</th></tr></thead><tbody>
+    <div class="cartao">${lista_.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Código de frota</th><th>Tipo</th><th>Marca / modelo</th><th>Placas</th><th>Atrelado a</th><th>Situação</th><th>Documentos</th></tr></thead><tbody>
       ${lista_.map(e => { const s = st[e.id] || {}; const cs = e.comps.filter(c => c.ativo).sort((a, b) => a.ordem - b.ordem);
         return `<tr class="clicavel" onclick="location.hash='#/cadastros/equipamentos/ver/${e.id}'"><td data-r="Código" class="nowrap"><b>${esc(e.codigo_frota || '—')}</b></td>
         <td data-r="Tipo">${esc(nomeTipoEq(e))}${e.qtd_composicoes > 1 ? ` <span class="muted">(${e.qtd_composicoes} composições)</span>` : ''}${!e.tipo ? ' <span class="tag amarelo">Completar cadastro</span>' : ''}</td>
         <td data-r="Marca / modelo">${esc([e.marca, e.modelo].filter(Boolean).join(' ') || '—')}</td>
         <td data-r="Placas" class="mono">${cs.map(c => esc(c.placa)).join('<br>')}</td>
+        <td data-r="Atrelado a">${comQuem(e)}</td>
         <td data-r="Situação"><span class="tag ${SITUACOES_EQ[e.situacao]?.[1] || ''}">${esc(SITUACOES_EQ[e.situacao]?.[0] || e.situacao)}</span>${e.ativo ? '' : ' <span class="tag">Inativo</span>'}</td>
         <td data-r="Documentos">${s.vencido ? `<span class="tag vermelho">${s.vencido} vencido(s)</span> ` : ''}${s.vence_30 ? `<span class="tag amarelo">${s.vence_30} vencendo</span>` : ''}${!s.vencido && !s.vence_30 ? '<span class="muted">ok</span>' : ''}</td></tr>`; }).join('')}
     </tbody></table></div>` : '<div class="vazio">Nenhum equipamento cadastrado.</div>'}</div>
-    ${soltas.length ? `<div class="cartao"><h2>Placas sem conjunto (${soltas.length})</h2><p class="muted">Desatreladas: paradas, em manutenção ou aguardando um conjunto. Os documentos continuam com elas.</p>
+    ${soltas.length ? `<div class="cartao"><h2>Placas sem equipamento (${soltas.length})</h2><p class="muted">Desatreladas: paradas, em manutenção ou aguardando um conjunto. Os documentos continuam com elas.</p>
       <ul class="lista-simples">${soltas.map(v => `<li><span><a href="#/cadastros/placas/ver/${v.id}" class="mono"><b>${esc(v.placa)}</b></a> ${esc([v.descricao_composicao, v.codigo_frota && 'frota ' + v.codigo_frota].filter(Boolean).join(' · '))}</span>
         ${editaFrota() ? `<button class="btn peq" data-atrelar="${v.id}">Atrelar a um equipamento</button>` : ''}</li>`).join('')}</ul></div>` : ''}`;
   $$('[data-atrelar]', tela).forEach(b => b.addEventListener('click', () => modalTroca(soltas.find(v => v.id === b.dataset.atrelar), null)));
@@ -83,7 +87,7 @@ async function formEquipamento(tela, e = null) {
       ${c.id || unica ? '' : `<label class="campo">No conjunto desde<input type="date" name="c_desde" value="${hojeISO()}"></label>`}</div></div>`;
   tela.innerHTML = `
     <div class="topo"><div><h1>${e ? 'Editar ' + esc(rotuloEq(e)) : 'Novo equipamento'}</h1>
-      <p class="sub">Um equipamento é o conjunto que trabalha junto (ex.: um tritrem). Cada composição tem sua placa, código de frota e documentos.</p></div></div>
+      <p class="sub">Cavalo e carreta são equipamentos separados. Uma carreta bitrem/tritrem tem várias placas (semirreboques), cada uma com seus documentos. O atrelamento cavalo × carreta é registrado com data.</p></div></div>
     <form id="f-eq">
       <div class="cartao"><h2>Equipamento</h2><div class="form">
         <label class="campo">Código de frota<input name="codigo_frota" value="${esc(e?.codigo_frota || '')}" placeholder="Ex.: TT-01"></label>
@@ -103,6 +107,9 @@ async function formEquipamento(tela, e = null) {
         <label class="campo">Situação<select name="situacao">${Object.entries(SITUACOES_EQ).map(([v, t]) => `<option value="${v}" ${v === (e?.situacao || 'operando') ? 'selected' : ''}>${t[0]}</option>`).join('')}</select></label>
         <label class="campo largo">Observações<textarea name="observacoes" rows="2">${esc(e?.observacoes || '')}</textarea></label>
       </div></div>
+      <div class="cartao" id="eg-form" hidden><h2>Atrelamento</h2><p class="muted" id="eg-form-txt"></p><div class="form">
+        <label class="campo" id="eg-form-lab"><span></span><select name="eg_outro"><option value="">Nenhum (desatrelado)</option></select></label>
+        <label class="campo">A partir de<input type="datetime-local" name="eg_desde"></label></div></div>
       <div class="cartao"><h2 id="tit-comps">Composições</h2><p class="muted" id="sub-comps">Todas andam atreladas e formam um só equipamento, mas cada uma tem placa, código de frota e documentos próprios.</p>
         <div id="comps"></div></div>
       <div class="acoes"><button class="btn prim" value="salvar">Salvar</button>
@@ -129,6 +136,21 @@ async function formEquipamento(tela, e = null) {
     $('#sub-comps').textContent = qtd === 1 ? 'Dados da placa usados no CRLV, abastecimentos e manutenção.' : 'Todas andam atreladas e formam um só equipamento, mas cada uma tem placa, código de frota e documentos próprios.';
   };
   desenhar(Math.max(Number(f.qtd.value) || 1, comps.length), tipoIni);
+  // atrelamento cavalo × carreta direto no cadastro
+  const egEqs = await egEquipamentos(true).catch(() => []), egAbertos = await api.listar('v_engates', 'ativo=eq.true&fim=is.null').catch(() => []);
+  const egAtual = e ? egAbertos.find(g => g.cavalo_id === e.id || g.carreta_id === e.id) : null;
+  const egOutroAtual = egAtual ? (egAtual.cavalo_id === e.id ? egAtual.carreta_id : egAtual.cavalo_id) : '';
+  const egSinc = () => { const papel = PAPEL_EQ(f.tipo.value); $('#eg-form').hidden = !papel; if (!papel) return;
+    const alvo = papel === 'cavalo' ? 'carreta' : 'cavalo', sel = f.eg_outro, antes = sel.value || egOutroAtual;
+    $('#eg-form-lab span').textContent = papel === 'cavalo' ? 'Atrelado à carreta' : 'Atrelada ao cavalo';
+    $('#eg-form-txt').textContent = egAtual ? `Desde ${dataHoraBR(egAtual.inicio)}. Se mudar aqui, a troca fica registrada na data informada (o histórico anterior é mantido).`
+      : 'Opcional. Escolha com quem está atrelado e desde quando; as próximas trocas podem ser feitas aqui ou na tela de Atrelamentos.';
+    sel.innerHTML = '<option value="">Nenhum (desatrelado)</option>' + egEqs.filter(x => x.papel === alvo && x.ativo && x.id !== e?.id).map(x => {
+      const g = egAbertos.find(a => (a.cavalo_id === x.id || a.carreta_id === x.id) && a !== egAtual);
+      return `<option value="${x.id}" ${x.id === antes ? 'selected' : ''}>${esc(egRot(x))}${g ? ' — hoje com ' + esc(g.cavalo_id === x.id ? g.carreta_codigo : g.cavalo_codigo) : ''}</option>`; }).join('');
+    if (!f.eg_desde.value) f.eg_desde.value = egAtual ? '' : agoraLocal(); };
+  f.tipo.addEventListener('change', egSinc); egSinc();
+  f.eg_outro.addEventListener('change', () => { if (!f.eg_desde.value) f.eg_desde.value = agoraLocal(); });
   f.tipo.onchange = () => { $('#campo-outro').hidden = f.tipo.value !== 'outro'; const q = TIPOS_EQ[f.tipo.value]?.[1] || 1; f.qtd.value = q; desenhar(q, f.tipo.value, true); };
   f.qtd.onchange = () => desenhar(Math.min(9, Math.max(1, Number(f.qtd.value) || 1)), f.tipo.value);
 
@@ -167,6 +189,14 @@ async function formEquipamento(tela, e = null) {
         }
         // composição retirada no cadastro: fica sem conjunto (com histórico), não é apagada
         for (const old of comps) if (!usados.has(old.id)) await api.rpc('atrelar_placa', { p_veiculo: old.id, p_equipamento: null, p_motivo: 'Retirada do conjunto no cadastro' });
+        const papel = PAPEL_EQ(d.tipo), novoOutro = papel ? (d.eg_outro || '') : egOutroAtual;
+        if (papel && novoOutro !== egOutroAtual) {
+          const quando = d.eg_desde ? new Date(d.eg_desde).toISOString() : new Date().toISOString();
+          try {
+            if (novoOutro) await api.rpc('engatar', { p_cavalo: papel === 'cavalo' ? id : novoOutro, p_carreta: papel === 'cavalo' ? novoOutro : id, p_data: quando, p_motivo: 'Registrado no cadastro do equipamento' });
+            else if (egAtual) await api.rpc('desengatar', { p_id: egAtual.id, p_data: quando, p_motivo: 'Desatrelado no cadastro do equipamento' });
+          } catch (err2) { aviso('Equipamento salvo, mas o atrelamento não foi registrado: ' + err2.message, true); location.hash = '#/cadastros/equipamentos/ver/' + id; return; }
+        }
         delete estado.cache.veiculos; aviso('Equipamento salvo.'); location.hash = '#/cadastros/equipamentos/ver/' + id;
       } catch (err) {
         falha(/veiculos_placa_key|duplicate.*placa/i.test(err.message) ? new Error('Essa placa já está cadastrada em outro equipamento.')
@@ -185,6 +215,7 @@ rota('/cadastros/equipamentos/ver/:id', async (tela, id) => {
     api.listar('veiculos', `equipamento_id=eq.${id}&ativo=eq.true&order=ordem`),
     api.listar('equipamento_documentos', `equipamento_id=eq.${id}&ativo=eq.true${hist ? '' : '&substituido_em=is.null'}&order=tipo,vencimento.desc`),
     centros(), usuarios(), api.listar('v_atrelamentos', `equipamento_id=eq.${id}&order=inicio.desc&limit=200`).catch(() => [])]);
+  const blocoEngate = await htmlEngatesDoEquipamento(e).catch(() => '');
   const anx = {}; await Promise.all(docs.map(async d => (anx[d.id] = await htmlAnexos('documento_equipamento', d.id))));
   const pode = editaFrota();
   const tabelaDocs = ds => ds.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Documento</th><th>Vencimento</th><th>Situação</th><th>Arquivo</th><th></th></tr></thead><tbody>
@@ -217,15 +248,16 @@ rota('/cadastros/equipamentos/ver/:id', async (tela, id) => {
       <div><div class="muted">Km / horímetro</div><b>${e.km_atual != null ? Number(e.km_atual).toLocaleString('pt-BR') + ' km' : '—'}${e.horimetro != null ? ' · ' + e.horimetro + ' h' : ''}</b></div>
       ${e.observacoes ? `<div class="largo"><div class="muted">Observações</div><div style="white-space:pre-line">${esc(e.observacoes)}</div></div>` : ''}
     </div></div>
+    ${blocoEngate}
     ${comps.map(c => `<div class="cartao"><div class="topo" style="margin:0 0 8px"><div><h2 style="margin:0">${esc(c.descricao_composicao || 'Composição ' + c.ordem)} · <span class="mono">${esc(c.placa)}</span></h2>
         <div class="muted">${esc([c.codigo_frota && 'Frota ' + c.codigo_frota, c.renavam && 'Renavam ' + c.renavam, c.chassi && 'Chassi ' + c.chassi, c.uf_registro && 'Registro ' + c.uf_registro,
           c.categoria_licenciamento === 'caminhao' ? 'CRLV: calendário de caminhão' : 'CRLV: calendário geral', c.capacidade].filter(Boolean).join(' · '))}</div></div>
-        <div class="acoes">${pode ? `<button class="btn peq" data-doc="${c.id}">+ Documento</button><button class="btn peq" data-trocar="${c.id}">Trocar / desatrelar</button>` : ''}
+        <div class="acoes">${pode ? `<button class="btn peq" data-doc="${c.id}">+ Documento</button><button class="btn peq" data-trocar="${c.id}">Trocar placa</button>` : ''}
           <a class="btn peq" href="#/cadastros/placas/ver/${c.id}">Histórico da placa</a></div></div>
       ${tabelaDocs(docs.filter(d => d.veiculo_id === c.id))}</div>`).join('')}
     <div class="cartao"><div class="topo" style="margin:0 0 8px"><h2 style="margin:0">Documentos do conjunto</h2>${pode ? '<button class="btn peq" data-doc="">+ Documento do conjunto</button>' : ''}</div>
       ${tabelaDocs(docs.filter(d => !d.veiculo_id))}</div>
-    <div class="cartao"><div class="topo" style="margin:0 0 8px"><h2 style="margin:0">Histórico de atrelamentos</h2>
+    <div class="cartao"><div class="topo" style="margin:0 0 8px"><h2 style="margin:0">Histórico das placas deste equipamento</h2>
         <form class="filtros" id="f-data" style="margin:0"><label class="muted" style="align-self:center">Composição em</label><input type="datetime-local" name="quando" required><button class="btn peq">Ver</button></form></div>
       <div id="na-data"></div>
       ${tabelaHistorico(hists, 'placa')}</div>`;
@@ -233,6 +265,7 @@ rota('/cadastros/equipamentos/ver/:id', async (tela, id) => {
   const novoDoc = alvo => modalDocumento(comps, id, alvo);
   $('#novo-doc')?.addEventListener('click', () => novoDoc(''));
   $$('[data-trocar]', tela).forEach(b => b.addEventListener('click', () => modalTroca(comps.find(c => c.id === b.dataset.trocar), e)));
+  ligarEngatesDoEquipamento(tela, e);
   $('#f-data').onsubmit = async ev => { ev.preventDefault(); const q = formDados(ev.target).quando;
     try { const r = await api.rpc('composicao_na_data', { p_equipamento: id, p_data: new Date(q).toISOString() });
       $('#na-data').innerHTML = `<div class="conferencia" style="margin-bottom:10px">Em ${dataHoraBR(new Date(q).toISOString())}: ${r.length ? r.map(x => `<b>${esc(x.descricao_composicao || 'Composição ' + x.ordem)}</b> <span class="mono">${esc(x.placa)}</span>`).join(' · ') : 'nenhuma placa registrada neste conjunto'}</div>`;
