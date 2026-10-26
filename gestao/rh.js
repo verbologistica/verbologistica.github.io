@@ -106,7 +106,7 @@ async function formColaborador(tela, c = null) {
         ${campo('Jornada', inp('jornada', 'placeholder="Ex.: 44h semanais / 12x36"'))}
         ${campo('Escala', inp('escala', 'placeholder="Ex.: Turno A, 2MW"'))}
         ${campo('Salário (R$)', `<input name="salario" inputmode="decimal" value="${c?.salario != null ? Number(c.salario).toFixed(2).replace('.', ',') : ''}">`)}
-        ${campo('Gestor imediato', sel('gestor_colaborador_id', cols.filter(x => x.id !== c?.id).map(x => [x.id, x.nome]), c?.gestor_colaborador_id, 'Nenhum'))}
+        <div class="campo"><span>Gestor imediato</span>${htmlSelPessoas('gestor', c?.gestor ? [c.gestor] : [], 'Buscar colaborador, usuário ou fornecedor…', 1)}</div>
         ${campo('Acesso ao sistema (usuário)', sel('usuario_id', us.filter(u => u.ativo).map(u => [u.id, u.nome + ' · ' + u.email]), c?.usuario_id, 'Sem acesso'))}
         ${c?.status === 'desligado' || c?.data_desligamento ? campo('Data do desligamento', dt('data_desligamento')) + campo('Motivo do desligamento', inp('motivo_desligamento'), true) : ''}
       </div></div>
@@ -155,6 +155,7 @@ async function formColaborador(tela, c = null) {
   f.cep.addEventListener('input', async e => { const d = soDigitos(e.target.value).slice(0, 8); e.target.value = fmtCEP(d);
     if (d.length === 8 && !f.logradouro.value) try { const x = await consultarCEP(d); f.logradouro.value = x.logradouro || ''; f.bairro.value = x.bairro || ''; f.cidade.value = x.localidade || ''; f.uf.value = x.uf || ''; f.numero.focus(); } catch {} });
   ligarNovoCargo(f.cargo_id);
+  pessoasOrg().then(ps => ligarSelPessoas(f, ps.filter(p => !c || p.colaborador_id !== c.id && !(c.usuario_id && p.usuario_id === c.usuario_id))));
   let _usCPF = null;
   f.cpf?.addEventListener('input', async () => { const d = soDigitos(f.cpf.value); if (d.length !== 11) return;
     _usCPF = _usCPF || await api.listar('usuarios', 'select=id,nome,email,cpf,telefone&ativo=eq.true').catch(() => []);
@@ -182,7 +183,7 @@ async function formColaborador(tela, c = null) {
     for (const [k, val] of Object.entries(d)) { if (k.startsWith('_')) continue; dados[k] = typeof val === 'boolean' ? val : (val === '' ? null : val); }
     Object.assign(dados, { matricula: String(d.matricula || '').trim() || null, cpf: soDigitos(d.cpf) || null, telefone: soDigitos(d.telefone) || null, telefone2: soDigitos(d.telefone2) || null,
       emergencia_telefone: soDigitos(d.emergencia_telefone) || null, cep: soDigitos(d.cep) || null, salario: num(d.salario),
-      banco: (d.banco || '').match(/^\d{1,3}/)?.[0] || d.banco || null });
+      banco: (d.banco || '').match(/^\d{1,3}/)?.[0] || d.banco || null, gestor: lerPessoas(d.gestor)[0] || null });
     await ocupado(e.submitter, async () => {
       try {
         let id = c?.id;
@@ -215,7 +216,7 @@ rota('/rh/colaboradores/ver/:id', async (tela, id) => {
   const conteudo = {
     dados: `<div class="cartao"><div class="form">
         ${linha('Matrícula', c.matricula)}${linha('CPF', fmtCPF(c.cpf || ''))}${linha('Nascimento', c.data_nascimento ? `${dataBR(c.data_nascimento)} (${idade(c.data_nascimento)} anos)` : '')}
-        ${linha('RG', [c.rg, c.rg_orgao, c.rg_uf].filter(Boolean).join(' '))}${linha('Estado civil', c.estado_civil)}${linha('Escolaridade', c.escolaridade)}
+        ${linha('RG', fmtRG(c.rg, c.rg_orgao, c.rg_uf))}${linha('Estado civil', c.estado_civil)}${linha('Escolaridade', c.escolaridade)}
         ${linha('Mãe', c.nome_mae)}${linha('PIS', c.pis)}${linha('CTPS', [c.ctps_numero, c.ctps_serie, c.ctps_uf].filter(Boolean).join(' / '))}
         ${linha('CNH', c.cnh_categoria ? `${c.cnh_numero || ''} · ${c.cnh_categoria}${c.cnh_ear ? ' · EAR' : ''} · validade ${dataBR(c.cnh_validade) || '—'}` : '')}
         ${linha('Telefone', [c.telefone, c.telefone2].filter(Boolean).map(fmtTel).join(' · '))}${linha('E-mail', c.email_corporativo || c.email)}
@@ -223,7 +224,7 @@ rota('/rh/colaboradores/ver/:id', async (tela, id) => {
         ${linha('Emergência', [c.emergencia_nome, c.emergencia_parentesco, fmtTel(c.emergencia_telefone || '')].filter(Boolean).join(' · '))}
         ${linha('Contrato', [TIPOS_CONTRATO[c.tipo_contrato], c.jornada, c.escala].filter(Boolean).join(' · '))}
         ${linha('Admissão', dataBR(c.data_admissao))}${c.experiencia_fim2 && ['clt', 'experiencia'].includes(c.tipo_contrato) ? linha('Experiência', `${dataBR(c.experiencia_fim1)} e ${dataBR(c.experiencia_fim2)}`) : ''}
-        ${c.salario != null ? linha('Salário', brl(c.salario)) : ''}${linha('Pix', c.pix_chave)}
+        ${c.salario != null ? linha('Salário', brl(c.salario)) : ''}${linha('Pix', c.pix_chave)}${linha('Gestor imediato', c.gestor?.nome ? c.gestor.nome + (c.gestor.fornecedor_id ? ' (fornecedor)' : c.gestor.externo ? ' (externo)' : '') : '')}
         ${c.status === 'desligado' ? linha('Desligamento', `${dataBR(c.data_desligamento)} · ${c.motivo_desligamento || ''}`) : ''}
         ${c.observacoes ? `<div class="largo"><div class="muted">Observações</div><div style="white-space:pre-line">${esc(c.observacoes)}</div></div>` : ''}
       </div></div>`,

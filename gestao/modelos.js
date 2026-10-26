@@ -34,7 +34,7 @@ async function contextoDocumento(colaboradorId, empEscolhida = null, resp = null
       ctx.colaborador = {
         ...c, cargo: c.cargo?.nome || '', cbo: c.cargo?.cbo || '', setor: c.setor?.nome || '',
         cpf: fmtCPF(c.cpf || ''), data_nascimento: dataBR(c.data_nascimento), data_admissao: dataBR(c.data_admissao), cnh_validade: dataBR(c.cnh_validade),
-        telefone: fmtTel(c.telefone || ''), rg: [c.rg, c.rg_orgao, c.rg_uf].filter(Boolean).join(' '),
+        telefone: fmtTel(c.telefone || ''), rg: fmtRG(c.rg, c.rg_orgao, c.rg_uf, ' '),
         endereco: [c.logradouro, c.numero, c.complemento, c.bairro, [c.cidade, c.uf].filter(Boolean).join('/'), c.cep && 'CEP ' + c.cep].filter(Boolean).join(', '),
         emergencia: [c.emergencia_nome, c.emergencia_parentesco, fmtTel(c.emergencia_telefone || '')].filter(Boolean).join(' · '),
         dados_bancarios: [c.banco && 'Banco ' + c.banco, c.agencia && 'Ag. ' + c.agencia, c.conta && 'Conta ' + c.conta, c.pix_chave && 'Pix ' + c.pix_chave].filter(Boolean).join(' · '),

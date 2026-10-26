@@ -588,7 +588,8 @@ async function desenharCasca() {
         <div class="menu">${htmlMenu(pend, melhor)}</div>
         <div class="usuario">${esc(estado.usuario.nome)}<br>
           <a href="#/perfil" style="color:#fff">Meu perfil</a> ·
-          <a href="#" id="sair" style="color:#fff">Sair</a></div>
+          <a href="#" id="sair" style="color:#fff">Sair</a>
+          <div><a href="#" id="instalar" class="lk-instalar" style="color:#DDA936">Instalar no celular</a></div></div>
       </nav>
       <main class="conteudo" id="tela"><div class="carregando">Carregando…</div></main>
     </div>
@@ -603,6 +604,8 @@ async function desenharCasca() {
   // deixa o item da tela atual visível no menu na primeira vez
   $('.lateral a.ativo')?.scrollIntoView({ block: 'nearest' });
   $('#sair').onclick = async e => { e.preventDefault(); await api.sair(); location.hash = ''; iniciar(); };
+  $('#instalar').onclick = e => { e.preventDefault(); instalarApp(); };
+  if (appInstalado()) $('#instalar').parentElement.hidden = true;
 }
 
 // Rolagem: ao voltar para uma tela, ela reabre onde estava; ao salvar/atualizar a mesma tela, não pula para o topo
@@ -1022,11 +1025,36 @@ async function pessoasAcao() {
     (await usuarios().catch(() => [])).filter(u => u.ativo).map(u => ({ chave: 'u:' + u.id, usuario_id: u.id, nome: u.nome, email: u.email, info: 'usuário' })));
   return _pessoasAcao;
 }
-const pessoaRef = p => { const o = { nome: p.nome }; if (p.usuario_id) o.usuario_id = p.usuario_id; else if (p.colaborador_id) o.colaborador_id = p.colaborador_id; else o.externo = true; if (p.email) o.email = p.email; return o; };
-const chaveSelPessoa = p => p.usuario_id ? 'u:' + p.usuario_id : p.colaborador_id ? 'c:' + p.colaborador_id : 'x:' + semAcento(p.nome || '');
+const pessoaRef = p => { const o = { nome: p.nome }; if (p.usuario_id) o.usuario_id = p.usuario_id; else if (p.colaborador_id) o.colaborador_id = p.colaborador_id; else if (p.fornecedor_id) o.fornecedor_id = p.fornecedor_id; else o.externo = true; if (p.email) o.email = p.email; if (p.info && (p.fornecedor_id || !p.usuario_id && !p.colaborador_id)) o.info = p.info; return o; };
+let _pessoasOrg = null;
+async function pessoasOrg() { if (!_pessoasOrg) _pessoasOrg = await api.rpc('pessoas_org').catch(() => pessoasAcao()); return _pessoasOrg; }
+const chaveSelPessoa = p => p.usuario_id ? 'u:' + p.usuario_id : p.colaborador_id ? 'c:' + p.colaborador_id : p.fornecedor_id ? 'f:' + p.fornecedor_id : 'x:' + semAcento(p.nome || '');
+// ---------- instalar como aplicativo (Android: botão do navegador; iPhone: Adicionar à Tela de Início) ----------
+let _evInstalar = null;
+addEventListener('beforeinstallprompt', e => { e.preventDefault(); _evInstalar = e; });
+const appInstalado = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+async function instalarApp() {
+  if (appInstalado()) return aviso('O Verbo Gestão já está aberto como aplicativo neste aparelho.');
+  if (_evInstalar) { _evInstalar.prompt(); const r = await _evInstalar.userChoice.catch(() => null); _evInstalar = null; if (r?.outcome === 'accepted') aviso('Pronto! O ícone do Verbo Gestão foi para a tela inicial.'); return; }
+  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const safari = ios && !/crios|fxios|edgios/i.test(navigator.userAgent);
+  const url = location.origin + location.pathname;
+  await modal(`<form><h2>Instalar o Verbo Gestão no celular</h2>
+    ${ios ? `<ol class="passos-inst">${safari ? '' : '<li>No iPhone, a instalação só funciona pelo <b>Safari</b>: abra este endereço nele: <b>' + esc(url) + '</b></li>'}
+        <li>Toque no botão <b>Compartilhar</b> (o quadrado com a seta para cima, na barra de baixo).</li><li>Role e toque em <b>Adicionar à Tela de Início</b>.</li><li>Toque em <b>Adicionar</b>. O ícone da Verbo aparece na tela inicial e abre como aplicativo.</li></ol>`
+      : `<ol class="passos-inst"><li>Abra este endereço no <b>Google Chrome</b> do celular: <b>${esc(url)}</b></li><li>Toque no menu <b>⋮</b> (canto superior direito).</li>
+        <li>Toque em <b>Instalar app</b> (ou <b>Adicionar à tela inicial › Instalar</b>).</li><li>Confirme. O ícone da Verbo aparece na tela inicial e abre como aplicativo.</li></ol>
+        <p class="muted">Se aparecer "Abrir no app" do app de <b>Abastecimentos</b> da Verbo, toque em continuar no navegador e use o menu ⋮ › Instalar app. Os dois aplicativos podem ficar instalados juntos.</p>`}
+    <p class="muted">Depois de instalado, o login fica salvo e as atualizações chegam sozinhas.</p>
+    <div class="rodape"><button type="button" class="btn" data-copiar>Copiar endereço</button><button type="button" class="btn prim" data-fechar>Entendi</button></div></form>`,
+    { aoAbrir: f => { $('[data-copiar]', f).onclick = () => navigator.clipboard?.writeText(url).then(() => aviso('Endereço copiado.')).catch(() => {}); } });
+}
+// RG com órgão/UF sem repetir a UF (ex.: 1493427806 · SSP/BA)
+function fmtRG(rg, orgao, uf, sep = ' · ') { let o = String(orgao || '').trim().toUpperCase().replace(/[\s/\-.]+/g, ''); const u = String(uf || '').trim().toUpperCase();
+  if (u && o.length > u.length && o.endsWith(u)) o = o.slice(0, -u.length); return [String(rg || '').trim(), [o, u].filter(Boolean).join('/')].filter(Boolean).join(sep); }
 const nomesPessoas = l => (l || []).map(p => p.nome + (p.externo ? ' (externo)' : '')).join(', ');
 const lerPessoas = v => { try { const a = JSON.parse(v || '[]'); return Array.isArray(a) ? a : []; } catch { return []; } };
-const htmlSelPessoas = (name, sel = [], ph = 'Buscar pessoa…') => `<div class="selpes" data-selpes="${name}"><input type="hidden" name="${name}" value="${esc(JSON.stringify(sel || []))}">
+const htmlSelPessoas = (name, sel = [], ph = 'Buscar pessoa…', max = 0) => `<div class="selpes" data-selpes="${name}"${max ? ` data-max="${max}"` : ''}><input type="hidden" name="${name}" value="${esc(JSON.stringify(sel || []))}">
   <div class="selpes-chips"></div><input type="text" class="selpes-q" placeholder="${esc(ph)}" autocomplete="off"><div class="selpes-lista" hidden></div></div>`;
 function ligarSelPessoas(raiz, pessoas) {
   $$('[data-selpes]', raiz).forEach(box => {
@@ -1034,7 +1062,7 @@ function ligarSelPessoas(raiz, pessoas) {
     const hid = $('input[type=hidden]', box), q = $('.selpes-q', box), lista = $('.selpes-lista', box), chips = $('.selpes-chips', box);
     let sel = lerPessoas(hid.value), achados = [];
     const gravar = () => { hid.value = JSON.stringify(sel); desenhar(); };
-    const desenhar = () => { chips.innerHTML = sel.map((p, i) => `<span class="selpes-chip${p.externo ? ' ext' : ''}">${esc(p.nome)}${p.externo ? ' <small>externo</small>' : p.colaborador_id ? ' <small>RH</small>' : ''}<button type="button" data-tira="${i}" title="Tirar">✕</button></span>`).join(''); };
+    const desenhar = () => { chips.innerHTML = sel.map((p, i) => `<span class="selpes-chip${p.externo ? ' ext' : ''}">${esc(p.nome)}${p.externo ? ' <small>externo</small>' : p.fornecedor_id ? ' <small>fornecedor</small>' : p.colaborador_id ? ' <small>RH</small>' : ''}<button type="button" data-tira="${i}" title="Tirar">✕</button></span>`).join(''); };
     const fechar = () => { lista.hidden = true; };
     const mostrar = () => {
       const t = q.value.trim(), ja = new Set(sel.map(chaveSelPessoa));
@@ -1048,9 +1076,10 @@ function ligarSelPessoas(raiz, pessoas) {
         <label class="campo largo">Empresa / função<input name="info" placeholder="Ex.: Consultor, cliente Bracell"></label><label class="campo largo">E-mail<input type="email" name="email"></label></div>
         <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Incluir</button></div></form>`);
       if (!r?.nome) return;
+      if (box.dataset.max === '1') sel = [];
       sel.push({ nome: r.nome + (r.info ? ' · ' + r.info : ''), externo: true, ...(r.email ? { email: r.email } : {}) }); q.value = ''; gravar(); fechar();
     };
-    const escolher = i => { const p = achados[i]; if (!p) return; sel.push(pessoaRef(p)); q.value = ''; gravar(); mostrar(); q.focus(); };
+    const escolher = i => { const p = achados[i]; if (!p) return; if (box.dataset.max === '1') sel = []; sel.push(pessoaRef(p)); q.value = ''; gravar(); if (box.dataset.max === '1') { fechar(); q.blur(); hid.dispatchEvent(new Event('change', { bubbles: true })); } else { mostrar(); q.focus(); } };
     q.addEventListener('focus', mostrar); q.addEventListener('input', mostrar);
     q.addEventListener('blur', () => setTimeout(fechar, 150));
     q.addEventListener('keydown', e => {

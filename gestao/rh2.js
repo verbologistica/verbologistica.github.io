@@ -68,7 +68,7 @@ function avisoLei(...chaves) {
 }
 
 // ===================== Auxiliares =====================
-const colabsRH = (extra = '') => api.listar('colaboradores', `select=id,nome,matricula,cargo_id,setor_id,status,data_admissao,experiencia_fim1,experiencia_fim2,usuario_id,gestor_colaborador_id,tipo_contrato&ativo=eq.true${extra}&order=nome`);
+const colabsRH = (extra = '') => api.listar('colaboradores', `select=id,nome,matricula,cargo_id,setor_id,status,data_admissao,experiencia_fim1,experiencia_fim2,usuario_id,gestor_colaborador_id,gestor,tipo_contrato&ativo=eq.true${extra}&order=nome`);
 const nomeColabOp = (cs, cgs) => c => `${c.nome}${cgs.find(x => x.id === c.cargo_id) ? ' · ' + cgs.find(x => x.id === c.cargo_id).nome : ''}`;
 const MEDIDAS = { orientacao: ['Orientação registrada', 1, ''], advertencia_verbal: ['Advertência verbal', 2, 'amarelo'], advertencia_escrita: ['Advertência escrita', 3, 'amarelo'],
   suspensao: ['Suspensão', 4, 'vermelho'], justa_causa: ['Justa causa', 5, 'vermelho'] };
@@ -750,16 +750,150 @@ rota('/rh/clima/resultado/:id', async (tela, id) => {
 });
 
 // ===================== Organograma =====================
+// Monta-se sozinho a partir do "gestor imediato" de cada colaborador (que pode ser colaborador, usuário, fornecedor/prestador ou externo).
+const ORG_CORES = ['#19966e', '#bb881a', '#3786c3', '#bd5833', '#a067ac', '#2aa1a8', '#c2577f', '#6f8f2f', '#5d7fbf', '#b7742b', '#7d6bc2', '#4f9d6b', '#9a7b4f'];
+const orgIniciais = n => String(n || '?').replace(/\s+(d[aeo]s?|e)\s+/gi, ' ').trim().split(/\s+/).filter(Boolean).map((p, i, a) => i === 0 || i === a.length - 1 ? p[0] : '').join('').toUpperCase().slice(0, 2);
+function orgMontar(cs, cgs, ss) {
+  const nos = new Map(); const corSetor = {}; ss.forEach((s, i) => (corSetor[s.id] = ORG_CORES[i % ORG_CORES.length]));
+  for (const c of cs) { const st = ss.find(x => x.id === c.setor_id);
+    nos.set('c:' + c.id, { k: 'c:' + c.id, tipo: 'colab', id: c.id, nome: c.nome, cargo: cgs.find(x => x.id === c.cargo_id)?.nome || '', setor: st?.nome || '', setor_id: c.setor_id, cor: corSetor[c.setor_id] || '#5d6f68', status: c.status, admissao: c.data_admissao, c, filhos: [] }); }
+  const porUsuario = new Map(cs.filter(c => c.usuario_id).map(c => [c.usuario_id, 'c:' + c.id]));
+  const chaveGestor = g => !g ? null : g.colaborador_id ? 'c:' + g.colaborador_id : g.usuario_id ? (porUsuario.get(g.usuario_id) || 'u:' + g.usuario_id) : g.fornecedor_id ? 'f:' + g.fornecedor_id : 'x:' + semAcento(String(g.nome || '').toLowerCase());
+  for (const n of nos.values()) {
+    const g = n.c.gestor || (n.c.gestor_colaborador_id ? { colaborador_id: n.c.gestor_colaborador_id } : null); const k = chaveGestor(g); if (!k || k === n.k) continue;
+    if (!nos.has(k)) { if (k.startsWith('c:')) continue;
+      nos.set(k, { k, tipo: k.startsWith('f:') ? 'prestador' : 'externo', nome: g.nome, cargo: k.startsWith('f:') ? 'Prestador de serviço' : k.startsWith('u:') ? 'Usuário do sistema' : (g.info || 'Externo'), setor: '', cor: '#DDA936', filhos: [] }); }
+    n.pai = k;
+  }
+  // evita ciclo (dados antigos): quem cair em ciclo vira raiz
+  for (const n of nos.values()) { let p = n.pai, passos = 0; while (p && passos++ < 40) { if (p === n.k) { n.pai = null; break; } p = nos.get(p)?.pai; } }
+  for (const n of nos.values()) if (n.pai && nos.has(n.pai)) nos.get(n.pai).filhos.push(n);
+  const ord = (a, b) => (b.filhos.length > 0) - (a.filhos.length > 0) || a.nome.localeCompare(b.nome, 'pt-BR');
+  for (const n of nos.values()) n.filhos.sort(ord);
+  const total = n => n.filhos.reduce((a, f) => a + 1 + total(f), 0);
+  for (const n of nos.values()) n.equipe = total(n);
+  const raizes = [...nos.values()].filter(n => !n.pai || !nos.has(n.pai)).sort((a, b) => b.equipe - a.equipe || a.nome.localeCompare(b.nome, 'pt-BR'));
+  return { nos, raizes, corSetor };
+}
+function orgCard(n, abertos) {
+  const sub = n.filhos.length;
+  return `<div class="og-card og-${n.tipo}" data-k="${esc(n.k)}" style="--c:${n.cor}" tabindex="0">
+    <div class="og-topo"><span class="og-av">${esc(orgIniciais(n.nome))}</span><div class="og-id"><b>${esc(n.nome)}</b><span>${esc(n.cargo || '—')}</span></div></div>
+    <div class="og-pe">${n.tipo === 'colab' ? (n.setor ? `<span class="og-setor">${esc(n.setor)}</span>` : '<span class="og-setor sem">Sem setor</span>') : `<span class="og-setor ext">${n.tipo === 'prestador' ? 'Prestador' : 'Externo'}</span>`}
+      ${sub ? `<button type="button" class="og-tg" data-tg="${esc(n.k)}" title="${abertos.has(n.k) ? 'Recolher' : 'Expandir'} equipe">${ico('pessoas')} ${n.equipe}<i>${abertos.has(n.k) ? '−' : '+'}</i></button>` : ''}</div></div>`;
+}
+function orgArvore(n, abertos, vis) {
+  if (vis && !vis.has(n.k)) return '';
+  const fs = n.filhos.filter(f => !vis || vis.has(f.k));
+  const aberto = abertos.has(n.k) && fs.length;
+  const folhas = fs.every(f => !f.filhos.some(g => !vis || vis.has(g.k)));
+  return `<li>${orgCard(n, abertos)}${aberto ? `<ul class="${folhas && fs.length > 3 ? 'og-vert' : ''}">${fs.map(f => orgArvore(f, abertos, vis)).join('')}</ul>` : ''}</li>`;
+}
 rota('/rh/organograma', async tela => {
   const [cs, cgs, ss] = await Promise.all([colabsRH('&status=in.(ativo,ferias,afastado,aviso_previo,em_admissao)'), cargosL(), setoresL()]);
-  const filhos = id => cs.filter(c => c.gestor_colaborador_id === id);
-  const no = (c, nivel = 0) => nivel > 8 ? '' : `<li><a class="org-no" href="#/rh/colaboradores/ver/${c.id}"><b>${esc(c.nome)}</b><span>${esc(cgs.find(x => x.id === c.cargo_id)?.nome || '')}</span></a>${filhos(c.id).length ? `<ul>${filhos(c.id).map(f => no(f, nivel + 1)).join('')}</ul>` : ''}</li>`;
-  const raizes = cs.filter(c => !c.gestor_colaborador_id || !cs.some(x => x.id === c.gestor_colaborador_id));
-  const porSetor = ss.filter(s => s.ativo).map(s => [s, raizes.filter(c => c.setor_id === s.id)]).filter(x => x[1].length);
-  const semSetor = raizes.filter(c => !c.setor_id);
-  tela.innerHTML = `<div class="topo"><div><h1>Organograma</h1><p class="sub">${cs.length} pessoa(s). Defina o gestor imediato na ficha de cada colaborador.</p></div><button class="btn" onclick="window.print()">Imprimir</button></div>
-    ${porSetor.map(([s, l]) => `<div class="cartao"><h2>${esc(s.nome)} <span class="muted">(${cs.filter(c => c.setor_id === s.id).length})</span></h2><ul class="org">${l.map(c => no(c)).join('')}</ul></div>`).join('')}
-    ${semSetor.length ? `<div class="cartao"><h2>Sem setor definido</h2><ul class="org">${semSetor.map(c => no(c)).join('')}</ul></div>` : ''}`;
+  const setores = ss.filter(s => s.ativo);
+  let M = orgMontar(cs, cgs, setores);
+  const abertos = new Set([...M.nos.values()].filter(n => n.filhos.length).map(n => n.k));
+  let zoom = 1, filtroSetor = [], busca = '';
+  const semGestor = () => cs.filter(c => { const n = M.nos.get('c:' + c.id); return !n.pai; });
+  tela.innerHTML = `<div class="topo"><div><h1>Organograma</h1><p class="sub">Monta-se sozinho a partir do gestor imediato de cada pessoa. Clique em alguém para ver detalhes ou trocar o gestor.</p></div>
+      <div class="acoes"><button class="btn" data-imp>${ico('documento')} Imprimir / PDF</button></div></div>
+    <div class="og-kpis" data-kpis></div>
+    <div class="og-wrap"><div class="og-barra">
+        <div class="og-busca">${ico('busca')}<input type="search" placeholder="Buscar pessoa ou cargo…" data-busca list="og-nomes"><datalist id="og-nomes">${[...M.nos.values()].map(n => `<option value="${esc(n.nome)}">`).join('')}</datalist></div>
+        <div data-fsetor></div>
+        <div class="og-zoom"><button type="button" class="btn peq" data-z="-1" title="Diminuir">−</button><span data-zv>100%</span><button type="button" class="btn peq" data-z="1" title="Aumentar">+</button><button type="button" class="btn peq" data-z="0">Ajustar</button></div>
+        <div class="og-zoom"><button type="button" class="btn peq" data-tudo="1">Expandir tudo</button><button type="button" class="btn peq" data-tudo="0">Recolher</button></div></div>
+      <div class="og-tela" data-tela><div class="og-arvore" data-arv></div></div></div>
+    <div class="og-gaveta" data-gaveta hidden></div>`;
+  const $arv = $('[data-arv]', tela), $tela = $('[data-tela]', tela), $gav = $('[data-gaveta]', tela);
+  // filtro de setor (multi, padrão Todos)
+  $('[data-fsetor]', tela).innerHTML = `<form class="filtros og-filtro"><select name="og_setor"><option value="">Todos os setores</option>${setores.map(s => `<option value="${s.id}">${esc(s.nome)}</option>`).join('')}</select></form>`;
+  const $ff = $('.og-filtro', tela); multiFiltro($('select', $ff));
+  $ff.addEventListener('submit', e => { e.preventDefault(); const v = $('input[name=og_setor]', $ff)?.value || ''; filtroSetor = v ? v.split(',').filter(Boolean) : []; desenhar(); });
+  const visiveis = () => {
+    if (!filtroSetor.length) return null;
+    const vis = new Set();
+    for (const n of M.nos.values()) if (n.tipo === 'colab' && filtroSetor.includes(n.setor_id)) { let p = n; while (p) { vis.add(p.k); p = p.pai ? M.nos.get(p.pai) : null; } const desc = x => x.filhos.forEach(f => { vis.add(f.k); desc(f); }); desc(n); }
+    return vis;
+  };
+  const desenhar = () => {
+    const vis = visiveis(); const rs = M.raizes.filter(r => !vis || vis.has(r.k));
+    const kGestores = [...M.nos.values()].filter(n => n.filhos.length).length, sg = semGestor().length;
+    $('[data-kpis]', tela).innerHTML = `<div class="og-kpi"><b>${cs.length}</b><span>pessoas</span></div><div class="og-kpi"><b>${new Set(cs.map(c => c.setor_id).filter(Boolean)).size}</b><span>setores</span></div>
+      <div class="og-kpi"><b>${kGestores}</b><span>gestores com equipe</span></div><div class="og-kpi"><b>${[...M.nos.values()].filter(n => n.tipo !== 'colab').length}</b><span>prestadores / externos</span></div>
+      <button type="button" class="og-kpi ${sg > 1 ? 'alerta' : ''}" data-semg><b>${sg}</b><span>sem gestor definido ${sg ? '›' : ''}</span></button>`;
+    $arv.innerHTML = `<ul class="og-raiz"><li><div class="og-empresa"><img src="logo.png" alt="Verbo Logística"><span>${cs.length} pessoas</span></div>
+      ${rs.length ? `<ul>${rs.map(r => orgArvore(r, abertos, vis)).join('')}</ul>` : ''}</li></ul>`;
+    $arv.style.transform = `scale(${zoom})`; $('[data-zv]', tela).textContent = Math.round(zoom * 100) + '%';
+    $('[data-semg]', tela).onclick = listaSemGestor;
+    if (busca) destacar(busca, false);
+  };
+  const ajustar = () => { $arv.style.transform = 'scale(1)'; const w = $arv.scrollWidth, cw = $tela.clientWidth - 40; zoom = Math.max(0.35, Math.min(1, cw / w)); desenhar(); $tela.scrollLeft = ($arv.scrollWidth * zoom - $tela.clientWidth) / 2; };
+  const destacar = (t, rolar = true) => {
+    $$('.og-card.achado', $arv).forEach(e => e.classList.remove('achado')); if (!t) return;
+    const alvo = [...M.nos.values()].filter(n => casaBusca(n.nome + ' ' + n.cargo + ' ' + n.setor, t));
+    if (!alvo.length) return;
+    let abriu = false; alvo.forEach(n => { let p = n.pai; while (p) { if (!abertos.has(p)) { abertos.add(p); abriu = true; } p = M.nos.get(p)?.pai; } });
+    if (abriu) { desenhar(); }
+    alvo.forEach(n => $(`.og-card[data-k="${CSS.escape(n.k)}"]`, $arv)?.classList.add('achado'));
+    if (rolar) $(`.og-card[data-k="${CSS.escape(alvo[0].k)}"]`, $arv)?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+  };
+  // gaveta de detalhes
+  const abrirGaveta = k => {
+    const n = M.nos.get(k); if (!n) return; const pai = n.pai ? M.nos.get(n.pai) : null;
+    $gav.innerHTML = `<div class="og-gv-cab" style="--c:${n.cor}"><span class="og-av">${esc(orgIniciais(n.nome))}</span><div><b>${esc(n.nome)}</b><span>${esc(n.cargo || '')}</span></div><button type="button" class="btn peq" data-fg title="Fechar">✕</button></div>
+      <div class="og-gv-corpo">
+        ${n.tipo === 'colab' ? `<div class="og-gv-l"><span>Setor</span><b>${esc(n.setor || '—')}</b></div><div class="og-gv-l"><span>Situação</span><b>${esc((typeof STATUS_COLAB !== 'undefined' && STATUS_COLAB[n.status]?.[0]) || n.status || '—')}</b></div>
+          ${n.admissao ? `<div class="og-gv-l"><span>Admissão</span><b>${dataBR(n.admissao)}</b></div>` : ''}` : `<div class="og-gv-l"><span>Tipo</span><b>${n.tipo === 'prestador' ? 'Fornecedor / prestador de serviço' : 'Pessoa externa'}</b></div>`}
+        <div class="og-gv-l"><span>Gestor imediato</span><b>${pai ? `<a href="#" data-ir="${esc(pai.k)}">${esc(pai.nome)}</a>` : '—'}</b></div>
+        ${n.tipo === 'colab' && editaRH() ? `<div class="og-gv-sel"><span class="muted">Trocar o gestor imediato</span>${htmlSelPessoas('og_gestor', n.c.gestor ? [n.c.gestor] : [], 'Buscar colaborador, usuário ou fornecedor…', 1)}<button type="button" class="btn peq prim" data-salvag>Salvar gestor</button></div>` : ''}
+        <div class="og-gv-l"><span>Equipe direta (${n.filhos.length})${n.equipe > n.filhos.length ? ` · ${n.equipe} no total` : ''}</span>${n.filhos.length ? `<ul>${n.filhos.map(f => `<li><a href="#" data-ir="${esc(f.k)}">${esc(f.nome)}</a> <span class="muted">${esc(f.cargo)}</span></li>`).join('')}</ul>` : '<b>—</b>'}</div>
+        ${n.tipo === 'colab' ? `<a class="btn" href="#/rh/colaboradores/ver/${n.id}">Abrir ficha completa</a>` : ''}</div>`;
+    $gav.hidden = false;
+    $('[data-fg]', $gav).onclick = () => { $gav.hidden = true; };
+    $$('[data-ir]', $gav).forEach(a => (a.onclick = e => { e.preventDefault(); const kk = a.dataset.ir; let p = M.nos.get(kk)?.pai; while (p) { abertos.add(p); p = M.nos.get(p)?.pai; } desenhar(); $(`.og-card[data-k="${CSS.escape(kk)}"]`, $arv)?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' }); abrirGaveta(kk); }));
+    if ($('[data-salvag]', $gav)) {
+      pessoasOrg().then(ps => ligarSelPessoas($gav, ps.filter(p => p.colaborador_id !== n.id && !(n.c.usuario_id && p.usuario_id === n.c.usuario_id))));
+      $('[data-salvag]', $gav).onclick = async () => {
+        const g = lerPessoas($('input[name=og_gestor]', $gav).value)[0] || null;
+        try { const [r] = await api.alterar('colaboradores', `id=eq.${n.id}`, { gestor: g });
+          const c = cs.find(x => x.id === n.id); Object.assign(c, { gestor: r?.gestor ?? g, gestor_colaborador_id: r?.gestor_colaborador_id ?? null });
+          M = orgMontar(cs, cgs, setores); if (r?.gestor_colaborador_id) abertos.add('c:' + r.gestor_colaborador_id); else if (g) M.nos.forEach(x => x.filhos.length && abertos.add(x.k));
+          aviso(g ? 'Gestor atualizado: o organograma já foi reorganizado.' : 'Gestor removido.'); desenhar(); abrirGaveta(n.k);
+        } catch (err) { falha(err); } };
+    }
+  };
+  async function listaSemGestor() {
+    const l = semGestor();
+    if (!l.length) return aviso('Todas as pessoas têm gestor definido.');
+    const r = await modal(`<form><h2>Sem gestor definido (${l.length})</h2><p class="muted">Quem não tem gestor fica no topo, logo abaixo da empresa. Escolha o gestor de cada um; deixe em branco quem é da direção.</p>
+      <div class="og-sg">${l.map(c => `<div class="og-sg-l"><div><b>${esc(c.nome)}</b><span class="muted">${esc(M.nos.get('c:' + c.id).cargo)}${M.nos.get('c:' + c.id).setor ? ' · ' + esc(M.nos.get('c:' + c.id).setor) : ''}</span></div>${htmlSelPessoas('g_' + c.id, [], 'Gestor imediato…', 1)}</div>`).join('')}</div>
+      <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button>${editaRH() ? '<button class="btn prim">Salvar</button>' : ''}</div></form>`,
+      { aoAbrir: f => { $('.modal', f).classList.add('modal-largo'); pessoasOrg().then(ps => $$('[data-selpes]', f).forEach(b => { const id = b.dataset.selpes.slice(2); const c = cs.find(x => x.id === id); ligarSelPessoas(b.parentElement, ps.filter(p => p.colaborador_id !== id && !(c?.usuario_id && p.usuario_id === c.usuario_id))); })); } });
+    if (!r) return; let ok = 0; const erros = [];
+    for (const c of l) { const g = lerPessoas(r['g_' + c.id])[0]; if (!g) continue;
+      try { const [x] = await api.alterar('colaboradores', `id=eq.${c.id}`, { gestor: g }); Object.assign(c, { gestor: x?.gestor ?? g, gestor_colaborador_id: x?.gestor_colaborador_id ?? null }); ok++; } catch (err) { erros.push(c.nome + ': ' + (err.message || err)); } }
+    M = orgMontar(cs, cgs, setores); M.nos.forEach(x => x.filhos.length && abertos.add(x.k)); desenhar();
+    if (erros.length) aviso(erros.join(' · '), true); else if (ok) aviso(`${ok} gestor(es) definido(s). Organograma atualizado.`);
+  }
+  // eventos
+  $arv.addEventListener('click', e => { const t = e.target.closest('[data-tg]'); if (t) { e.stopPropagation(); const k = t.dataset.tg; abertos.has(k) ? abertos.delete(k) : abertos.add(k); desenhar(); return; }
+    const c = e.target.closest('.og-card'); if (c && !arrastou) abrirGaveta(c.dataset.k); });
+  $arv.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.matches('.og-card')) abrirGaveta(e.target.dataset.k); });
+  $$('[data-z]', tela).forEach(b => (b.onclick = () => { const z = Number(b.dataset.z); if (!z) return ajustar(); zoom = Math.max(0.3, Math.min(1.6, zoom + z * 0.1)); desenhar(); }));
+  $$('[data-tudo]', tela).forEach(b => (b.onclick = () => { abertos.clear(); if (b.dataset.tudo === '1') M.nos.forEach(n => n.filhos.length && abertos.add(n.k)); else M.raizes.forEach(n => n.filhos.length && abertos.add(n.k)); desenhar(); }));
+  let tB; $('[data-busca]', tela).addEventListener('input', e => { clearTimeout(tB); tB = setTimeout(() => { busca = e.target.value.trim(); destacar(busca); }, 250); });
+  // arrastar para navegar
+  let arrastou = false, ini = null;
+  $tela.addEventListener('mousedown', e => { if (e.button || e.target.closest('button,input,a')) return; ini = { x: e.clientX, y: e.clientY, l: $tela.scrollLeft, t: $tela.scrollTop }; arrastou = false; $tela.classList.add('arrastando'); });
+  addEventListener('mousemove', e => { if (!ini || !$tela.isConnected) return; const dx = e.clientX - ini.x, dy = e.clientY - ini.y; if (Math.abs(dx) + Math.abs(dy) > 4) arrastou = true; $tela.scrollLeft = ini.l - dx; $tela.scrollTop = ini.t - dy; });
+  addEventListener('mouseup', () => { if (ini) { ini = null; $tela.classList.remove('arrastando'); setTimeout(() => (arrastou = false), 0); } });
+  $('[data-imp]', tela).onclick = () => { abertos.clear(); M.nos.forEach(n => n.filhos.length && abertos.add(n.k)); zoom = 1; desenhar();
+    document.head.insertAdjacentHTML('beforeend', '<style id="og-print">@page { size: A4 landscape; margin: 10mm; }</style>');
+    const w = $arv.scrollWidth; const k = Math.min(1, 1050 / w); $arv.style.transform = `scale(${k})`;
+    addEventListener('afterprint', () => { document.getElementById('og-print')?.remove(); desenhar(); }, { once: true }); setTimeout(() => window.print(), 100); };
+  desenhar(); requestAnimationFrame(ajustar);
 });
 
 // ===================== Promoções e cursos (programa de desenvolvimento) =====================
