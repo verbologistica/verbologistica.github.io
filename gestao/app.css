@@ -1278,3 +1278,7 @@ tr.anulado td { opacity: .6; }
 .mt-fin { border: 1px dashed var(--borda); border-radius: 10px; padding: 10px 12px; }
 .mt-fin-card { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; border-left: 4px solid var(--ouro); }
 .mt-fin-card > span { flex: 1; min-width: 200px; }
+.mt-anx { display: inline-flex; align-items: center; gap: 2px; margin: 0 6px 6px 0; }
+.mt-anx .anexo { margin: 0; }
+.mt-rem { border: 0; background: var(--vermelho-claro); color: var(--vermelho); width: 26px; height: 26px; border-radius: 50%; cursor: pointer; font-weight: 700; line-height: 1; }
+.mt-rem:hover { background: var(--vermelho); color: #fff; }

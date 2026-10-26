@@ -82,7 +82,7 @@ async function blocoProcessoMulta(o) {
   const aberto = o.multa_etapa === 'documentos', pode = podeMulta() && aberto;
   const dias = o.prazo_documentos ? diasAte(o.prazo_documentos) : null;
   const passo = (n, ok, t, sub) => `<li class="mt-passo ${ok ? 'ok' : ''}"><span class="mt-n">${ok ? '✓' : n}</span><span><b>${t}</b><small>${sub}</small></span></li>`;
-  const lista = arr => arr.length ? arr.map(a => `<span class="anexo" data-arquivo="${esc(a.caminho_arquivo)}">📄 ${esc(a.nome_original || 'arquivo')} <span class="muted">· ${dataHoraBR(a.enviado_em)}</span></span>`).join('') : '<span class="muted">Nada anexado</span>';
+  const lista = arr => arr.length ? arr.map(a => `<span class="mt-anx"><span class="anexo" data-arquivo="${esc(a.caminho_arquivo)}">📄 ${esc(a.nome_original || 'arquivo')} <span class="muted">· ${dataHoraBR(a.enviado_em)}</span></span>${pode ? `<button type="button" class="mt-rem" data-rem-anx="${a.id}" title="Remover este anexo" aria-label="Remover este anexo">✕</button>` : ''}</span>`).join('') : '<span class="muted">Nada anexado</span>';
   const botaoAnx = (desc, rot, prim) => pode ? `<label class="btn peq ${prim ? 'prim' : ''}">${rot}<input type="file" hidden multiple accept="image/*,application/pdf" data-anx="${esc(desc)}"></label>` : '';
   return `<div class="cartao mt-proc">
     <div class="topo" style="margin:0 0 8px;flex-wrap:wrap;gap:8px"><div><h2 style="margin:0">Processo de desconto da multa</h2>
@@ -194,6 +194,9 @@ async function ligarProcessoMulta(raiz, o) {
     if (!inp.files.length) return;
     try { await anexar('ocorrencia_operacional', o.id, [...inp.files], inp.dataset.anx); aviso('Anexado.'); navegar(); } catch (err) { falha(err); } }));
   $('#mt-termo', raiz)?.addEventListener('click', () => gerarTermoMulta(o).catch(falha));
+  $$('[data-rem-anx]', raiz).forEach(b => b.addEventListener('click', async e => { e.stopPropagation();
+    if (!await confirmar('Remover este anexo do processo?', { botao: 'Remover' })) return;
+    try { await api.rpc('remover_anexo_multa', { p_anexo: b.dataset.remAnx }); aviso('Anexo removido.'); navegar(); } catch (err) { falha(err); } }));
   $('#mt-sem-ind', raiz)?.addEventListener('click', async () => {
     const dobro = Math.round(Number(o.valor_multa || 0) * 200) / 100;
     const r = await modal(`<form><h2>Não haverá indicação do condutor</h2>
