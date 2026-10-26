@@ -465,6 +465,10 @@ const MENU = [
   ['Fechamentos do DP', '#/fechamentos?setor=dp', ['administrador', 'fch:dp'], 'calendario_ok', 'fch_dp', true],
   ['grupo', 'SSMA', 'capacete'],
   ['Painel do SSMA', '#/ssma', P_SSMA, 'painel', 'cat_pendente', true],
+  ['Liberação de motoristas', '#/ssma/integracoes', [...P_SSMA, 'operacao'], 'cracha', null, true],
+  ['Desvios', '#/ssma/desvios', [...P_SSMA, 'operacao', 'manutencao'], 'escudo_alerta', null, true],
+  ['Documentos e vencimentos', '#/ssma/documentos', P_SSMA, 'documento', null, true],
+  ['Regras e metas', '#/ssma/parametros', P_SSMA, 'ajustes', null, true],
   ['Acidentes e CAT', '#/ssma/acidentes', [...P_SSMA, 'operacao', 'manutencao'], 'saude', 'acidentes_abertos', true],
   ['ASO e exames', '#/ssma/aso', P_SSMA, 'estetoscopio', 'aso_vencendo', true],
   ['Inspeções', '#/ssma/inspecoes', [...P_SSMA, 'operacao', 'manutencao'], 'busca', null, true],
@@ -686,7 +690,7 @@ async function navegar() {
   const mesmaRota = _ultimaTela && _ultimaTela.split('?')[0] === telaAtual.split('?')[0];
   _mesmaTela = !!mesmaRota;   // filtros da tela continuam quando ela é redesenhada
   // telas de apresentação (Início e painéis): fundo escuro da marca
-  document.body.classList.toggle('tema-vx', /^#?\/(inicio|financeiro\/painel|compras\/painel)(\?|$)/.test(telaAtual.replace(/^#/, '')));
+  document.body.classList.toggle('tema-vx', /^#?\/(inicio|financeiro\/painel|compras\/painel|ssma)(\?|$)/.test(telaAtual.replace(/^#/, '')));
   const yAntes = window.scrollY;
   atualizarPilha(telaAtual);
   const [h, qs] = (location.hash || '#/inicio').slice(1).split('?');

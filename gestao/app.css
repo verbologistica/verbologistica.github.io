@@ -1282,3 +1282,35 @@ tr.anulado td { opacity: .6; }
 .mt-anx .anexo { margin: 0; }
 .mt-rem { border: 0; background: var(--vermelho-claro); color: var(--vermelho); width: 26px; height: 26px; border-radius: 50%; cursor: pointer; font-weight: 700; line-height: 1; }
 .mt-rem:hover { background: var(--vermelho); color: #fff; }
+/* SSMA fase 1 — painel estratégico, integração, desvios */
+.tag.laranja { background: #fde9d9; color: #b54708; }
+.ss-inds { display: grid; gap: 10px; }
+.ss-ind { border: 1px solid var(--borda); border-radius: 10px; padding: 10px 12px; }
+.ss-ind-t { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 13px; }
+.ss-ind-v { font-family: var(--f-display); font-size: 24px; font-weight: 700; margin: 4px 0 2px; } .ss-ind-v small { font-size: 12px; font-weight: 500; color: var(--cinza); }
+.ss-ind-g { text-align: center; } .ss-ind-g .ss-ind-t { justify-content: flex-start; }
+.ss-gauge { width: 100%; max-width: 220px; display: block; margin: 4px auto 0; }
+.ss-g-v { font: 700 26px var(--f-display); fill: var(--texto); } .ss-g-r { font-size: 11px; fill: var(--cinza); }
+.ss-vg { display: grid; gap: 6px; }
+.ss-vg-l { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 6px 8px; border-radius: 8px; color: inherit; text-decoration: none; }
+.ss-vg-l:hover { background: var(--cinza-claro); }
+.ss-vg-n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13.5px; }
+.ss-vg-b { display: inline-flex; gap: 4px; vertical-align: middle; }
+.ss-vg-b i { width: 18px; height: 8px; border-radius: 4px; background: var(--borda); display: inline-block; }
+.ss-vg-b i.ok { background: #3FBF94; } .ss-vg-b i.pend { background: #E0A53A; }
+.ss-vg-v { font-variant-numeric: tabular-nums; font-size: 13px; color: var(--cinza); }
+.ss-chk { display: grid; gap: 4px; }
+.ss-chk-l { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 7px 0; border-bottom: 1px solid var(--borda); }
+.ss-chk-l > span { flex: 1 1 260px; }
+.ss-dias { display: flex; flex-wrap: wrap; gap: 3px; margin: 6px 0; }
+.ss-dia { width: 12px; height: 12px; border-radius: 3px; background: var(--borda); }
+.ss-dia.ok { background: #3FBF94; } .ss-dia.neg { background: #E05A4F; }
+.ss-grav { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; margin-top: 4px; }
+.ss-grav-op { display: flex; flex-direction: column; gap: 2px; border: 1px solid var(--borda); border-left-width: 4px; border-radius: 8px; padding: 8px 10px; cursor: pointer; font-size: 13px; }
+.ss-grav-op input { align-self: flex-start; } .ss-grav-op small { color: var(--cinza); font-size: 11.5px; }
+.ss-grav-op.gravissima { border-left-color: var(--vermelho); } .ss-grav-op.grave { border-left-color: #b54708; } .ss-grav-op.media { border-left-color: var(--amarelo); } .ss-grav-op.leve { border-left-color: var(--cinza); }
+.ss-grav-op:has(input:checked) { background: var(--azul-claro); border-color: var(--azul); }
+.ss-regras { margin: 4px 0 0; padding-left: 22px; line-height: 1.6; }
+body.tema-vx .ss-ind { border-color: rgba(255,255,255,.08); background: rgba(255,255,255,.02); }
+body.tema-vx .ss-ind-v, body.tema-vx .ss-g-v { color: #F3F7F5; fill: #F3F7F5; } body.tema-vx .ss-g-r { fill: #8A9E96; }
+body.tema-vx .ss-vg-l:hover { background: rgba(255,255,255,.05); } body.tema-vx .ss-vg-b i { background: rgba(255,255,255,.1); }
