@@ -10,6 +10,7 @@ Object.assign(LEI, {
     'O desconto só é permitido quando o condutor <b>agiu com culpa e há previsão em contrato/termo assinado</b>, ou quando agiu com <b>dolo</b> (CLT art. 462, §1º). Multa por falha do veículo, documentação ou ordem da empresa é da empresa.',
     'O termo assinado pelo colaborador define o valor e em qual(is) folha(s) será descontado. Parcelar evita comprometer o salário do mês.',
     'Na rescisão, o saldo ainda não descontado só pode ser abatido até o limite de <b>um mês de remuneração</b> (CLT art. 477, §5º).',
+    '<b>Sem indicação do condutor</b>: pelo contrato com a locadora, a multa é cobrada da empresa <b>em dobro</b>, e o desconto passa a ser o dobro. Só é válido se a falta de indicação ocorreu por responsabilidade do colaborador (ex.: não assinou nem devolveu a indicação no prazo) — registre o motivo.',
     'Regra da Verbo: todo desconto ao colaborador precisa da <b>aprovação do jurídico</b> antes de ir para a folha.']],
 });
 
@@ -52,7 +53,9 @@ async function gerarTermoMulta(o) {
     <table style="width:100%">${linha('Auto de infração', esc(o.auto_infracao))}${linha('Órgão autuador', esc(o.orgao_autuador))}${linha('Data e hora', dataHoraBR(o.data_hora))}
       ${linha('Local', esc(o.local))}${linha('Enquadramento', esc(o.enquadramento) + (o.pontos ? ` · ${o.pontos} ponto(s)` : ''))}${linha('Veículo', esc([o.placa, o.eq?.codigo_frota && 'frota ' + o.eq.codigo_frota].filter(Boolean).join(' · ')))}
       ${linha('Valor da multa', brl(o.valor_multa))}</table>
-    <p style="text-align:justify;margin-top:12px">Declaro que eu conduzia o veículo acima no dia e hora da infração, que fui indicado(a) como condutor(a) infrator(a) junto ao órgão autuador e que tive a oportunidade de apresentar a minha versão dos fatos.
+    ${o.sem_indicacao ? `<p style="text-align:justify;margin-top:12px">Declaro que eu conduzia o veículo acima no dia e hora da infração e que tive a oportunidade de apresentar a minha versão dos fatos.
+      <b>Não houve indicação do condutor</b> ao órgão autuador${o.motivo_sem_indicacao ? ` (motivo: ${esc(o.motivo_sem_indicacao)})` : ''}. Estou ciente de que, pelo contrato de locação do veículo, nesse caso a locadora cobra da empresa
+      <b>o valor da multa em dobro</b>: 2 × ${brl(o.valor_multa)} = <b>${brl(Number(o.valor_multa) * 2)}</b>.` : `<p style="text-align:justify;margin-top:12px">Declaro que eu conduzia o veículo acima no dia e hora da infração, que fui indicado(a) como condutor(a) infrator(a) junto ao órgão autuador e que tive a oportunidade de apresentar a minha versão dos fatos.`}
       Reconheço que a infração decorreu de conduta minha, e não de falha do veículo, da documentação ou de ordem da empresa.</p>
     <p style="text-align:justify">Assim, nos termos do <b>art. 462, §1º, da CLT</b> e do meu contrato de trabalho, <b>autorizo</b> a empresa a descontar da minha remuneração o valor de
       <b>${brl(o.desconto_valor)}</b> (${esc(extensoReais(o.desconto_valor))}), ${forma}</p>
@@ -72,7 +75,7 @@ async function blocoProcessoMulta(o) {
   const anx = await api.listar('anexos', `entidade=eq.ocorrencia_operacional&entidade_id=eq.${o.id}&cancelado_em=is.null&order=enviado_em`).catch(() => []);
   const de = t => anx.filter(a => a.descricao === t);
   const tit = o.titulo_id ? await api.um('titulos', `id=eq.${o.titulo_id}&select=id,numero,status,valor_total,descricao`).catch(() => null) : null;
-  const temInd = de(ANX_IND).length > 0, temTermo = de(ANX_TERMO).length > 0;
+  const temInd = de(ANX_IND).length > 0 || !!o.sem_indicacao, temTermo = de(ANX_TERMO).length > 0;
   const plano = o.desconto_plano || [];
   const dadosOk = !!(o.colaborador_id && o.cnh_numero && o.auto_infracao && o.orgao_autuador && o.enquadramento && o.local && (o.placa || o.equipamento_id)
     && o.desconto_tipo && Number(o.desconto_valor) > 0 && plano.length && o.aplicador_nome && o.condutor_ouvido && o.juridico_ok);
@@ -87,12 +90,16 @@ async function blocoProcessoMulta(o) {
         ${aberto && dias != null ? ` · <span class="tag ${dias < 0 ? 'vermelho' : dias <= 1 ? 'amarelo' : 'azul'}">${dias < 0 ? `prazo dos documentos vencido há ${-dias} dia(s)` : dias === 0 ? 'prazo dos documentos: hoje' : `documentos até ${dataBR(o.prazo_documentos)} (${dias} dia(s))`}</span>` : ''}</p></div>
       <div class="acoes">${o.colaborador_id && o.desconto_valor && plano.length ? '<button class="btn" id="mt-termo">⬇ Termo de desconto (2 vias)</button>' : ''}
         ${podeMulta() && o.multa_etapa !== 'cancelada' ? '<button class="btn perigo" id="mt-cancelar">Cancelar processo</button>' : ''}</div></div>
-    <ol class="mt-passos">${passo(1, temInd, 'Indicação do condutor', 'anexar preenchida e assinada')}${passo(2, dadosOk, 'Dados e forma de desconto', 'condutor, infração, folha(s)')}
+    <ol class="mt-passos">${passo(1, temInd, 'Indicação do condutor', o.sem_indicacao ? 'sem indicação · desconto em dobro' : 'anexar preenchida e assinada')}${passo(2, dadosOk, 'Dados e forma de desconto', 'condutor, infração, folha(s)')}
       ${passo(3, temTermo, 'Termo de desconto assinado', 'colaborador e responsável')}${passo(4, o.multa_etapa === 'dp', 'DP', 'desconto na folha')}</ol>
     ${o.multa_etapa === 'cancelada' ? `<div class="cartao alerta-obs" style="margin:10px 0 0">Cancelado em ${dataHoraBR(o.cancelado_em)}: <b>${esc(o.motivo_cancelamento || '')}</b></div>` : ''}
     ${o.multa_etapa === 'dp' ? `<div class="conferencia" style="margin:10px 0 0">Finalizado em ${dataHoraBR(o.finalizado_em)}. O DP desconta ${plano.length > 1 ? `em ${plano.length} parcelas: ` : 'na folha de '}${plano.map(p => `<b>${esc(mesAnoBR(p.competencia))}</b> ${brl(p.valor)}`).join(' · ')}.</div>` : ''}
-    <div class="mt-sec"><h3>1 · Indicação do condutor ${botaoAnx(ANX_IND, '📎 Anexar indicação assinada', !temInd)}</h3><div class="anexos">${lista(de(ANX_IND))}</div>
-      ${pode && !temInd ? '<p class="muted" style="margin:6px 0 0">Comece por aqui: anexe o formulário de indicação do condutor preenchido e assinado. Depois os campos abaixo são liberados.</p>' : ''}</div>
+    <div class="mt-sec"><h3>1 · Indicação do condutor ${o.sem_indicacao ? '' : botaoAnx(ANX_IND, '📎 Anexar indicação assinada', !temInd)}
+        ${pode && !o.sem_indicacao && !de(ANX_IND).length ? '<button type="button" class="btn peq" id="mt-sem-ind">Não haverá indicação do condutor</button>' : ''}</h3>
+      ${o.sem_indicacao ? `<div class="cartao alerta-obs" style="margin:0 0 8px"><b>Sem indicação do condutor</b> — pelo contrato com a locadora a multa é cobrada em dobro:
+          o desconto passa a ser <b>${brl(Number(o.valor_multa || 0) * 2)}</b> (2 × ${brl(o.valor_multa)}).${o.motivo_sem_indicacao ? `<br><span class="muted">Motivo: ${esc(o.motivo_sem_indicacao)}</span>` : ''}
+          ${pode ? '<div style="margin-top:6px"><button type="button" class="btn peq" id="mt-com-ind">Desfazer: vai haver indicação</button></div>' : ''}</div>` : `<div class="anexos">${lista(de(ANX_IND))}</div>`}
+      ${pode && !temInd ? '<p class="muted" style="margin:6px 0 0">Comece por aqui: anexe o formulário de indicação do condutor preenchido e assinado — ou informe que não haverá indicação (o desconto passa a ser o dobro da multa). Depois os campos abaixo são liberados.</p>' : ''}</div>
     <form id="mt-f" class="mt-sec"><h3>2 · Dados da indicação e forma de desconto</h3>
       <fieldset ${pode && temInd ? '' : 'disabled'} style="border:0;padding:0;margin:0"><div class="form">
         <label class="campo largo">Condutor (colaborador) *<select name="colaborador_id"><option value="">Selecione…</option></select></label>
@@ -114,7 +121,7 @@ async function blocoProcessoMulta(o) {
         <label class="campo largo">Versão do condutor (o que ele disse)<textarea name="versao_condutor" rows="2">${esc(o.versao_condutor || '')}</textarea></label>
         <div class="largo mt-desc"><h3 style="margin:4px 0 6px">Forma de desconto</h3>${avisoLei('desconto_multa')}</div>
         <label class="campo">Forma *<select name="desconto_tipo" data-nativo><option value="integral" ${o.desconto_tipo !== 'parcelado' ? 'selected' : ''}>Valor integral (uma folha)</option><option value="parcelado" ${o.desconto_tipo === 'parcelado' ? 'selected' : ''}>Parcelado</option></select></label>
-        <label class="campo">Valor a descontar *<input name="desconto_valor" inputmode="decimal" value="${o.desconto_valor ?? o.valor_multa ?? ''}"></label>
+        <label class="campo">Valor a descontar *<input name="desconto_valor" inputmode="decimal" value="${o.sem_indicacao ? Number(o.valor_multa || 0) * 2 : o.desconto_valor ?? o.valor_multa ?? ''}" ${o.sem_indicacao ? 'readonly title="Dobro da multa (sem indicação do condutor)"' : ''}>${o.sem_indicacao ? '<span class="muted">dobro da multa · sem indicação do condutor</span>' : ''}</label>
         <label class="campo" id="mt-np">Nº de parcelas<input type="number" name="parcelas" min="2" max="12" value="${plano.length > 1 ? plano.length : 2}"></label>
         <label class="campo">${'1ª folha (competência) *'}<select name="inicio" data-nativo>${proxMeses().map(m => `<option value="${m}" ${m === (plano[0]?.competencia || proxMeses(2)[1]) ? 'selected' : ''}>${esc(mesAnoBR(m))}</option>`).join('')}</select></label>
         <div class="largo" id="mt-plano"></div>
@@ -161,6 +168,7 @@ async function ligarProcessoMulta(raiz, o) {
   };
   ['desconto_tipo', 'parcelas', 'inicio'].forEach(n => f[n].addEventListener('change', () => { manual = null; montar(); }));
   f.desconto_valor.addEventListener('change', () => { manual = null; montar(); });
+  if (o.sem_indicacao) f.valor_multa.addEventListener('change', () => { f.desconto_valor.value = String(Math.round((num(f.valor_multa.value) || 0) * 200) / 100).replace('.', ','); manual = null; montar(); });
   montar();
   const salvar = async () => {
     const d = formDados(f);
@@ -170,7 +178,8 @@ async function ligarProcessoMulta(raiz, o) {
       valor_multa: num(d.valor_multa), notificacao_recebida_em: d.notificacao_recebida_em || null, indicacao_enviada_em: d.indicacao_enviada_em || null, indicacao_protocolo: d.indicacao_protocolo || null,
       versao_condutor: d.versao_condutor || null, desconto_tipo: d.desconto_tipo, desconto_valor: num(d.desconto_valor), desconto_plano: manual,
       aplicador_nome: d.aplicador_nome || null, aplicador_cargo: d.aplicador_cargo || null, condutor_ouvido: !!d.condutor_ouvido, juridico_ok: !!d.juridico_ok, juridico_info: d.juridico_info || null };
-    if (dados.desconto_valor > dados.valor_multa) throw new Error('O valor a descontar não pode ser maior que o valor da multa.');
+    if (o.sem_indicacao) dados.desconto_valor = Math.round((dados.valor_multa || 0) * 200) / 100;
+    else if (dados.desconto_valor > dados.valor_multa) throw new Error('O valor a descontar não pode ser maior que o valor da multa.');
     const [n] = await api.alterar('ocorrencias_operacionais', `id=eq.${o.id}`, dados);
     return n;
   };
@@ -185,6 +194,21 @@ async function ligarProcessoMulta(raiz, o) {
     if (!inp.files.length) return;
     try { await anexar('ocorrencia_operacional', o.id, [...inp.files], inp.dataset.anx); aviso('Anexado.'); navegar(); } catch (err) { falha(err); } }));
   $('#mt-termo', raiz)?.addEventListener('click', () => gerarTermoMulta(o).catch(falha));
+  $('#mt-sem-ind', raiz)?.addEventListener('click', async () => {
+    const dobro = Math.round(Number(o.valor_multa || 0) * 200) / 100;
+    const r = await modal(`<form><h2>Não haverá indicação do condutor</h2>
+      <p>Pelo contrato com a locadora, sem a indicação a multa é cobrada <b>em dobro</b>. O desconto deste processo passa a ser <b>${brl(dobro)}</b> (2 × ${brl(o.valor_multa)}) e o termo de desconto sai com esse valor.</p>
+      <p class="muted">O desconto do valor em dobro só se justifica se a falta de indicação foi por responsabilidade do colaborador. As demais etapas continuam iguais.</p>
+      <label class="campo">Motivo de não haver indicação *<textarea name="motivo" rows="3" required placeholder="Ex.: o condutor não assinou a indicação dentro do prazo"></textarea></label>
+      <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Confirmar: sem indicação</button></div></form>`,
+      { validar: d => !d.motivo ? 'Informe o motivo.' : null });
+    if (!r) return;
+    try { await api.alterar('ocorrencias_operacionais', `id=eq.${o.id}`, { sem_indicacao: true, motivo_sem_indicacao: r.motivo, desconto_valor: dobro, desconto_plano: null });
+      aviso('Registrado: sem indicação do condutor — desconto em dobro.'); navegar(); } catch (err) { falha(err); } });
+  $('#mt-com-ind', raiz)?.addEventListener('click', async () => {
+    if (!await confirmar('Voltar a exigir o anexo da indicação do condutor? O valor a descontar volta a ser o da multa.', { botao: 'Confirmar' })) return;
+    try { await api.alterar('ocorrencias_operacionais', `id=eq.${o.id}`, { sem_indicacao: false, motivo_sem_indicacao: null, desconto_valor: o.valor_multa, desconto_plano: null });
+      navegar(); } catch (err) { falha(err); } });
   $('#mt-finalizar', raiz)?.addEventListener('click', async () => {
     if (!await confirmar('Finalizar e enviar ao DP? Depois disso o processo não pode mais ser editado — apenas cancelado com justificativa.', { botao: 'Finalizar' })) return;
     try { await api.rpc('finalizar_multa', { p_id: o.id }); aviso('Processo finalizado e enviado ao DP.'); navegar(); } catch (err) { falha(err); } });
@@ -206,7 +230,7 @@ rota('/dp/multas', async tela => {
     <div class="cartao">${os.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Processo</th><th>Colaborador</th><th>Infração</th><th class="num">Desconto</th><th>Folha(s)</th><th>Situação</th></tr></thead><tbody>
       ${os.map(o => `<tr class="clicavel" onclick="location.hash='#/operacao/ocorrencias/ver/${o.id}'"><td data-r="Processo" class="mono"><b>${esc(o.numero)}</b><div class="muted">${o.finalizado_em ? 'enviado ' + dataBR(o.finalizado_em) : ''}</div></td>
         <td data-r="Colaborador">${esc(o.m?.nome || '—')}</td><td data-r="Infração">${esc([o.auto_infracao, o.placa].filter(Boolean).join(' · ') || '—')}<div class="muted">${dataBR(o.data_hora)} · ${brl(o.valor_multa)}</div></td>
-        <td data-r="Desconto" class="num"><b>${o.desconto_valor ? brl(o.desconto_valor) : '—'}</b><div class="muted">${o.desconto_tipo === 'parcelado' ? (o.desconto_plano || []).length + 'x' : o.desconto_tipo ? 'integral' : ''}</div></td>
+        <td data-r="Desconto" class="num"><b>${o.desconto_valor ? brl(o.desconto_valor) : '—'}</b><div class="muted">${o.desconto_tipo === 'parcelado' ? (o.desconto_plano || []).length + 'x' : o.desconto_tipo ? 'integral' : ''}${o.sem_indicacao ? ' · em dobro (sem indicação)' : ''}</div></td>
         <td data-r="Folha(s)">${(o.desconto_plano || []).map(p => `<div>${esc(mesAnoBR(p.competencia))} · ${brl(p.valor)} ${o.multa_etapa === 'dp' ? stP(o, p) : ''}</div>`).join('') || '—'}</td>
         <td data-r="Situação">${tagSt(ETAPA_MULTA, o.multa_etapa)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="vazio">Nenhum processo.</div>'}</div>
     <p class="muted">Ao abrir a folha da competência e clicar em <b>Importar pendências</b>, a parcela de cada mês entra sozinha (rubrica D007 · Multa de trânsito), já marcada com termo assinado e aprovação do jurídico.</p>
