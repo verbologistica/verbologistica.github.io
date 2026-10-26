@@ -47,7 +47,7 @@ async function gerarTermoMulta(o) {
     <h2 style="text-align:center;margin:0 0 4px">TERMO DE CIÊNCIA E AUTORIZAÇÃO DE DESCONTO</h2>
     <p style="text-align:center;margin:0 0 12px;color:#6b7378">Multa de trânsito · ${esc(o.numero)}${o.auto_infracao ? ' · Auto de infração ' + esc(o.auto_infracao) : ''}</p>
     <table style="width:100%;margin-bottom:8px">${linha('Empresa', esc(e.razao_social || e.nome_fantasia || 'Verbo Logística') + (e.cnpj ? ' · CNPJ ' + esc(e.cnpj) : ''))}
-      ${linha('Colaborador(a)', esc(col.nome) + (col.cpf ? ' · CPF ' + esc(col.cpf) : ''))}${linha('Função / matrícula', esc([col.cargo, col.matricula && 'matr. ' + col.matricula].filter(Boolean).join(' · ')))}
+      ${linha('Colaborador(a)', esc(col.nome) + ((o.condutor_cpf || col.cpf) ? ' · CPF ' + esc(o.condutor_cpf ? fmtCPF(o.condutor_cpf) : col.cpf) : ''))}${linha('Função / matrícula', esc([col.cargo, col.matricula && 'matr. ' + col.matricula].filter(Boolean).join(' · ')))}
       ${linha('CNH', esc([o.cnh_numero, o.cnh_categoria && 'cat. ' + o.cnh_categoria, o.cnh_uf].filter(Boolean).join(' · ')))}</table>
     <h3 style="margin:10px 0 4px">Dados da infração</h3>
     <table style="width:100%">${linha('Auto de infração', esc(o.auto_infracao))}${linha('Órgão autuador', esc(o.orgao_autuador))}${linha('Data e hora', dataHoraBR(o.data_hora))}
@@ -63,7 +63,7 @@ async function gerarTermoMulta(o) {
       Este termo não impede a apresentação de defesa ou recurso ao órgão autuador: se a multa for cancelada ou reduzida, a diferença já descontada será devolvida.</p>
     <p style="margin-top:14px">${esc((e.cidade || '') ? e.cidade + ', ' : '')}${esc(ctx.hoje_extenso)}.</p>
     <table style="width:100%;margin-top:34px"><tr>
-      <td style="width:50%;padding-right:14px;text-align:center"><div style="border-top:1px solid #252e35;padding-top:4px"><b>${esc(col.nome)}</b><br><span style="color:#6b7378">Colaborador(a) / condutor(a)${col.cpf ? ' · CPF ' + esc(col.cpf) : ''}</span></div></td>
+      <td style="width:50%;padding-right:14px;text-align:center"><div style="border-top:1px solid #252e35;padding-top:4px"><b>${esc(col.nome)}</b><br><span style="color:#6b7378">Colaborador(a) / condutor(a)${(o.condutor_cpf || col.cpf) ? ' · CPF ' + esc(o.condutor_cpf ? fmtCPF(o.condutor_cpf) : col.cpf) : ''}</span></div></td>
       <td style="width:50%;padding-left:14px;text-align:center"><div style="border-top:1px solid #252e35;padding-top:4px"><b>${esc(o.aplicador_nome || '')}</b><br><span style="color:#6b7378">Responsável pela aplicação${o.aplicador_cargo ? ' · ' + esc(o.aplicador_cargo) : ''}</span></div></td></tr>
       <tr><td style="padding:34px 14px 0 0;text-align:center"><div style="border-top:1px solid #252e35;padding-top:4px;color:#6b7378">Testemunha 1 · nome e CPF</div></td>
       <td style="padding:34px 0 0 14px;text-align:center"><div style="border-top:1px solid #252e35;padding-top:4px;color:#6b7378">Testemunha 2 · nome e CPF</div></td></tr></table>`;
@@ -77,7 +77,7 @@ async function blocoProcessoMulta(o) {
   const tit = o.titulo_id ? await api.um('titulos', `id=eq.${o.titulo_id}&select=id,numero,status,valor_total,descricao`).catch(() => null) : null;
   const temInd = de(ANX_IND).length > 0 || !!o.sem_indicacao, temTermo = de(ANX_TERMO).length > 0;
   const plano = o.desconto_plano || [];
-  const dadosOk = !!(o.colaborador_id && o.auto_infracao && o.orgao_autuador && o.enquadramento && o.local && (o.placa || o.equipamento_id)
+  const dadosOk = !!(o.colaborador_id && soDigitos(o.condutor_cpf).length === 11 && o.auto_infracao && o.orgao_autuador && o.enquadramento && o.local && (o.placa || o.equipamento_id)
     && o.desconto_tipo && Number(o.desconto_valor) > 0 && plano.length && o.aplicador_nome && o.condutor_ouvido && o.juridico_ok);
   const aberto = o.multa_etapa === 'documentos', pode = podeMulta() && aberto;
   const dias = o.prazo_documentos ? diasAte(o.prazo_documentos) : null;
@@ -102,7 +102,8 @@ async function blocoProcessoMulta(o) {
       ${pode && !temInd ? '<p class="muted" style="margin:6px 0 0">Comece por aqui: anexe o formulário de indicação do condutor preenchido e assinado — ou informe que não haverá indicação (o desconto passa a ser o dobro da multa). Depois os campos abaixo são liberados.</p>' : ''}</div>
     <form id="mt-f" class="mt-sec"><h3>2 · Dados da indicação e forma de desconto</h3>
       <fieldset ${pode && temInd ? '' : 'disabled'} style="border:0;padding:0;margin:0"><div class="form">
-        <label class="campo largo">Condutor (colaborador) *<select name="colaborador_id"><option value="">Selecione…</option></select></label>
+        <label class="campo largo">Condutor (colaborador) *<select name="colaborador_id"><option value="">Selecione…</option></select><span class="muted" id="mt-cad"></span></label>
+        <label class="campo">CPF do condutor *<input name="condutor_cpf" value="${esc(fmtCPF(o.condutor_cpf || ''))}" inputmode="numeric" placeholder="000.000.000-00"></label>
         <label class="campo">CNH nº<input name="cnh_numero" value="${esc(o.cnh_numero || '')}"></label>
         <label class="campo">Categoria<input name="cnh_categoria" value="${esc(o.cnh_categoria || '')}" maxlength="3"></label>
         <label class="campo">UF da CNH<input name="cnh_uf" value="${esc(o.cnh_uf || '')}" maxlength="2" style="text-transform:uppercase"></label>
@@ -143,12 +144,23 @@ async function ligarProcessoMulta(raiz, o) {
   // condutor: lista de colaboradores, CNH vem do cadastro quando possível
   const cols = await api.listar('v_colaboradores_basico', 'select=id,nome,cargo,motorista,cnh_categoria,cnh_validade&order=nome').catch(() => []);
   f.colaborador_id.innerHTML = '<option value="">Selecione…</option>' + cols.map(c => `<option value="${c.id}" ${c.id === o.colaborador_id ? 'selected' : ''}>${esc(c.nome)}${c.cargo ? ' · ' + esc(c.cargo) : ''}</option>`).join('');
-  f.colaborador_id.addEventListener('change', async () => {
-    const c = cols.find(x => x.id === f.colaborador_id.value); if (!c) return;
-    const full = await api.um('colaboradores', `id=eq.${c.id}&select=cnh_numero,cnh_categoria,cnh_uf,cnh_validade`).catch(() => null);
-    const set = (n, v) => { if (v && !f[n].value) f[n].value = v; };
-    set('cnh_numero', full?.cnh_numero); set('cnh_categoria', full?.cnh_categoria || c.cnh_categoria); set('cnh_uf', full?.cnh_uf); set('cnh_validade', full?.cnh_validade || c.cnh_validade);
-  });
+  // ao escolher o condutor, o que houver no cadastro do RH preenche o processo (troca de condutor = troca os dados)
+  const CAMPOS_CAD = ['condutor_cpf', 'cnh_numero', 'cnh_categoria', 'cnh_uf', 'cnh_validade'];
+  let cad = null;
+  const puxarCadastro = async sobrescrever => {
+    const c = cols.find(x => x.id === f.colaborador_id.value);
+    if (!c) { cad = null; $('#mt-cad', raiz).textContent = ''; return; }
+    const full = await api.um('colaboradores', `id=eq.${c.id}&select=cpf,cnh_numero,cnh_categoria,cnh_uf,cnh_validade`).catch(() => null);
+    cad = full;
+    const v = { condutor_cpf: full?.cpf ? fmtCPF(full.cpf) : '', cnh_numero: full?.cnh_numero || '', cnh_categoria: full?.cnh_categoria || c.cnh_categoria || '', cnh_uf: full?.cnh_uf || '', cnh_validade: full?.cnh_validade || c.cnh_validade || '' };
+    const vindos = [];
+    CAMPOS_CAD.forEach(n => { if (sobrescrever) f[n].value = v[n]; else if (v[n] && !f[n].value) f[n].value = v[n]; if (v[n]) vindos.push({ condutor_cpf: 'CPF', cnh_numero: 'nº da CNH', cnh_categoria: 'categoria', cnh_uf: 'UF', cnh_validade: 'validade da CNH' }[n]); });
+    const falta = [!v.condutor_cpf && 'CPF', !v.cnh_numero && 'nº da CNH'].filter(Boolean);
+    $('#mt-cad', raiz).innerHTML = full ? `${vindos.length ? '✔ Do cadastro do RH: ' + vindos.join(', ') + '.' : ''}${falta.length ? ` <span style="color:var(--amarelo)">Sem ${falta.join(' e ')} no cadastro do RH${falta.includes('nº da CNH') ? ' — o que você digitar aqui também é salvo no cadastro' : ''}.</span>` : ''}` : '';
+  };
+  f.colaborador_id.addEventListener('change', () => puxarCadastro(true));
+  if (f.colaborador_id.value) puxarCadastro(false);
+  f.condutor_cpf.addEventListener('input', e => { const d = soDigitos(e.target.value).slice(0, 11); e.target.value = d.length === 11 ? fmtCPF(d) : d; });
   // plano de desconto (folhas)
   let manual = (o.desconto_plano || []).length ? o.desconto_plano.map(p => ({ ...p })) : null;
   const montar = () => {
@@ -172,7 +184,9 @@ async function ligarProcessoMulta(raiz, o) {
   montar();
   const salvar = async () => {
     const d = formDados(f);
-    const dados = { colaborador_id: d.colaborador_id || null, cnh_numero: d.cnh_numero || null, cnh_categoria: (d.cnh_categoria || '').toUpperCase() || null, cnh_uf: (d.cnh_uf || '').toUpperCase() || null,
+    const cpf = soDigitos(d.condutor_cpf);
+    if (cpf && !cpfValido(cpf)) throw new Error('CPF do condutor inválido. Confira os números.');
+    const dados = { colaborador_id: d.colaborador_id || null, condutor_cpf: cpf || null, cnh_numero: d.cnh_numero || null, cnh_categoria: (d.cnh_categoria || '').toUpperCase() || null, cnh_uf: (d.cnh_uf || '').toUpperCase() || null,
       cnh_validade: d.cnh_validade || null, auto_infracao: d.auto_infracao || null, orgao_autuador: d.orgao_autuador || null, data_hora: d.data_hora ? new Date(d.data_hora).toISOString() : o.data_hora,
       local: d.local || null, enquadramento: d.enquadramento || null, pontos: d.pontos ? Number(d.pontos) : null, placa: (d.placa || '').toUpperCase().replace(/[^A-Z0-9]/g, '') || null,
       valor_multa: num(d.valor_multa), notificacao_recebida_em: d.notificacao_recebida_em || null, indicacao_enviada_em: d.indicacao_enviada_em || null, indicacao_protocolo: d.indicacao_protocolo || null,
@@ -181,6 +195,13 @@ async function ligarProcessoMulta(raiz, o) {
     if (o.sem_indicacao) dados.desconto_valor = Math.round((dados.valor_multa || 0) * 200) / 100;
     else if (dados.desconto_valor > dados.valor_multa) throw new Error('O valor a descontar não pode ser maior que o valor da multa.');
     const [n] = await api.alterar('ocorrencias_operacionais', `id=eq.${o.id}`, dados);
+    // completa o cadastro do RH só onde está vazio (nunca troca o que já existe)
+    if (cad && dados.colaborador_id) {
+      const comp = {}; if (!cad.cpf && cpf) comp.cpf = cpf; if (!cad.cnh_numero && dados.cnh_numero) comp.cnh_numero = dados.cnh_numero;
+      if (!cad.cnh_categoria && dados.cnh_categoria) comp.cnh_categoria = dados.cnh_categoria; if (!cad.cnh_uf && dados.cnh_uf) comp.cnh_uf = dados.cnh_uf;
+      if (!cad.cnh_validade && dados.cnh_validade) comp.cnh_validade = dados.cnh_validade;
+      if (Object.keys(comp).length) await api.alterar('colaboradores', `id=eq.${dados.colaborador_id}`, comp).catch(() => null);
+    }
     return n;
   };
   f.onsubmit = async e => { e.preventDefault(); const ac = e.submitter?.value;
