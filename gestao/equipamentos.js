@@ -191,7 +191,7 @@ rota('/cadastros/equipamentos/ver/:id', async (tela, id) => {
     ${ds.map(d => `<tr><td data-r="Documento"><b>${esc(d.nome)}</b><div class="muted">${esc(d.tipo)}${d.tipo === 'CRLV' ? ` · ${esc(d.uf || '')} · exercício ${d.exercicio || ''}` : ''}${d.numero ? ' · nº ' + esc(d.numero) : ''}</div>
       ${d.observacao ? `<div class="muted">${esc(d.observacao)}</div>` : ''}</td>
       <td data-r="Vencimento" class="nowrap">${d.vencimento ? dataBR(d.vencimento) : '—'}</td><td data-r="Situação">${tagDoc(d)}</td><td data-r="Arquivo">${anx[d.id]}</td>
-      <td>${pode ? `<button class="btn peq perigo" data-rem="${d.id}">Remover</button>` : ''}</td></tr>`).join('')}</tbody></table></div>` : '<div class="vazio">Nenhum documento.</div>';
+      <td class="nowrap">${pode ? `<button class="btn peq" data-edoc="${d.id}">Editar</button> <button class="btn peq perigo" data-rem="${d.id}">Remover</button>` : ''}</td></tr>`).join('')}</tbody></table></div>` : '<div class="vazio">Nenhum documento.</div>';
   const vencidos = docs.filter(d => !d.substituido_em && d.tem_validade && diasAte(d.vencimento) < 0).length;
   const vencendo = docs.filter(d => !d.substituido_em && d.tem_validade && diasAte(d.vencimento) >= 0 && diasAte(d.vencimento) <= 30).length;
   const semCrlv = comps.filter(c => !docs.some(d => d.veiculo_id === c.id && d.tipo === 'CRLV' && !d.substituido_em));
@@ -238,6 +238,7 @@ rota('/cadastros/equipamentos/ver/:id', async (tela, id) => {
       $('#na-data').innerHTML = `<div class="conferencia" style="margin-bottom:10px">Em ${dataHoraBR(new Date(q).toISOString())}: ${r.length ? r.map(x => `<b>${esc(x.descricao_composicao || 'Composição ' + x.ordem)}</b> <span class="mono">${esc(x.placa)}</span>`).join(' · ') : 'nenhuma placa registrada neste conjunto'}</div>`;
     } catch (err) { falha(err); } };
   $$('[data-doc]', tela).forEach(b => b.addEventListener('click', () => novoDoc(b.dataset.doc)));
+  $$('[data-edoc]', tela).forEach(b => b.addEventListener('click', () => { const d = docs.find(x => x.id === b.dataset.edoc); if (d) modalDocumento(comps, id, d.veiculo_id || '', d); }));
   $$('[data-rem]', tela).forEach(b => b.addEventListener('click', async () => {
     const motivo = await confirmar('Remover este documento?', { comMotivo: true, botao: 'Remover' });
     if (!motivo) return;
@@ -273,10 +274,10 @@ rota('/frota/documentos', async tela => {
 });
 
 // ---------- Anexar documento (equipamento ou placa) ----------
-async function modalDocumento(comps, equipamentoId, alvo) {
+async function modalDocumento(comps, equipamentoId, alvo, ed = null) {
     const anoAtual = new Date().getFullYear();
     const cal = await api.listar('v_calendario_crlv_status', 'select=uf,ano_confirmado').catch(() => []);
-    const r = await modal(`<form><h2>Anexar documento</h2><div class="form">
+    const r = await modal(`<form><h2>${ed ? 'Editar documento' : 'Anexar documento'}</h2><div class="form">
       ${comps.length ? '' : '<div class="largo alerta-obs">Este equipamento está sem placa cadastrada. Clique em Editar no equipamento e informe a placa para poder lançar o CRLV.</div>'}
       <label class="campo largo">De qual placa?<select name="alvo"><option value="" ${comps.length === 1 && !alvo ? '' : ''}>Conjunto (equipamento inteiro)</option>
         ${comps.map(c => `<option value="${c.id}" ${c.id === (alvo || (comps.length === 1 ? comps[0].id : '')) ? 'selected' : ''}>${esc((c.descricao_composicao || 'Placa') + ' · ' + c.placa)}</option>`).join('')}</select></label>
@@ -290,8 +291,8 @@ async function modalDocumento(comps, equipamentoId, alvo) {
         <div class="largo conferencia" id="crlv-calc"></div></div>
       <label class="campo" id="campo-venc" hidden>Vencimento<input type="date" name="vencimento"></label>
       <label class="campo largo">Observação<input name="observacao"></label>
-      <label class="campo largo">Arquivo (PDF ou foto) *<input type="file" name="arquivos" accept="image/*,application/pdf" multiple></label></div>
-      <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Salvar documento</button></div></form>`, {
+      <label class="campo largo">${ed ? 'Incluir mais arquivos (opcional)' : 'Arquivo (PDF ou foto) *'}<input type="file" name="arquivos" accept="image/*,application/pdf" multiple></label></div>
+      <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">${ed ? 'Salvar alterações' : 'Salvar documento'}</button></div></form>`, {
       aoAbrir: raiz => {
         const f = $('form', raiz);
         const calc = async () => {
@@ -317,24 +318,30 @@ async function modalDocumento(comps, equipamentoId, alvo) {
         f.nome.oninput = () => (f.nome.dataset.mexeu = 1);
         f.tipo.onchange = sinc; f.alvo.onchange = sinc; f.uf.onchange = calc; f.exercicio.oninput = () => { if (!f.nome.dataset.mexeu) sinc(); else calc(); };
         f.validade.onchange = () => { $('#campo-venc', raiz).hidden = !f.validade.checked; };
-        if (alvo) f.tipo.value = 'CRLV';
-        sinc();
+        if (ed) {
+          f.alvo.value = ed.veiculo_id || ''; f.tipo.value = ed.tipo; f.nome.value = ed.nome || ''; f.nome.dataset.mexeu = 1; f.numero.value = ed.numero || '';
+          if (ed.uf) f.uf.value = ed.uf; if (ed.exercicio) f.exercicio.value = ed.exercicio; f.observacao.value = ed.observacao || '';
+          sinc(); f.validade.checked = !!ed.tem_validade || ed.tipo === 'CRLV'; $('#campo-venc', raiz).hidden = !f.validade.checked;
+          setTimeout(() => { f.vencimento.value = ed.vencimento || ''; }, 400);
+        } else { if (alvo) f.tipo.value = 'CRLV'; sinc(); }
       },
       validar: d => {
         if (d.tipo === 'CRLV' && !d.alvo) return 'O CRLV é de uma placa: escolha a composição.';
         if (d.tipo === 'CRLV' && (!d.uf || !d.exercicio)) return 'Informe o estado e o exercício do CRLV.';
         if ((d.validade || d.tipo === 'CRLV') && !d.vencimento) return 'Informe a data de vencimento.';
-        if (!d.arquivos.length) return 'Anexe o arquivo do documento.';
+        if (!ed && !d.arquivos.length) return 'Anexe o arquivo do documento.';
         return null;
       } });
     if (!r) return;
     try {
       const crlv = r.tipo === 'CRLV';
-      const [doc] = await api.inserir('equipamento_documentos', { equipamento_id: equipamentoId, veiculo_id: r.alvo || null, tipo: r.tipo, nome: r.nome, numero: r.numero || null,
+      const dados = { equipamento_id: ed ? ed.equipamento_id : equipamentoId, veiculo_id: r.alvo || null, tipo: r.tipo, nome: r.nome, numero: r.numero || null,
         tem_validade: crlv || !!r.validade, vencimento: (crlv || r.validade) ? r.vencimento : null, uf: crlv ? r.uf : null, exercicio: crlv ? Number(r.exercicio) : null,
-        observacao: r.observacao || null });
-      await anexar('documento_equipamento', doc.id, r.arquivos);
-      aviso('Documento salvo.'); navegar();
+        observacao: r.observacao || null };
+      let docId = ed?.id;
+      if (ed) await api.alterar('equipamento_documentos', `id=eq.${ed.id}`, dados); else [{ id: docId }] = await api.inserir('equipamento_documentos', dados);
+      if (r.arquivos?.length) await anexar('documento_equipamento', docId, r.arquivos);
+      aviso(ed ? 'Documento atualizado.' : 'Documento salvo.'); navegar();
     } catch (err) { falha(err); }
   }
 
@@ -430,9 +437,10 @@ rota('/cadastros/placas/ver/:id', async (tela, id) => {
         .map(([k, x]) => `<div><div class="muted">${k}</div><b>${esc(x || '—')}</b></div>`).join('')}
     </div></div>
     <div class="cartao"><h2>Documentos desta placa</h2>${docs.length ? `<ul class="lista-simples">${docs.map(d => `<li style="flex-wrap:wrap"><span><b>${esc(d.nome)}</b> <span class="muted">${esc(d.tipo)}</span> ${tagDoc(d)}</span>
-      <span class="nowrap">${d.vencimento ? 'vence ' + dataBR(d.vencimento) : ''}</span><div style="flex-basis:100%">${anx[d.id]}</div></li>`).join('')}</ul>` : '<div class="vazio">Nenhum documento.</div>'}</div>
+      <span class="nowrap">${d.vencimento ? 'vence ' + dataBR(d.vencimento) : ''}${pode ? ` <button class="btn peq" data-edoc="${d.id}">Editar</button>` : ''}</span><div style="flex-basis:100%">${anx[d.id]}</div></li>`).join('')}</ul>` : '<div class="vazio">Nenhum documento.</div>'}</div>
     <div class="cartao"><h2>Por onde esta placa passou</h2>${tabelaHistorico(hists, 'equipamento')}</div>`;
   $('#novo-doc')?.addEventListener('click', () => modalDocumento([v], v.equipamento_id, v.id));
+  $$('[data-edoc]', tela).forEach(b => b.addEventListener('click', () => { const d = docs.find(x => x.id === b.dataset.edoc); if (d) modalDocumento([v], v.equipamento_id, v.id, d); }));
   $('#trocar')?.addEventListener('click', () => modalTroca(v, eq));
 });
 
