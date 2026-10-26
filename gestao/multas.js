@@ -75,7 +75,7 @@ async function blocoProcessoMulta(o) {
   const temInd = de(ANX_IND).length > 0, temTermo = de(ANX_TERMO).length > 0;
   const plano = o.desconto_plano || [];
   const dadosOk = !!(o.colaborador_id && o.cnh_numero && o.auto_infracao && o.orgao_autuador && o.enquadramento && o.local && (o.placa || o.equipamento_id)
-    && o.desconto_tipo && Number(o.desconto_valor) > 0 && plano.length && o.aplicador_nome && o.condutor_ouvido && o.juridico_ok && o.juridico_info);
+    && o.desconto_tipo && Number(o.desconto_valor) > 0 && plano.length && o.aplicador_nome && o.condutor_ouvido && o.juridico_ok);
   const aberto = o.multa_etapa === 'documentos', pode = podeMulta() && aberto;
   const dias = o.prazo_documentos ? diasAte(o.prazo_documentos) : null;
   const passo = (n, ok, t, sub) => `<li class="mt-passo ${ok ? 'ok' : ''}"><span class="mt-n">${ok ? '✓' : n}</span><span><b>${t}</b><small>${sub}</small></span></li>`;
@@ -122,7 +122,7 @@ async function blocoProcessoMulta(o) {
         <label class="campo">Cargo do responsável<input name="aplicador_cargo" value="${esc(o.aplicador_cargo || '')}"></label>
         <label class="check largo"><input type="checkbox" name="condutor_ouvido" ${o.condutor_ouvido ? 'checked' : ''}> O condutor foi ouvido e a versão dele está registrada *</label>
         <label class="check largo"><input type="checkbox" name="juridico_ok" ${o.juridico_ok ? 'checked' : ''}> O jurídico analisou e aprovou o desconto *</label>
-        <label class="campo largo">Quem do jurídico aprovou (nome, data ou nº do parecer) *<input name="juridico_info" value="${esc(o.juridico_info || '')}"></label>
+        <label class="campo largo">Quem do jurídico aprovou (nome, data ou nº do parecer) <span class="muted">· opcional</span><input name="juridico_info" value="${esc(o.juridico_info || '')}"></label>
       </div>
       ${pode && temInd ? '<div class="acoes" style="margin-top:10px"><button class="btn prim" value="salvar">Salvar dados</button><button class="btn" value="termo">Salvar e baixar o termo (2 vias)</button></div>' : ''}</fieldset></form>
     <div class="mt-sec"><h3>3 · Termo de desconto assinado ${botaoAnx(ANX_TERMO, '📎 Anexar termo assinado', dadosOk && !temTermo)}</h3><div class="anexos">${lista(de(ANX_TERMO))}</div>
