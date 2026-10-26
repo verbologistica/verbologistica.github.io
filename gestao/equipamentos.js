@@ -12,9 +12,34 @@ const TIPOS_EQ = {
   utilitario: ['Utilitário', 1, ['Utilitário']], maquina: ['Máquina / equipamento', 1, ['Máquina']], outro: ['Outro', 1, ['Composição']],
 };
 const SITUACOES_EQ = { operando: ['Operando', 'verde'], manutencao: ['Em manutenção', 'amarelo'], parado: ['Parado', ''], vendido: ['Vendido', ''], baixado: ['Baixado', ''] };
-const DOC_TIPOS = [['CRLV', true], ['Seguro / apólice', true], ['Tacógrafo (aferição Inmetro)', true], ['ANTT / RNTRC', true], ['AET (autorização especial de trânsito)', true],
+// Documentos obrigatórios por tipo de equipamento (controle de pendências)
+const DOC_LICENCAS = ['Licença de tráfego · Federal noturna', 'Licença de tráfego · Federal diurna', 'Licença de tráfego · Estadual MS', 'Licença de tráfego · Estadual SP'];
+const DOC_OBRIG = { leve: ['CRLV'], cavalo: ['CRLV', 'Inspeção eletromecânica', 'Certificado de tacógrafo', ...DOC_LICENCAS], semirreboque: ['CRLV', 'Inspeção eletromecânica'] };
+const GRUPO_OBRIG = { carro: 'leve', utilitario: 'leve', motocicleta: 'leve', caminhao: 'leve', cavalo_mecanico: 'cavalo', carreta: 'semirreboque', bitrem: 'semirreboque', tritrem: 'semirreboque', rodotrem: 'semirreboque' };
+const ROT_GRUPO_OBRIG = { leve: 'Veículo leve', cavalo: 'Cavalo mecânico', semirreboque: 'Semirreboque' };
+const DOC_ALIAS = { 'Tacógrafo (aferição Inmetro)': 'Certificado de tacógrafo' };
+const tipoDocNorm = t => DOC_ALIAS[t] || t;
+const DOC_TIPOS = [['CRLV', true], ['Inspeção eletromecânica', true], ['Certificado de tacógrafo', true], ...DOC_LICENCAS.map(t => [t, true]),
+  ['Seguro / apólice', true], ['ANTT / RNTRC', true], ['AET (autorização especial de trânsito)', true], ['Tacógrafo (aferição Inmetro)', true],
   ['CIV (inspeção veicular)', true], ['CIPP (produtos perigosos)', true], ['Licença ambiental', true], ['Laudo / inspeção', true],
   ['Nota fiscal de compra', false], ['Contrato de financiamento / leasing', false], ['Manual / garantia', false], ['Outro', false]];
+// situação de cada documento obrigatório, placa a placa. comArq: Set com os ids de documentos que têm arquivo anexado
+function situacaoObrigatorios(tipoEq, comps, docs, comArq) {
+  const lista = DOC_OBRIG[GRUPO_OBRIG[tipoEq]] || [];
+  const hoje = hojeISO();
+  return comps.flatMap(c => lista.map(t => {
+    const cands = docs.filter(d => !d.substituido_em && d.ativo !== false && tipoDocNorm(d.tipo) === t && (d.veiculo_id === c.id || (!d.veiculo_id && comps.length === 1)))
+      .sort((a, b) => (b.vencimento || '9999') < (a.vencimento || '9999') ? -1 : 1);
+    const d = cands.find(x => comArq.has(x.id) && !(x.tem_validade && x.vencimento && x.vencimento < hoje)) || cands[0];
+    let st = 'ok';
+    if (!d) st = 'falta';
+    else if (d.tem_validade && d.vencimento && d.vencimento < hoje) st = 'vencido';
+    else if (!comArq.has(d.id)) st = 'sem_arquivo';
+    else if (d.tem_validade && d.vencimento && diasAte(d.vencimento) <= 30) st = 'vence';
+    return { c, placa: c.placa, tipo: t, d, st };
+  }));
+}
+const ST_OBRIG = { ok: ['em dia', 'verde'], vence: ['vence em breve', 'amarelo'], falta: ['não cadastrado', 'vermelho'], vencido: ['vencido', 'vermelho'], sem_arquivo: ['sem arquivo', 'vermelho'] };
 const nomeTipoEq = e => e.tipo === 'outro' ? (e.tipo_outro || 'Outro') : (TIPOS_EQ[e.tipo]?.[0] || 'Tipo a definir');
 const rotuloEq = e => [e.codigo_frota, nomeTipoEq(e), [e.marca, e.modelo].filter(Boolean).join(' ')].filter(Boolean).join(' · ');
 const diasAte = d => Math.round((new Date(d + 'T12:00:00') - new Date(hojeISO() + 'T12:00:00')) / 864e5);
@@ -217,7 +242,14 @@ rota('/cadastros/equipamentos/ver/:id', async (tela, id) => {
     centros(), usuarios(), api.listar('v_atrelamentos', `equipamento_id=eq.${id}&order=inicio.desc&limit=200`).catch(() => [])]);
   const blocoEngate = await htmlEngatesDoEquipamento(e).catch(() => '');
   const anx = {}; await Promise.all(docs.map(async d => (anx[d.id] = await htmlAnexos('documento_equipamento', d.id))));
+  const arqs = docs.length ? await api.listar('anexos', `select=entidade_id&entidade=eq.documento_equipamento&cancelado_em=is.null&entidade_id=in.(${docs.map(d => d.id).join(',')})`).catch(() => []) : [];
+  const obrig = situacaoObrigatorios(e.tipo, comps, docs, new Set(arqs.map(x => x.entidade_id)));
+  const obrigPend = obrig.filter(o => !['ok', 'vence'].includes(o.st));
   const pode = editaFrota();
+  const chipsObrig = c => { const os = obrig.filter(o => o.c.id === c.id); if (!os.length) return '';
+    return `<div class="eq-obrig"><span class="muted">Obrigatórios (${esc(ROT_GRUPO_OBRIG[GRUPO_OBRIG[e.tipo]])}):</span> ${os.map(o => { const [t, cor] = ST_OBRIG[o.st];
+      const falta = !['ok', 'vence'].includes(o.st);
+      return `<${falta && pode ? `button type="button" data-obrig="${c.id}|${esc(o.tipo)}"` : 'span'} class="tag ${cor}" title="${esc(o.tipo)}: ${t}${o.d?.vencimento ? ' · ' + dataBR(o.d.vencimento) : ''}${falta && pode ? ' · clique para lançar' : ''}">${o.st === 'ok' || o.st === 'vence' ? '✓' : '✕'} ${esc(o.tipo)}${falta ? ' · ' + t : ''}</${falta && pode ? 'button' : 'span'}>`; }).join(' ')}</div>`; };
   const tabelaDocs = ds => ds.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Documento</th><th>Vencimento</th><th>Situação</th><th>Arquivo</th><th></th></tr></thead><tbody>
     ${ds.map(d => `<tr><td data-r="Documento"><b>${esc(d.nome)}</b><div class="muted">${esc(d.tipo)}${d.tipo === 'CRLV' ? ` · ${esc(d.uf || '')} · exercício ${d.exercicio || ''}` : ''}${d.numero ? ' · nº ' + esc(d.numero) : ''}</div>
       ${d.observacao ? `<div class="muted">${esc(d.observacao)}</div>` : ''}</td>
@@ -239,7 +271,7 @@ rota('/cadastros/equipamentos/ver/:id', async (tela, id) => {
       <div class="cartao kpi"><div class="n">${comps.length}</div><div class="r">composição(ões) / placa(s)</div></div>
       <div class="cartao kpi ${vencidos ? 'alerta' : ''}"><div class="n">${vencidos}</div><div class="r">documento(s) vencido(s)</div></div>
       <div class="cartao kpi ${vencendo ? 'alerta' : ''}"><div class="n">${vencendo}</div><div class="r">vencendo em 30 dias</div></div>
-      <div class="cartao kpi ${semCrlv.length ? 'alerta' : ''}"><div class="n">${semCrlv.length}</div><div class="r">placa(s) sem CRLV anexado</div></div>
+      <div class="cartao kpi ${obrigPend.length ? 'alerta' : ''}"><div class="n">${obrigPend.length}</div><div class="r">${GRUPO_OBRIG[e.tipo] ? 'documento(s) obrigatório(s) pendente(s)' : 'sem lista de obrigatórios para este tipo'}</div></div>
     </div>
     <div class="cartao"><div class="form">
       <div><div class="muted">Centro de custo</div><b>${esc(ccs.find(c => c.id === e.centro_custo_id)?.nome || '—')}</b></div>
@@ -254,7 +286,7 @@ rota('/cadastros/equipamentos/ver/:id', async (tela, id) => {
           c.categoria_licenciamento === 'caminhao' ? 'CRLV: calendário de caminhão' : 'CRLV: calendário geral', c.capacidade].filter(Boolean).join(' · '))}</div></div>
         <div class="acoes">${pode ? `<button class="btn peq" data-doc="${c.id}">+ Documento</button><button class="btn peq" data-trocar="${c.id}">Trocar placa</button>` : ''}
           <a class="btn peq" href="#/cadastros/placas/ver/${c.id}">Histórico da placa</a></div></div>
-      ${tabelaDocs(docs.filter(d => d.veiculo_id === c.id))}</div>`).join('')}
+      ${chipsObrig(c)}${tabelaDocs(docs.filter(d => d.veiculo_id === c.id))}</div>`).join('')}
     <div class="cartao"><div class="topo" style="margin:0 0 8px"><h2 style="margin:0">Documentos do conjunto</h2>${pode ? '<button class="btn peq" data-doc="">+ Documento do conjunto</button>' : ''}</div>
       ${tabelaDocs(docs.filter(d => !d.veiculo_id))}</div>
     <div class="cartao"><div class="topo" style="margin:0 0 8px"><h2 style="margin:0">Histórico das placas deste equipamento</h2>
@@ -271,6 +303,7 @@ rota('/cadastros/equipamentos/ver/:id', async (tela, id) => {
       $('#na-data').innerHTML = `<div class="conferencia" style="margin-bottom:10px">Em ${dataHoraBR(new Date(q).toISOString())}: ${r.length ? r.map(x => `<b>${esc(x.descricao_composicao || 'Composição ' + x.ordem)}</b> <span class="mono">${esc(x.placa)}</span>`).join(' · ') : 'nenhuma placa registrada neste conjunto'}</div>`;
     } catch (err) { falha(err); } };
   $$('[data-doc]', tela).forEach(b => b.addEventListener('click', () => novoDoc(b.dataset.doc)));
+  $$('[data-obrig]', tela).forEach(b => b.addEventListener('click', () => { const [cid, tipo] = b.dataset.obrig.split('|'); modalDocumento(comps, id, cid, null, tipo); }));
   $$('[data-edoc]', tela).forEach(b => b.addEventListener('click', () => { const d = docs.find(x => x.id === b.dataset.edoc); if (d) modalDocumento(comps, id, d.veiculo_id || '', d); }));
   $$('[data-rem]', tela).forEach(b => b.addEventListener('click', async () => {
     const motivo = await confirmar('Remover este documento?', { comMotivo: true, botao: 'Remover' });
@@ -307,7 +340,7 @@ rota('/frota/documentos', async tela => {
 });
 
 // ---------- Anexar documento (equipamento ou placa) ----------
-async function modalDocumento(comps, equipamentoId, alvo, ed = null) {
+async function modalDocumento(comps, equipamentoId, alvo, ed = null, tipoIni = null) {
     const anoAtual = new Date().getFullYear();
     const cal = await api.listar('v_calendario_crlv_status', 'select=uf,ano_confirmado').catch(() => []);
     const r = await modal(`<form><h2>${ed ? 'Editar documento' : 'Anexar documento'}</h2><div class="form">
@@ -356,7 +389,7 @@ async function modalDocumento(comps, equipamentoId, alvo, ed = null) {
           if (ed.uf) f.uf.value = ed.uf; if (ed.exercicio) f.exercicio.value = ed.exercicio; f.observacao.value = ed.observacao || '';
           sinc(); f.validade.checked = !!ed.tem_validade || ed.tipo === 'CRLV'; $('#campo-venc', raiz).hidden = !f.validade.checked;
           setTimeout(() => { f.vencimento.value = ed.vencimento || ''; }, 400);
-        } else { if (alvo) f.tipo.value = 'CRLV'; sinc(); }
+        } else { if (tipoIni) f.tipo.value = tipoIni; else if (alvo) f.tipo.value = 'CRLV'; sinc(); }
       },
       validar: d => {
         if (d.tipo === 'CRLV' && !d.alvo) return 'O CRLV é de uma placa: escolha a composição.';

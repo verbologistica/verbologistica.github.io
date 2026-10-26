@@ -2,14 +2,13 @@
 // × equipamentos completos. PDF no papel timbrado (vertical ou horizontal) e Excel.
 'use strict';
 
-const FR_EXIGE_TACOGRAFO = ['cavalo_mecanico', 'caminhao'];
 const FR_SEM_PLACA = ['maquina'];
 const FR_CRITERIOS = [
-  'Cadastro do equipamento: código de frota, tipo, marca, modelo e ano de fabricação.',
-  'Cada placa: RENAVAM, chassi e UF do registro.',
-  'CRLV de cada placa cadastrado, dentro da validade e com o arquivo anexado.',
-  'Cavalo mecânico e caminhão: aferição do tacógrafo (Inmetro) cadastrada, na validade e com arquivo.',
-  'Qualquer outro documento cadastrado (AET, seguro, ANTT...) vencido ou sem arquivo também conta como pendência.',
+  'Cadastro do equipamento: código de frota, tipo, marca, modelo e ano de fabricação. Cada placa: RENAVAM, chassi e UF do registro.',
+  'Veículo leve (carro, utilitário, motocicleta, caminhão): CRLV.',
+  'Cavalo mecânico: CRLV, inspeção eletromecânica, certificado de tacógrafo e licenças de tráfego (Federal noturna, Federal diurna, Estadual MS e Estadual SP).',
+  'Semirreboques (carreta, bitrem, tritrem, rodotrem): CRLV e inspeção eletromecânica de cada placa.',
+  'Cada documento obrigatório precisa estar cadastrado, dentro da validade e com o arquivo anexado.',
   'Documentos que vencem em até 30 dias aparecem como aviso, sem tirar o equipamento de "completo".'];
 
 async function dadosPendenciasFrota({ inativos = false, q = '' } = {}) {
@@ -36,25 +35,21 @@ async function dadosPendenciasFrota({ inativos = false, q = '' } = {}) {
     if (!e.ano_fabricacao && !cs.some(c => c.ano_fabricacao)) add('', 'ano de fabricação não informado');
     const semPlaca = FR_SEM_PLACA.includes(e.tipo);
     if (!cs.length && !semPlaca) add('', 'nenhuma placa vinculada');
-    // validação de um documento
-    const checa = (d, onde) => {
-      const nome = d.tipo === 'Outro' ? (d.nome || 'Outro') : d.tipo.replace(/ \(.*\)$/, '');
-      let ok = true;
-      if (d.tem_validade && d.vencimento && d.vencimento < hoje) { add(onde, `${nome} vencido em ${dataBR(d.vencimento)}`); ok = false; }
-      if (!comArq.has(d.id)) { add(onde, `${nome} sem arquivo anexado`); ok = false; }
-      if (ok && d.tem_validade && d.vencimento && d.vencimento <= lim30) avisos.push(`${onde ? onde + ': ' : ''}${nome} vence em ${dataBR(d.vencimento)}`);
-      if (ok) okDocs.push(`${onde ? onde + ' ' : ''}${nome}${d.tem_validade && d.vencimento ? ' até ' + dataBR(d.vencimento) : ''}`);
-    };
     cs.forEach(c => {
       if (!c.renavam) add(c.placa, 'RENAVAM não informado');
       if (!c.chassi) add(c.placa, 'chassi não informado');
       if (!c.uf_registro) add(c.placa, 'UF do registro não informada');
-      const crlv = dEq.filter(d => d.tipo === 'CRLV' && (d.veiculo_id === c.id || (!d.veiculo_id && cs.length === 1)));
-      if (!crlv.length) add(c.placa, 'CRLV não cadastrado');
     });
-    if (FR_EXIGE_TACOGRAFO.includes(e.tipo) && !dEq.some(d => /^Tac[oó]grafo/.test(d.tipo))) add(cs[0]?.placa || '', 'aferição do tacógrafo não cadastrada');
-    dEq.forEach(d => checa(d, cs.find(c => c.id === d.veiculo_id)?.placa || ''));
-    const vencs = dEq.filter(d => d.tem_validade && d.vencimento && d.vencimento >= hoje).map(d => d.vencimento).sort();
+    // documentos obrigatórios do tipo
+    const obr = situacaoObrigatorios(e.tipo, cs, dEq, comArq);
+    const um = cs.length === 1;
+    obr.forEach(o => { const onde = o.placa;
+      if (o.st === 'falta') add(onde, `${o.tipo}: não cadastrado`);
+      else if (o.st === 'vencido') add(onde, `${o.tipo}: vencido em ${dataBR(o.d.vencimento)}`);
+      else if (o.st === 'sem_arquivo') add(onde, `${o.tipo}: sem arquivo anexado`);
+      else { if (o.st === 'vence') avisos.push(`${onde}: ${o.tipo} vence em ${dataBR(o.d.vencimento)}`);
+        okDocs.push(`${um ? '' : onde + ' '}${o.tipo}${o.d.tem_validade && o.d.vencimento ? ' até ' + dataBR(o.d.vencimento) : ''}`); } });
+    const vencs = obr.filter(o => ['ok', 'vence'].includes(o.st) && o.d.tem_validade && o.d.vencimento).map(o => o.d.vencimento).sort();
     return { e, cs, pend, avisos, okDocs, completo: !pend.length, prox: vencs[0] || null,
       codigo: e.codigo_frota || '-', tipo: nomeTipoEq(e), marcaModelo: [marca, e.modelo].filter(Boolean).join(' ') || '-',
       placas: cs.map(c => c.placa).join(', ') || '-', situacao: (SITUACOES_EQ[e.situacao]?.[0] || e.situacao || '') + (e.ativo ? '' : ' (inativo)') };
