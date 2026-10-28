@@ -323,6 +323,7 @@ rota('/rh/colaboradores/ver/:id', async (tela, id) => {
 
 // ---------- Admissão ----------
 async function painelAdmissao(box, c, adm, adms, cargo, cgs, faltam) {
+  if (typeof painelAdmissaoNovo === 'function') return painelAdmissaoNovo(box, c, adm, adms);
   const pode = editaRH();
   if (!adm) {
     box.innerHTML = `<h2>Admissão</h2>${adms.length ? `<ul class="lista-simples">${adms.map(a => `<li><span>${esc(a.numero || '')} ${tag(a.status === 'concluida' ? 'aprovado' : a.status === 'cancelada' ? 'cancelado' : 'pendente')}</span><span class="muted">${a.concluida_em ? 'concluída em ' + dataBR(a.concluida_em) : dataBR(a.data_prevista)}</span></li>`).join('')}</ul>` : ''}

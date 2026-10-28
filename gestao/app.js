@@ -442,7 +442,7 @@ const MENU = [
   ['sub', 'Pessoas'],
   ['Painel do RH', '#/rh', P_RH, 'painel', null, true],
   ['Colaboradores', '#/rh/colaboradores', P_RH, 'pessoas', null, true],
-  ['Admissões', '#/rh/admissoes', P_RH, 'admissao', 'admissoes_andamento', true],
+  ['Admissões', '#/rh/admissoes', [...P_RH, 'ssma', 'almoxarifado', 'operacao', 'manutencao', 'qualidade'], 'admissao', 'admissao_etapas', true],
   ['Documentos dos colaboradores', '#/rh/documentos', P_RH, 'cracha', 'rh_docs_vencendo', true],
   ['Crachás', '#/rh/crachas', P_RH, 'cracha', null, true],
   ['Férias', '#/rh/ferias', P_RH, 'sol', 'ferias_vencendo', true],
@@ -455,7 +455,7 @@ const MENU = [
   ['Promoções e cursos', '#/rh/desenvolvimento', P_RH, 'medalha', null, true],
   ['Pesquisas de clima', '#/rh/clima', P_RH, 'termometro', null, true],
   ['sub', 'Recrutamento'],
-  ['Vagas e seleção', '#/rh/recrutamento', P_RH, 'busca', 'vagas_abertas', true],
+  ['Vagas e seleção', '#/rh/vagas', [...P_RH, 'aprovador'], 'busca', 'vagas_aprovar', true],
   ['Banco de talentos', '#/rh/talentos', P_RH, 'arquivo', null, true],
   ['grupo', 'Departamento Pessoal', 'calculadora'],
   ['Painel do DP', '#/dp', ['administrador', 'dp', 'diretoria'], 'painel', 'dp_a_importar', true],
@@ -572,6 +572,7 @@ async function desenharCasca() {
   const pend = {};
   try { (await api.rpc('minhas_pendencias')).forEach(p => (pend[p.tipo] = Number(p.quantidade))); } catch {}
   try { pend.acoes_pendentes = (await api.rpc('minhas_acoes')).length; } catch {}
+  pend.aprovar = (pend.aprovar || 0) + (pend.vagas_aprovar || 0);
   estado.pendencias = pend;
   const atual = location.hash || '#/inicio';
   let melhor = menu().filter(i => i[0] !== 'grupo' && (atual === i[1] || atual.startsWith(i[1] + '/') || atual.startsWith(i[1] + '?'))).sort((a, b) => b[1].length - a[1].length)[0]?.[1];
@@ -935,6 +936,8 @@ rota('/inicio', async tela => {
       ${p.pesquisa_aberta ? `<a class="cartao kpi alerta" href="#/clima"><div class="n">💬</div><div class="r">Pesquisa de clima aberta: responda de forma anônima</div></a>` : ''}
       ${tem('administrador', 'rh', 'dp') && p.ferias_vencendo ? `<a class="cartao kpi alerta" href="#/rh/ferias"><div class="n">${p.ferias_vencendo}</div><div class="r">período(s) de férias vencido(s) ou vencendo</div></a>` : ''}
       ${tem('administrador', 'rh', 'dp') && p.desligamentos_andamento ? `<a class="cartao kpi" href="#/rh/desligamentos"><div class="n">${p.desligamentos_andamento}</div><div class="r">desligamento(s) em andamento</div></a>` : ''}
+      ${p.vagas_aprovar ? `<a class="cartao kpi alerta" href="#/rh/vagas"><div class="n">${p.vagas_aprovar}</div><div class="r">requisição(ões) de vaga esperando você</div></a>` : ''}
+      ${p.admissao_etapas ? `<a class="cartao kpi alerta" href="#/rh/admissoes"><div class="n">${p.admissao_etapas}</div><div class="r">etapa(s) de admissão com o seu setor</div></a>` : ''}
       ${tem('administrador', 'rh', 'dp') && p.admissoes_andamento ? `<a class="cartao kpi" href="#/rh/admissoes"><div class="n">${p.admissoes_andamento}</div><div class="r">admissão(ões) em andamento</div></a>` : ''}
       ${tem('administrador', 'rh', 'dp') && p.rh_docs_vencendo ? `<a class="cartao kpi alerta" href="#/rh/documentos"><div class="n">${p.rh_docs_vencendo}</div><div class="r">documento(s) de colaboradores vencidos ou vencendo em 30 dias</div></a>` : ''}
       ${tem('administrador', 'rh', 'dp') && p.experiencia_vencendo ? `<a class="cartao kpi alerta" href="#/rh"><div class="n">${p.experiencia_vencendo}</div><div class="r">contrato(s) de experiência vencendo em 15 dias</div></a>` : ''}

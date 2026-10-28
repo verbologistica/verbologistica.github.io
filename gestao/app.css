@@ -1337,3 +1337,33 @@ body.tema-vx .ss-vg-l:hover { background: rgba(255,255,255,.05); } body.tema-vx 
 .cr-th-cracha { border: 2px solid var(--ouro); }
 @media (max-width: 900px) { .cr-grade { grid-template-columns: 1fr; } .cr-lados canvas { width: 260px !important; border-radius: 15px; } }
 .cr-seg { display: flex; flex-wrap: wrap; gap: 6px 22px; align-items: center; margin-top: 4px; } .cr-seg .campo { min-width: 200px; }
+/* Admissão */
+.ad-fases { list-style: none; display: flex; gap: 0; margin: 0 0 16px; padding: 14px 10px; background: var(--cartao); border-radius: var(--raio); box-shadow: var(--sombra); overflow-x: auto; }
+.ad-fase { flex: 1 1 0; min-width: 110px; position: relative; text-align: center; padding: 0 6px; display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 12.5px; }
+.ad-fase::before { content: ''; position: absolute; top: 13px; left: -50%; right: 50%; height: 3px; background: var(--borda); z-index: 0; }
+.ad-fase:first-child::before { display: none; }
+.ad-fase.ok::before, .ad-fase.atual::before { background: var(--verde); }
+.ad-bola { width: 28px; height: 28px; border-radius: 50%; background: #fff; border: 3px solid var(--borda); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; position: relative; z-index: 1; color: #fff; }
+.ad-fase.ok .ad-bola { background: var(--verde); border-color: var(--verde); }
+.ad-fase.atual .ad-bola { border-color: var(--ouro); box-shadow: 0 0 0 4px var(--ouro-claro); }
+.ad-fase.x .ad-bola { background: var(--vermelho); border-color: var(--vermelho); }
+.ad-fase small { color: var(--cinza); font-size: 11.5px; }
+.ad-ets { list-style: none; margin: 0; padding: 0; position: relative; }
+.ad-et { display: flex; gap: 12px; padding: 10px 0; position: relative; }
+.ad-et + .ad-et { border-top: 1px solid var(--borda); }
+.ad-ic { flex: none; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; background: var(--amarelo-claro); color: var(--amarelo); }
+.ad-et.feito .ad-ic { background: var(--verde-claro); color: var(--verde); } .ad-et.nao_se_aplica .ad-ic { background: var(--cinza-claro); color: var(--cinza); }
+.ad-et.atrasada .ad-ic { background: var(--vermelho-claro); color: var(--vermelho); }
+.ad-et-c { flex: 1; min-width: 0; } .ad-et-t { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.ad-et-a { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.ad-trs { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 8px; }
+.ad-tr { display: flex; gap: 12px; padding: 10px 12px; border: 1px solid var(--borda); border-left: 4px solid var(--info); border-radius: 8px; }
+.ad-tr.concluido { border-left-color: var(--verde); } .ad-tr.nao_compareceu { border-left-color: var(--vermelho); } .ad-tr.cancelado { opacity: .6; border-left-color: var(--borda); }
+.ad-hora { flex: none; min-width: 86px; font-variant-numeric: tabular-nums; font-weight: 600; font-size: 13px; color: var(--azul-escuro); }
+.ad-tr > div { flex: 1; min-width: 0; }
+.ad-hist { margin: 0; padding-left: 18px; display: grid; gap: 8px; }
+.ad-barra { height: 7px; background: var(--cinza-claro); border-radius: 4px; overflow: hidden; min-width: 90px; } .ad-barra i { display: block; height: 100%; background: var(--verde); border-radius: 4px; }
+.ad-dia h3 { margin: 14px 0 6px; text-transform: capitalize; } .ad-dia:first-child h3 { margin-top: 0; }
+.ad-agenda { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.ad-agenda li { display: grid; grid-template-columns: 96px 1fr auto; gap: 10px; align-items: center; padding: 8px 10px; border: 1px solid var(--borda); border-radius: 8px; }
+@media (max-width: 640px) { .ad-agenda li { grid-template-columns: 1fr; } .ad-tr { flex-direction: column; } }
