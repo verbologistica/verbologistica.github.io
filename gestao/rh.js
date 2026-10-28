@@ -91,6 +91,7 @@ async function formColaborador(tela, c = null) {
   const campo = (rot, html, largo) => `<label class="campo ${largo ? 'largo' : ''}">${rot}${html}</label>`;
   const inp = (k, extra = '') => `<input name="${k}" value="${v(k)}" ${extra}>`;
   const dt = k => `<input type="date" name="${k}" value="${v(k)}">`;
+  const fotosHtml = typeof htmlFotosColaborador === 'function' ? await htmlFotosColaborador(c, true).catch(() => '') : '';
   tela.innerHTML = `
     <div class="topo"><div><h1>${c ? 'Editar ' + esc(c.nome) : 'Novo colaborador'}</h1><p class="sub">Campos com * são obrigatórios. O restante pode ser completado durante a admissão.</p></div></div>
     <datalist id="lista-bancos">${bancos.map(b => `<option value="${String(b.code).padStart(3, '0')} · ${esc(b.name)}">`).join('')}</datalist>
@@ -146,6 +147,7 @@ async function formColaborador(tela, c = null) {
         ${campo('Agência', inp('agencia'))}${campo('Conta', inp('conta'))}${campo('Tipo', sel('tipo_conta', ['Corrente', 'Poupança', 'Salário', 'Pagamento'].map(x => [x, x]), c?.tipo_conta))}
         ${campo('Tipo de chave Pix', sel('pix_tipo', TIPOS_PIX.map(x => [x, x]), c?.pix_tipo))}${campo('Chave Pix', inp('pix_chave'), true)}
       </div></div>
+      ${fotosHtml ? `<div class="cartao"><h2>Fotos</h2><p class="muted" style="margin-top:0">São duas fotos: a da ficha de registro (3x4 formal) e a que o colaborador escolheu para o crachá. O crachá usa só a foto do crachá.</p>${fotosHtml}</div>` : ''}
       <div class="cartao"><h2>Observações</h2><textarea name="observacoes" rows="3" style="width:100%">${v('observacoes')}</textarea></div>
       <div class="acoes"><button class="btn prim">Salvar</button><a class="btn" href="javascript:history.back()">Cancelar</a></div>
     </form>`;
@@ -188,6 +190,9 @@ async function formColaborador(tela, c = null) {
       try {
         let id = c?.id;
         if (c) await api.alterar('colaboradores', `id=eq.${id}`, dados); else [{ id }] = await api.inserir('colaboradores', dados);
+        try { if (d._foto_ficha?.length) await salvarFotoColaborador(id, d._foto_ficha[0], 'ficha');
+              if (d._foto_cracha?.length) await salvarFotoColaborador(id, d._foto_cracha[0], 'cracha'); }
+        catch (err) { aviso('Colaborador salvo, mas a foto não foi enviada: ' + err.message, true); }
         aviso('Colaborador salvo.'); location.hash = '#/rh/colaboradores/ver/' + id;
       } catch (err) { falha(/matricula/i.test(err.message) ? new Error(`Já existe um colaborador com a matrícula ${dados.matricula}.`) : /duplicate|unique/i.test(err.message) ? new Error('Já existe um colaborador com esse CPF (ou esse usuário já está ligado a outro colaborador).') : err); }
     });
@@ -213,8 +218,9 @@ rota('/rh/colaboradores/ver/:id', async (tela, id) => {
   const admAtual = adms.find(a => a.status === 'em_andamento');
   const abas = [['dados', 'Dados'], ['docs', `Documentos${faltam.length ? ` (${faltam.length} faltando)` : ''}`], ['deps', `Dependentes (${deps.length})`], ['admissao', 'Admissão'], ['ferias', 'Férias'], ['treinamentos', 'Treinamentos'], ['avaliacoes', 'Avaliações'], ['disciplinar', 'Disciplinar'], ['patrimonio', 'Patrimônio e EPI'], ['ssma', 'Saúde e segurança'], ['desligamento', 'Desligamento'], ['gerados', 'Documentos gerados']];
   const linha = (k, val) => `<div><div class="muted">${k}</div><b>${val ? esc(val) : '—'}</b></div>`;
+  const fotosFicha = aba === 'dados' && typeof htmlFotosColaborador === 'function' ? await htmlFotosColaborador(c, false).catch(() => '') : '';
   const conteudo = {
-    dados: `<div class="cartao"><div class="form">
+    dados: `${fotosFicha ? `<div class="cartao">${fotosFicha}</div>` : ''}<div class="cartao"><div class="form">
         ${linha('Matrícula', c.matricula)}${linha('CPF', fmtCPF(c.cpf || ''))}${linha('Nascimento', c.data_nascimento ? `${dataBR(c.data_nascimento)} (${idade(c.data_nascimento)} anos)` : '')}
         ${linha('RG', fmtRG(c.rg, c.rg_orgao, c.rg_uf))}${linha('Estado civil', c.estado_civil)}${linha('Escolaridade', c.escolaridade)}
         ${linha('Mãe', c.nome_mae)}${linha('PIS', c.pis)}${linha('CTPS', [c.ctps_numero, c.ctps_serie, c.ctps_uf].filter(Boolean).join(' / '))}
@@ -248,7 +254,7 @@ rota('/rh/colaboradores/ver/:id', async (tela, id) => {
   };
   tela.innerHTML = `
     <div class="topo"><div><h1>${esc(c.nome)}</h1><p class="sub">${tagColab(c.status)} · ${esc([cargo?.nome, setor?.nome, c.matricula && 'matrícula ' + c.matricula].filter(Boolean).join(' · '))}</p></div>
-      <div class="acoes">${pode ? `<a class="btn" href="#/rh/colaboradores/editar/${id}">Editar</a>` : ''}<button class="btn" id="gerar-topo">Gerar documento</button><a class="btn" href="#/rh/colaboradores">Voltar</a></div></div>
+      <div class="acoes">${pode ? `<a class="btn" href="#/rh/colaboradores/editar/${id}">Editar</a>` : ''}<button class="btn" id="gerar-topo">Gerar documento</button>${pode ? `<a class="btn" href="#/rh/crachas?c=${id}">Crachá</a>` : ''}<a class="btn" href="#/rh/colaboradores">Voltar</a></div></div>
     ${venc.length ? `<div class="cartao alerta-obs">⚠️ ${venc.map(d => `${esc(tipos.find(t => t.id === d.tipo_id)?.nome || '')} ${diasAte(d.vencimento) < 0 ? 'vencido em' : 'vence em'} ${dataBR(d.vencimento)}`).join(' · ')}</div>` : ''}
     <div class="abas">${abas.map(([k, t]) => `<a href="#/rh/colaboradores/ver/${id}?aba=${k}" class="${k === aba ? 'ativa' : ''}">${t}</a>`).join('')}</div>
     ${conteudo[aba] || conteudo.dados}`;

@@ -444,6 +444,7 @@ const MENU = [
   ['Colaboradores', '#/rh/colaboradores', P_RH, 'pessoas', null, true],
   ['Admissões', '#/rh/admissoes', P_RH, 'admissao', 'admissoes_andamento', true],
   ['Documentos dos colaboradores', '#/rh/documentos', P_RH, 'cracha', 'rh_docs_vencendo', true],
+  ['Crachás', '#/rh/crachas', P_RH, 'cracha', null, true],
   ['Férias', '#/rh/ferias', P_RH, 'sol', 'ferias_vencendo', true],
   ['Ocorrências disciplinares', '#/rh/disciplinar', P_RH, 'balanca', null, true],
   ['Desligamentos', '#/rh/desligamentos', P_RH, 'sair', 'desligamentos_andamento', true],
