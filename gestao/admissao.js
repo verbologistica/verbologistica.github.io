@@ -223,14 +223,126 @@ async function pdfRequisicaoVaga(v, { cargo, setor, U, ccs, evs }) {
     assinatura: [['Recursos Humanos', 'b'], ['Verbo Logística']] });
 }
 
-// a seleção (tela antiga) só abre com a vaga aprovada
-{ const orig = ROTAS['/rh/recrutamento/vaga/:id'];
-  rota('/rh/recrutamento/vaga/:id', async (tela, id) => {
-    const v = await api.um('vagas', `id=eq.${id}&select=status`);
-    if (v && VG_APROV.includes(v.status)) { location.hash = '#/rh/vagas/ver/' + id; return; }
-    await orig(tela, id);
-    $('.topo .acoes', tela)?.insertAdjacentHTML('afterbegin', `<a class="btn" href="#/rh/vagas/ver/${id}">Requisição e aprovações</a>`);
-  }); }
+// ===================== Seleção de candidatos (entrevistas e avaliações com histórico) =====================
+const AV_TIPO = { entrevista_rh: 'Entrevista com o RH', entrevista_gestor: 'Entrevista com o gestor', teste_pratico: 'Teste prático' };
+const AV_REC = { aprovar: ['Aprovar', 'verde'], reprovar: ['Reprovar', 'vermelho'], banco_talentos: ['Banco de talentos', 'azul'] };
+const AV_CRIT = ['Experiência e conhecimento técnico', 'Comunicação', 'Postura, segurança e cumprimento de normas', 'Disponibilidade (escala, viagens, horários)', 'Alinhamento com a vaga e a empresa'];
+const VC_EVENTO = { incluido: 'Incluído na seleção', etapa: 'Mudou de etapa', agendada: 'Entrevista agendada', avaliada: 'Avaliação registrada', cancelada: 'Entrevista cancelada' };
+
+async function formAvaliar(a, nomeCand) {
+  const r = await modal(`<form><h2>${esc(AV_TIPO[a.tipo] || 'Avaliação')} · ${esc(nomeCand)}</h2><div class="form">
+    <label class="campo">Data e hora da entrevista<input type="datetime-local" name="data" value="${a.agendada_para ? diaLocal(a.agendada_para) + 'T' + hora(a.agendada_para) : ''}"></label>
+    <div class="largo"><div class="muted" style="margin-bottom:4px">Notas: 1 = muito abaixo · 3 = atende · 5 = excepcional</div><table class="tabela-notas">${AV_CRIT.map((k, i) => `<tr><td><b>${esc(k)}</b></td>
+      <td class="nowrap">${[1, 2, 3, 4, 5].map(n => `<label class="nota"><input type="radio" name="n_${i}" value="${n}" ${(a.criterios || [])[i]?.nota == n ? 'checked' : ''}><span>${n}</span></label>`).join('')}</td></tr>`).join('')}</table></div>
+    <div class="largo"><b>Recomendação *</b>${Object.entries(AV_REC).map(([k, [t]]) => `<label class="check"><input type="radio" name="rec" value="${k}" ${a.recomendacao === k ? 'checked' : ''} required> ${t}</label>`).join('')}</div>
+    <label class="campo largo">Parecer *<textarea name="parecer" rows="4" required placeholder="Pontos fortes, pontos de atenção e o motivo da recomendação">${esc(a.parecer || '')}</textarea></label>
+    ${a.tipo === 'entrevista_gestor' ? '<p class="alerta-obs largo" style="margin:0">Entrevista com o gestor: "Aprovar" leva o candidato para <b>Aprovado</b> (o RH confere e contrata); "Reprovar" ou "Banco de talentos" encerra o candidato nesta vaga.</p>' : ''}
+    <p class="muted largo">Registre motivos objetivos e ligados à função. É proibido considerar sexo, idade, estado civil, gravidez, cor, religião ou deficiência (Lei 9.029/1995).</p></div>
+    <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Registrar avaliação</button></div></form>`,
+    { validar: d => !d.rec ? 'Escolha a recomendação.' : !d.parecer?.trim() ? 'Escreva o parecer.' : null });
+  if (!r) return false;
+  const crit = AV_CRIT.map((k, i) => ({ criterio: k, nota: r['n_' + i] ? Number(r['n_' + i]) : null })).filter(x => x.nota);
+  try { await api.rpc('registrar_avaliacao', { p_id: a.id, p_criterios: crit, p_recomendacao: r.rec, p_parecer: r.parecer, p_data: r.data ? new Date(r.data).toISOString() : null }); aviso('Avaliação registrada.'); return true; }
+  catch (err) { falha(err); return false; }
+}
+function htmlAvaliacao(a) {
+  const rec = AV_REC[a.recomendacao];
+  return `<div class="av-item ${a.status}"><div><b>${esc(AV_TIPO[a.tipo] || a.tipo)}</b> · ${esc(a.avaliador || '—')} ${a.status === 'agendada' ? '<span class="tag amarelo">agendada</span>' : a.status === 'cancelada' ? '<span class="tag">cancelada</span>' : ''}
+      ${rec ? `<span class="tag ${rec[1]}">${rec[0]}</span>` : ''}${a.nota != null ? ` <span class="tag">nota ${String(a.nota).replace('.', ',')}</span>` : ''}</div>
+    <div class="muted">${a.agendada_para ? 'Entrevista ' + dtHora(a.agendada_para) : 'Sem data'}${a.local ? ' · ' + esc(a.local) : ''}${a.concluida_em ? ' · registrada ' + dtHora(a.concluida_em) : ''}</div>
+    ${(a.criterios || []).length ? `<div class="muted">${a.criterios.map(c => `${esc(c.criterio)}: <b>${c.nota}</b>`).join(' · ')}</div>` : ''}
+    ${a.parecer ? `<div style="white-space:pre-line">${esc(a.parecer)}</div>` : ''}</div>`;
+}
+
+rota('/rh/recrutamento/vaga/:id', async (tela, id) => {
+  const v = await api.um('vagas', `id=eq.${id}&select=*`);
+  if (!v) { tela.innerHTML = '<div class="cartao vazio">Vaga não encontrada.</div>'; return; }
+  if (VG_APROV.includes(v.status)) { location.hash = '#/rh/vagas/ver/' + id; return; }
+  const [vcs, cgs, ss, us, H] = await Promise.all([api.listar('vaga_candidatos', `vaga_id=eq.${id}&select=*,cand:candidatos(*)&order=criado_em`), cargosL(), setoresL(), usuarios(),
+    api.rpc('selecao_historico', { p_vaga: id }).catch(() => ({ avaliacoes: [], eventos: [] }))]);
+  const cargo = cgs.find(c => c.id === v.cargo_id), U = porId(us), rh = editaRH();
+  const avs = H?.avaliacoes || [], evs = H?.eventos || [];
+  const ordem = ['triagem', 'entrevista_rh', 'entrevista_gestor', 'teste_pratico', 'aprovado', 'contratado', 'reprovado', 'desistiu'];
+  const porEtapa = ordem.map(k => [k, vcs.filter(x => x.etapa === k)]).filter(x => x[1].length);
+  const card = x => { const av = avs.filter(a => a.vaga_candidato_id === x.id), ev = evs.filter(e => e.vaga_candidato_id === x.id);
+    const minhaAg = av.filter(a => a.status === 'agendada' && (a.avaliador_id === estado.usuario.id || rh));
+    const hist = [...av.map(a => ({ t: a.concluida_em || a.agendada_para || a.criado_em, h: htmlAvaliacao(a) })),
+      ...ev.filter(e => !['avaliada', 'agendada'].includes(e.evento)).map(e => ({ t: e.em, h: `<div class="av-item muted">${dtHora(e.em)} · ${esc(e.quem || '')} · ${esc(VC_EVENTO[e.evento] || e.evento)}${e.evento === 'etapa' ? ': <b>' + esc(ETAPAS_SEL[e.detalhe] || e.detalhe) + '</b>' : e.detalhe && e.evento !== 'incluido' ? ': ' + esc(e.detalhe) : ''}</div>` }))]
+      .sort((p, q) => String(q.t).localeCompare(String(p.t)));
+    return `<li class="sel-cand"><div class="sel-cab"><span><b>${esc(x.cand?.nome || '')}</b>
+        <span class="muted">${esc([x.cand?.telefone && fmtTel(x.cand.telefone), x.cand?.cidade, x.cand?.cnh_categoria && 'CNH ' + x.cand.cnh_categoria + (x.cand.cnh_ear ? ' EAR' : ''), x.cand?.mopp && 'MOPP'].filter(Boolean).join(' · '))}</span>
+        ${x.nota != null ? ` <span class="tag">nota ${String(x.nota).replace('.', ',')}</span>` : ''}</span>
+      <span class="acoes">${rh && !['contratado'].includes(x.etapa) ? `<select data-etapa="${x.id}" aria-label="Etapa">${Object.entries(ETAPAS_SEL).filter(([e]) => e !== 'contratado').map(([e, t]) => `<option value="${e}" ${e === x.etapa ? 'selected' : ''}>${t}</option>`).join('')}</select>
+          <button class="btn peq" data-agendar="${x.id}">Agendar entrevista</button>` : ''}
+        ${minhaAg.map(a => `<button class="btn peq prim" data-avaliar="${a.id}">Avaliar (${esc((AV_TIPO[a.tipo] || '').replace('Entrevista com o ', ''))})</button>`).join('')}
+        ${rh && !minhaAg.length && !['contratado', 'desistiu'].includes(x.etapa) ? `<button class="btn peq" data-avulsa="${x.id}">Registrar avaliação</button>` : ''}
+        ${rh && x.etapa === 'aprovado' ? `<button class="btn peq ok" data-contratar="${x.id}">Contratar</button>` : ''}
+        ${x.colaborador_id ? `<a class="btn peq" href="#/rh/colaboradores/ver/${x.colaborador_id}?aba=admissao">Admissão</a>` : ''}</span></div>
+      <div class="anx-cand" data-id="${x.candidato_id}"></div>
+      ${hist.length ? `<details ${x.etapa !== 'reprovado' && x.etapa !== 'desistiu' ? 'open' : ''}><summary>Histórico (${hist.length})</summary><div class="sel-hist">${hist.map(h => h.h).join('')}</div></details>` : ''}</li>`; };
+  tela.innerHTML = `
+    <div class="topo"><div><h1>${esc(v.numero || '')} · ${esc(cargo?.nome || 'Vaga')}</h1><p class="sub"><span class="tag ${ST_VAGA[v.status]?.[1] || ''}">${ST_VAGA[v.status]?.[0] || v.status}</span> · ${v.quantidade} vaga(s) · ${esc(v.motivo || '')}${v.salario_ofertado ? ' · ' + brl(v.salario_ofertado) : ''} · gestor: ${esc(U[v.solicitante_id]?.nome || '—')}</p></div>
+      <div class="acoes"><a class="btn" href="#/rh/vagas/ver/${v.id}">Requisição e aprovações</a>${rh ? '<button class="btn" id="ed-vaga">Editar</button><button class="btn prim" id="add-cand">+ Candidato</button>' : ''}</div></div>
+    <div class="cartao alerta-obs"><b>Quem decide:</b> o RH faz a triagem e a entrevista do RH. A entrevista com o <b>gestor</b> (por padrão quem pediu a vaga, ${esc(U[v.solicitante_id]?.nome || '—')}) é registrada por ele: “Aprovar” leva o candidato a <b>Aprovado</b>. O RH confere documentos e requisitos legais e clica em <b>Contratar</b>, que já abre a admissão.</div>
+    ${v.requisitos ? `<div class="cartao"><b>Requisitos:</b> <span style="white-space:pre-line">${esc(v.requisitos)}</span></div>` : ''}
+    ${porEtapa.length ? porEtapa.map(([k, l]) => `<div class="cartao"><h2>${ETAPAS_SEL[k]} (${l.length})</h2><ul class="lista-simples sel-lista">${l.map(card).join('')}</ul></div>`).join('') : '<div class="cartao vazio">Nenhum candidato nesta vaga ainda.</div>'}
+    ${avisoLei('recrutamento')}`;
+  $$('.anx-cand', tela).forEach(async el => { el.innerHTML = await htmlAnexos('candidato', el.dataset.id).catch(() => ''); });
+  $('#ed-vaga')?.addEventListener('click', () => formVaga(v, cgs, ss));
+  $('#add-cand')?.addEventListener('click', async () => {
+    const banco = await api.listar('candidatos', 'ativo=eq.true&situacao=in.(disponivel,em_processo)&order=nome');
+    const r = await modal(`<form><h2>Incluir candidato</h2><div class="form">
+      <label class="campo largo">Do banco de talentos<select name="cand"><option value="">— cadastrar novo —</option>${banco.filter(b => !vcs.some(x => x.candidato_id === b.id)).map(b => `<option value="${b.id}">${esc(b.nome)}${b.cargo_pretendido ? ' · ' + esc(b.cargo_pretendido) : ''}${b.cnh_categoria ? ' · CNH ' + esc(b.cnh_categoria) : ''}</option>`).join('')}</select></label></div>
+      <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Continuar</button></div></form>`);
+    if (!r) return;
+    let cid = r.cand; if (!cid) { cid = await formCandidato(null, cargo?.nome); if (!cid) return; }
+    try { await api.inserir('vaga_candidatos', { vaga_id: v.id, candidato_id: cid }); await api.alterar('candidatos', `id=eq.${cid}`, { situacao: 'em_processo' });
+      if (v.status === 'aberta') await api.alterar('vagas', `id=eq.${v.id}`, { status: 'em_selecao' }); navegar(); } catch (err) { falha(err); }
+  });
+  $$('[data-etapa]', tela).forEach(s => s.onchange = async () => {
+    const x = vcs.find(y => y.id === s.dataset.etapa);
+    if (s.value === 'aprovado' && !avs.some(a => a.vaga_candidato_id === x.id && a.status === 'concluida' && a.recomendacao === 'aprovar')
+        && !await confirmar('Nenhuma avaliação registrada recomenda aprovar este candidato. Marcar como Aprovado mesmo assim?', { botao: 'Aprovar' })) { s.value = x.etapa; return; }
+    try { await api.alterar('vaga_candidatos', `id=eq.${x.id}`, { etapa: s.value });
+      if (['reprovado', 'desistiu'].includes(s.value)) await api.alterar('candidatos', `id=eq.${x.candidato_id}`, { situacao: 'disponivel' }); navegar(); } catch (err) { falha(err); } });
+  const agendar = async (x, avulsa = false) => {
+    const r = await modal(`<form><h2>${avulsa ? 'Registrar avaliação' : 'Agendar entrevista'} · ${esc(x.cand?.nome || '')}</h2><div class="form">
+      <label class="campo">Tipo<select name="tipo">${Object.entries(AV_TIPO).map(([k, t]) => `<option value="${k}" ${k === (x.etapa === 'entrevista_rh' ? 'entrevista_gestor' : 'entrevista_rh') ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+      <label class="campo">Quem entrevista / avalia *<select name="av" required><option value="">Selecione…</option>${us.filter(u => u.ativo).map(u => `<option value="${u.id}">${esc(u.nome)}</option>`).join('')}</select></label>
+      <label class="campo">Data e hora<input type="datetime-local" name="quando"></label><label class="campo">Local<input name="local" placeholder="Sala, base, videochamada…"></label>
+      <p class="muted largo">Na entrevista com o gestor, o sistema sugere quem pediu a vaga. A pessoa recebe o aviso e avalia em <b>RH › Entrevistas</b>.</p></div>
+      <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">${avulsa ? 'Continuar' : 'Agendar'}</button></div></form>`,
+      { aoAbrir: raiz => { const f = $('form', raiz); const sug = () => { f.av.value = f.tipo.value === 'entrevista_gestor' ? v.solicitante_id : (avulsa ? estado.usuario.id : f.av.value || estado.usuario.id); f.av.dispatchEvent(new Event('change')); };
+          f.tipo.addEventListener('change', sug); sug(); } });
+    if (!r) return;
+    try { const aid = await api.rpc('agendar_avaliacao', { p_vc: x.id, p_tipo: r.tipo, p_avaliador: r.av, p_quando: r.quando ? new Date(r.quando).toISOString() : null, p_local: r.local || null });
+      if (avulsa && r.av === estado.usuario.id) await formAvaliar({ id: aid, tipo: r.tipo, agendada_para: r.quando ? new Date(r.quando).toISOString() : null }, x.cand?.nome || '');
+      else aviso('Entrevista agendada. A pessoa foi avisada.');
+      navegar(); } catch (err) { falha(err); } };
+  $$('[data-agendar]', tela).forEach(b => (b.onclick = () => agendar(vcs.find(y => y.id === b.dataset.agendar))));
+  $$('[data-avulsa]', tela).forEach(b => (b.onclick = () => agendar(vcs.find(y => y.id === b.dataset.avulsa), true)));
+  $$('[data-avaliar]', tela).forEach(b => (b.onclick = async () => { const a = avs.find(y => y.id === b.dataset.avaliar), x = vcs.find(y => y.id === a.vaga_candidato_id);
+    if (await formAvaliar(a, x?.cand?.nome || '')) navegar(); }));
+  $$('[data-contratar]', tela).forEach(b => b.onclick = async () => {
+    if (!await confirmar('Contratar este candidato? O sistema cria o cadastro do colaborador e já abre a admissão.', { botao: 'Contratar' })) return;
+    try { const col = await api.rpc('contratar_candidato', { p_vc: b.dataset.contratar }); aviso('Colaborador criado e admissão iniciada.'); location.hash = `#/rh/colaboradores/ver/${col}?aba=admissao`; } catch (err) { falha(err); } });
+});
+
+// entrevistas do gestor / avaliador
+rota('/rh/entrevistas', async tela => {
+  const ls = await api.rpc('minhas_entrevistas').catch(err => { falha(err); return []; });
+  const pend = ls.filter(a => a.status === 'agendada'), feitas = ls.filter(a => a.status === 'concluida');
+  const item = a => `<li class="sel-cand"><div class="sel-cab"><span><b>${esc(a.candidato.nome)}</b> · ${esc(a.cargo || '')} <span class="muted">${esc(a.vaga || '')}</span><br>
+      <span class="muted">${esc(AV_TIPO[a.tipo] || '')} · ${a.agendada_para ? dtHora(a.agendada_para) : 'data a combinar'}${a.local ? ' · ' + esc(a.local) : ''}</span><br>
+      <span class="muted">${esc([a.candidato.telefone && fmtTel(a.candidato.telefone), a.candidato.cidade, a.candidato.cnh && 'CNH ' + a.candidato.cnh + (a.candidato.ear ? ' EAR' : ''), a.candidato.mopp && 'MOPP'].filter(Boolean).join(' · '))}</span></span>
+      <span class="acoes">${a.status === 'agendada' ? `<button class="btn prim" data-av="${a.id}">Avaliar</button>` : `<span class="tag ${AV_REC[a.recomendacao]?.[1] || ''}">${AV_REC[a.recomendacao]?.[0] || ''}</span>${a.nota != null ? ` <span class="tag">nota ${String(a.nota).replace('.', ',')}</span>` : ''}`}</span></div>
+    ${a.candidato.experiencia ? `<details><summary>Experiência informada</summary><div style="white-space:pre-line">${esc(a.candidato.experiencia)}</div></details>` : ''}
+    ${a.parecer && a.status === 'concluida' ? `<div class="muted" style="white-space:pre-line">${esc(a.parecer)}</div>` : ''}</li>`;
+  tela.innerHTML = `<div class="topo"><div><h1>Entrevistas</h1><p class="sub">Entrevistas e avaliações de candidatos que o RH agendou com você</p></div></div>
+    <div class="cartao"><h2>Para avaliar (${pend.length})</h2>${pend.length ? `<ul class="lista-simples sel-lista">${pend.map(item).join('')}</ul>` : '<div class="vazio">Nenhuma entrevista pendente.</div>'}</div>
+    ${feitas.length ? `<div class="cartao"><h2>Já avaliadas (${feitas.length})</h2><ul class="lista-simples sel-lista">${feitas.map(item).join('')}</ul></div>` : ''}`;
+  $$('[data-av]', tela).forEach(b => (b.onclick = async () => { const a = ls.find(x => x.id === b.dataset.av); if (await formAvaliar(a, a.candidato.nome)) navegar(); }));
+});
 
 // bloco nas Aprovações
 { const orig = ROTAS['/aprovacoes'];

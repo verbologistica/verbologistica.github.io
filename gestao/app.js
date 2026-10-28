@@ -458,6 +458,7 @@ const MENU = [
   ['Pesquisas de clima', '#/rh/clima', P_RH, 'termometro', null, true],
   ['sub', 'Recrutamento'],
   ['Vagas e seleção', '#/rh/vagas', [...P_RH, 'aprovador'], 'busca', 'vagas_aprovar', true],
+  ['Entrevistas', '#/rh/entrevistas', [...P_RH, 'aprovador', 'solicitante', 'operacao', 'manutencao', 'almoxarifado', 'ssma', 'qualidade', 'financeiro', 'comprador'], 'conversa', 'entrevistas_avaliar', true],
   ['Banco de talentos', '#/rh/talentos', P_RH, 'arquivo', null, true],
   ['grupo', 'Departamento Pessoal', 'calculadora'],
   ['Painel do DP', '#/dp', ['administrador', 'dp', 'diretoria'], 'painel', 'dp_a_importar', true],
@@ -939,6 +940,7 @@ rota('/inicio', async tela => {
       ${p.pesquisa_aberta ? `<a class="cartao kpi alerta" href="#/clima"><div class="n">💬</div><div class="r">Pesquisa de clima aberta: responda de forma anônima</div></a>` : ''}
       ${tem('administrador', 'rh', 'dp') && p.ferias_vencendo ? `<a class="cartao kpi alerta" href="#/rh/ferias"><div class="n">${p.ferias_vencendo}</div><div class="r">período(s) de férias vencido(s) ou vencendo</div></a>` : ''}
       ${tem('administrador', 'rh', 'dp') && p.desligamentos_andamento ? `<a class="cartao kpi" href="#/rh/desligamentos"><div class="n">${p.desligamentos_andamento}</div><div class="r">desligamento(s) em andamento</div></a>` : ''}
+      ${p.entrevistas_avaliar ? `<a class="cartao kpi alerta" href="#/rh/entrevistas"><div class="n">${p.entrevistas_avaliar}</div><div class="r">entrevista(s) de candidato para você avaliar</div></a>` : ''}
       ${p.vagas_aprovar ? `<a class="cartao kpi alerta" href="#/rh/vagas"><div class="n">${p.vagas_aprovar}</div><div class="r">requisição(ões) de vaga esperando você</div></a>` : ''}
       ${p.admissao_etapas ? `<a class="cartao kpi alerta" href="#/rh/admissoes"><div class="n">${p.admissao_etapas}</div><div class="r">etapa(s) de admissão com o seu setor</div></a>` : ''}
       ${p.experiencia_decidir ? `<a class="cartao kpi alerta" href="#/rh/experiencia"><div class="n">${p.experiencia_decidir}</div><div class="r">contrato(s) de experiência para você decidir</div></a>` : ''}
