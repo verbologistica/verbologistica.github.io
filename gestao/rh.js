@@ -117,6 +117,10 @@ async function formColaborador(tela, c = null) {
         ${campo('CPF', `<input name="cpf" value="${esc(fmtCPF(c?.cpf || ''))}" inputmode="numeric">`)}
         ${campo('Data de nascimento', dt('data_nascimento'))}
         ${campo('Tipo sanguíneo', sel('tipo_sanguineo', ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map(x => [x, x]), c?.tipo_sanguineo, 'Não informado'))}
+        <div class="campo largo"><span>Segurança do trabalho (aparece no crachá)</span><div class="cr-seg">
+          <label class="check"><input type="checkbox" name="brigadista" ${c?.brigadista ? 'checked' : ''}> Brigadista (brigada de emergência)</label>
+          <label class="check"><input type="checkbox" name="cipeiro" id="f-cipeiro" ${c?.cipeiro ? 'checked' : ''}> Membro da CIPA (cipeiro)</label>
+          <label class="campo" id="f-cipa-fn" ${c?.cipeiro ? '' : 'hidden'}>Função na CIPA${sel('cipa_funcao', ['Presidente', 'Vice-presidente', 'Secretário(a)', 'Titular', 'Suplente', 'Designado (NR-05)'].map(x => [x, x]), c?.cipa_funcao, 'Não informada')}</label></div></div>
         ${campo('RG', inp('rg'))}${campo('Órgão emissor', inp('rg_orgao'))}${campo('UF do RG', sel('rg_uf', UFS.map(u => [u, u]), c?.rg_uf))}${campo('Emissão do RG', dt('rg_emissao'))}
         ${campo('Sexo', sel('sexo', [['F', 'Feminino'], ['M', 'Masculino'], ['Outro', 'Outro']], c?.sexo))}
         ${campo('Estado civil', sel('estado_civil', ['Solteiro(a)', 'Casado(a)', 'União estável', 'Divorciado(a)', 'Viúvo(a)'].map(x => [x, x]), c?.estado_civil))}
@@ -165,6 +169,7 @@ async function formColaborador(tela, c = null) {
     const u = _usCPF.find(x => x.cpf === d);
     if (u && f.usuario_id && !f.usuario_id.value) { f.usuario_id.value = u.id; aviso(`Este CPF tem acesso ao sistema (${u.nome}): ligado ao colaborador.`); }
     if (u) { ['telefone', 'email'].forEach(n => { if (f[n] && !f[n].value && u[n]) { f[n].value = u[n]; f[n].dispatchEvent(new Event('input', { bubbles: true })); } }); } });
+  f.cipeiro?.addEventListener('change', () => { $('#f-cipa-fn').hidden = !f.cipeiro.checked; if (!f.cipeiro.checked) f.cipa_funcao.value = ''; });
   f.cargo_id.addEventListener('change', () => { const cg = cgs.find(x => x.id === f.cargo_id.value); if (cg?.setor_id && !f.setor_id.value) f.setor_id.value = cg.setor_id; avisoCNH(); });
   const ordemCNH = { A: 0, B: 1, AB: 1, C: 2, AC: 2, D: 3, AD: 3, E: 4, AE: 4 };
   const avisoCNH = () => {
@@ -223,7 +228,7 @@ rota('/rh/colaboradores/ver/:id', async (tela, id) => {
   const conteudo = {
     dados: `${fotosFicha ? `<div class="cartao">${fotosFicha}</div>` : ''}<div class="cartao"><div class="form">
         ${linha('Matrícula', c.matricula)}${linha('CPF', fmtCPF(c.cpf || ''))}${linha('Nascimento', c.data_nascimento ? `${dataBR(c.data_nascimento)} (${idade(c.data_nascimento)} anos)` : '')}
-        ${linha('RG', fmtRG(c.rg, c.rg_orgao, c.rg_uf))}${linha('Estado civil', c.estado_civil)}${linha('Tipo sanguíneo', c.tipo_sanguineo)}${linha('Escolaridade', c.escolaridade)}
+        ${linha('RG', fmtRG(c.rg, c.rg_orgao, c.rg_uf))}${linha('Estado civil', c.estado_civil)}${linha('Tipo sanguíneo', c.tipo_sanguineo)}${linha('Segurança do trabalho', [c.brigadista && 'Brigadista', c.cipeiro && ('CIPA' + (c.cipa_funcao ? ' · ' + c.cipa_funcao : ''))].filter(Boolean).join(' · '))}${linha('Escolaridade', c.escolaridade)}
         ${linha('Mãe', c.nome_mae)}${linha('PIS', c.pis)}${linha('CTPS', [c.ctps_numero, c.ctps_serie, c.ctps_uf].filter(Boolean).join(' / '))}
         ${linha('CNH', c.cnh_categoria ? `${c.cnh_numero || ''} · ${c.cnh_categoria}${c.cnh_ear ? ' · EAR' : ''} · validade ${dataBR(c.cnh_validade) || '—'}` : '')}
         ${linha('Telefone', [c.telefone, c.telefone2].filter(Boolean).map(fmtTel).join(' · '))}${linha('E-mail', c.email_corporativo || c.email)}

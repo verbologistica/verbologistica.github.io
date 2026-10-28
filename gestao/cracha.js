@@ -100,7 +100,15 @@ function crFrente(ctx, d, A, W, H, b) {
 
   // nome, cargo e setor — centralizados no espaço entre a foto e o rodapé, sem cortar
   const topo = fy + fh + borda + 2.2, base = 77.6, larg = W - 8;
-  const temSetor = !!d.setor, gap1 = 2.2, hS = temSetor ? 3.5 : 0, gap2 = temSetor ? 1.5 : 0;
+  // selos: setor + funções de segurança (brigada de emergência e CIPA), quebrando em linhas se não couberem
+  const pills = [d.setor && { t: d.setor, bg: CR_COR.ouroClaro, fg: '#7A5A12' }, d.brigadista && { t: 'Brigadista', bg: '#B42318', fg: '#fff' },
+    d.cipa && { t: 'CIPA', bg: CR_COR.verde, fg: '#fff' }].filter(Boolean);
+  const PH = pills.length > 2 ? 3.2 : 3.5, PG = 1.1, PS = pills.length > 2 ? 1.6 : 1.85, PAD = pills.length > 2 ? 3.6 : 5;
+  ctx.font = `600 ${PS}px ${CR_TXT}`; ctx.letterSpacing = `${0.12 * PS}px`;
+  pills.forEach(p => { p.s = PS; p.txt = p.t.toUpperCase(); while (ctx.measureText(p.txt).width + PAD > larg && p.s > 1.3) { p.s -= 0.05; ctx.font = `600 ${p.s}px ${CR_TXT}`; ctx.letterSpacing = `${0.12 * p.s}px`; }
+    p.w = ctx.measureText(p.txt).width + PAD; ctx.font = `600 ${PS}px ${CR_TXT}`; ctx.letterSpacing = `${0.12 * PS}px`; });
+  const linhasP = []; pills.forEach(p => { const l = linhasP[linhasP.length - 1]; if (l && l.w + PG + p.w <= larg) { l.ps.push(p); l.w += PG + p.w; } else linhasP.push({ ps: [p], w: p.w }); });
+  const temSetor = pills.length > 0, gap1 = 2.2, hS = linhasP.length ? linhasP.length * PH + (linhasP.length - 1) * 1.1 : 0, gap2 = temSetor ? 1.5 : 0;
   let N, C, hN, hC;
   for (let f = 1; f >= 0.62; f -= 0.03) {   // reduz tudo junto até o bloco caber entre a foto e o rodapé
     N = crAjustar(ctx, d.nome, { fonte: CR_TIT, peso: 800, max: 5.6 * f, min: Math.min(3.2, 5.6 * f), larg, maxL: 2, esp: -0.005 });
@@ -116,11 +124,11 @@ function crFrente(ctx, d, A, W, H, b) {
   if (C.ls.length) { ctx.fillStyle = CR_COR.verde; ctx.font = `600 ${C.s}px ${CR_TXT}`; ctx.letterSpacing = `${0.08 * C.s}px`;
     C.ls.forEach((l, i) => ctx.fillText(l, W / 2 + 0.04 * C.s, y + C.s * 0.86 + i * C.s * 1.32)); y += hC; }
   if (temSetor) {
-    y += gap2; const S = crAjustar(ctx, d.setor, { fonte: CR_TXT, peso: 600, max: 1.85, min: 1.4, larg: larg - 6, maxL: 1, esp: 0.12, caixa: true });
-    ctx.font = `600 ${S.s}px ${CR_TXT}`; ctx.letterSpacing = `${0.12 * S.s}px`;
-    const tw = ctx.measureText(S.ls[0]).width, pw = tw + 5;
-    ctx.fillStyle = CR_COR.ouroClaro; crRet(ctx, W / 2 - pw / 2, y, pw, hS, hS / 2); ctx.fill();
-    ctx.fillStyle = '#7A5A12'; ctx.fillText(S.ls[0], W / 2 + 0.06 * S.s, y + hS / 2 + S.s * 0.36);
+    y += gap2;
+    linhasP.forEach(l => { let x = W / 2 - l.w / 2;
+      l.ps.forEach(p => { ctx.fillStyle = p.bg; crRet(ctx, x, y, p.w, PH, PH / 2); ctx.fill();
+        ctx.fillStyle = p.fg; ctx.font = `600 ${p.s}px ${CR_TXT}`; ctx.letterSpacing = `${0.12 * p.s}px`; ctx.fillText(p.txt, x + p.w / 2 + 0.06 * p.s, y + PH / 2 + p.s * 0.36); x += p.w + PG; });
+      y += PH + 1.1; });
   }
   // rodapé
   const RY = 78.8;
@@ -146,26 +154,30 @@ function crVerso(ctx, d, A, W, H, b) {
   ctx.fillStyle = 'rgba(221,169,54,.55)'; ctx.fillRect(W / 2 - 6, y, 12, 0.3); y += 3.6;
   ctx.textAlign = 'left';
   const X = 6, L = W - 12;
-  const campo = (rot, val, { max = 2.5, linhas = 2 } = {}) => {
+  const nCampos = [d.nomeCompleto, d.cargo, d.matricula || d.admissao, d.mostrarSangue && d.sangue, d.brigadista || d.cipa, d.emergencia].filter(Boolean).length;
+  const K = nCampos >= 6 ? 0.86 : nCampos === 5 ? 0.93 : 1;   // compacta quando há muitos campos
+  const campo = (rot, val, { max = 2.5, linhas = 2 } = {}) => { max *= K;
     if (!val) return;
-    ctx.fillStyle = CR_COR.ouro; ctx.font = `600 1.45px ${CR_TXT}`; ctx.letterSpacing = '0.25px'; ctx.fillText(rot.toUpperCase(), X, y); y += 2.9;
+    ctx.fillStyle = CR_COR.ouro; ctx.font = `600 1.45px ${CR_TXT}`; ctx.letterSpacing = '0.25px'; ctx.fillText(rot.toUpperCase(), X, y); y += 2.9 * K;
     const V = crAjustar(ctx, val, { fonte: CR_TXT, peso: 600, max, min: 1.8, larg: L, maxL: linhas });
     ctx.fillStyle = '#fff'; ctx.font = `600 ${V.s}px ${CR_TXT}`; ctx.letterSpacing = '0px';
-    V.ls.forEach((l, i) => ctx.fillText(l, X, y + i * V.s * 1.2)); y += (V.ls.length - 1) * V.s * 1.2 + 3.9;
+    V.ls.forEach((l, i) => ctx.fillText(l, X, y + i * V.s * 1.2)); y += (V.ls.length - 1) * V.s * 1.2 + 3.9 * K;
   };
   const dupla = (r1, v1, r2, v2) => {
     if (!v1 && !v2) return; if (!v1 || !v2) return campo(v1 ? r1 : r2, v1 || v2);
     const meio = X + L / 2 + 1;
-    ctx.fillStyle = CR_COR.ouro; ctx.font = `600 1.45px ${CR_TXT}`; ctx.letterSpacing = '0.25px'; ctx.fillText(r1.toUpperCase(), X, y); ctx.fillText(r2.toUpperCase(), meio, y); y += 2.9;
+    ctx.fillStyle = CR_COR.ouro; ctx.font = `600 1.45px ${CR_TXT}`; ctx.letterSpacing = '0.25px'; ctx.fillText(r1.toUpperCase(), X, y); ctx.fillText(r2.toUpperCase(), meio, y); y += 2.9 * K;
     ctx.fillStyle = '#fff'; ctx.letterSpacing = '0px';
     const a = crAjustar(ctx, v1, { fonte: CR_TXT, peso: 600, max: 2.5, min: 1.6, larg: L / 2 - 2, maxL: 1 }); ctx.font = `600 ${a.s}px ${CR_TXT}`; ctx.fillText(a.ls[0], X, y);
     const c = crAjustar(ctx, v2, { fonte: CR_TXT, peso: 600, max: 2.5, min: 1.6, larg: L / 2 - 2, maxL: 1 }); ctx.fillStyle = '#fff'; ctx.font = `600 ${c.s}px ${CR_TXT}`; ctx.fillText(c.ls[0], meio, y);
-    y += 3.9;
+    y += 3.9 * K;
   };
   campo('Nome', d.nomeCompleto, { max: 2.6, linhas: 2 });
   campo('Cargo', d.cargo, { max: 2.3, linhas: 2 });
   dupla('Matrícula', d.matricula, 'Admissão', d.admissao);
   if (d.mostrarSangue && d.sangue) campo('Tipo sanguíneo', d.sangue, { max: 2.6, linhas: 1 });
+  const seg = [d.brigadista && 'Brigadista', d.cipa && ('CIPA' + (d.cipaFuncao ? ' · ' + d.cipaFuncao : ''))].filter(Boolean).join('  ·  ');
+  if (seg) campo('Segurança do trabalho', seg, { max: 2.3, linhas: 2 });
   if (d.emergencia) campo('Em caso de emergência', d.emergencia, { max: 2.1, linhas: 2 });
   // aviso e devolução
   const E = d.empresa || {};
@@ -203,7 +215,7 @@ async function crDados(c, extra = {}) {
   const emerg = [c.emergencia_nome, c.emergencia_parentesco && `(${c.emergencia_parentesco})`, c.emergencia_telefone && fmtTel(c.emergencia_telefone)].filter(Boolean).join(' ');
   return {
     nome: c.cracha_nome || nomeCrachaPadrao(c), nomeCompleto: c.nome_social || c.nome, cargo: cgs.find(x => x.id === c.cargo_id)?.nome || '', setor: ss.find(x => x.id === c.setor_id)?.nome || '',
-    matricula: c.matricula || '', admissao: c.data_admissao ? dataBR(c.data_admissao) : '', sangue: c.tipo_sanguineo || '', mostrarSangue: true, emergencia: '', emergTexto: emerg,
+    matricula: c.matricula || '', admissao: c.data_admissao ? dataBR(c.data_admissao) : '', sangue: c.tipo_sanguineo || '', mostrarSangue: true, brigadista: !!c.brigadista, cipa: !!c.cipeiro, cipaFuncao: c.cipa_funcao || '', emergencia: '', emergTexto: emerg,
     ajuste: c.cracha_ajuste || {}, empresa: es[0] || {}, foto: await crFotoDe(c.foto_cracha_caminho).catch(() => null), ...extra };
 }
 const crNomeArq = (d, lado) => `Crachá ${d.nome.replace(/[\\/:*?"<>|]/g, '')}${lado ? ' - ' + lado : ''}`;

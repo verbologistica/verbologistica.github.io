@@ -1336,3 +1336,4 @@ body.tema-vx .ss-vg-l:hover { background: rgba(255,255,255,.05); } body.tema-vx 
 .cr-foto-th img { width: 100%; height: 100%; object-fit: cover; }
 .cr-th-cracha { border: 2px solid var(--ouro); }
 @media (max-width: 900px) { .cr-grade { grid-template-columns: 1fr; } .cr-lados canvas { width: 260px !important; border-radius: 15px; } }
+.cr-seg { display: flex; flex-wrap: wrap; gap: 6px 22px; align-items: center; margin-top: 4px; } .cr-seg .campo { min-width: 200px; }
