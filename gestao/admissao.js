@@ -46,7 +46,7 @@ rota('/rh/vagas', async tela => {
       <div class="cartao kpi ${cont('aguardando_diretoria') ? 'alerta' : ''}"><div class="n">${cont('aguardando_diretoria')}</div><div class="r">aguardando a diretoria</div></div>
       <div class="cartao kpi"><div class="n">${cont('devolvida')}</div><div class="r">devolvidas ao gestor</div></div>
       <div class="cartao kpi"><div class="n">${cont('aberta') + cont('em_selecao')}</div><div class="r">em seleção</div></div></div>
-    <div class="cartao">${vs.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Nº</th><th>Cargo</th><th>Setor</th><th>Vagas</th><th>Requisitante</th><th>Aberta em</th><th>Candidatos</th><th>Situação</th></tr></thead><tbody>
+    <div class="cartao" id="vg-lista">${vs.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Nº</th><th>Cargo</th><th>Setor</th><th>Vagas</th><th>Requisitante</th><th>Aberta em</th><th>Candidatos</th><th>Situação</th></tr></thead><tbody>
       ${vs.map(v => `<tr class="clicavel" onclick="location.hash='#/rh/vagas/ver/${v.id}'" data-v${fAttr('sit', ST_VAGA[v.status]?.[0])}${fAttr('setor', SS[v.setor_id]?.nome || '—')}${fAttr('data', (v.criado_em || '').slice(0, 10))}${fAttr('busca', [v.numero, CG[v.cargo_id]?.nome, v.cliente].join(' '))}>
         <td data-r="Nº" class="nowrap"><b>${esc(v.numero || '')}</b></td><td data-r="Cargo">${esc(CG[v.cargo_id]?.nome || '—')}${v.cliente ? `<div class="muted">${esc(v.cliente)}</div>` : ''}</td>
         <td data-r="Setor">${esc(SS[v.setor_id]?.nome || '—')}</td><td data-r="Vagas">${v.quantidade}</td><td data-r="Requisitante">${esc(v.solic?.nome || '—')}</td>
@@ -54,7 +54,7 @@ rota('/rh/vagas', async tela => {
         <td data-r="Situação"><span class="tag ${ST_VAGA[v.status]?.[1] || ''}">${esc(ST_VAGA[v.status]?.[0] || v.status)}</span>${minhaVez(v) ? ' <span class="tag vermelho">sua vez</span>' : ''}</td></tr>`).join('')}
       </tbody></table></div>` : `<div class="vazio">Nenhuma vaga ainda.${podeRequisitar() ? ' Clique em “+ Requisitar vaga”.' : ''}</div>`}</div>
     ${avisoLei('recrutamento')}`;
-  filtroLocal(tela, { itens: 'tbody tr[data-v]', antes: '.cartao:last-of-type', campos: [{ k: 'sit', rotulo: 'Situação' }, { k: 'setor', rotulo: 'Setor' }], periodo: true, rotuloPeriodo: 'Aberta em' });
+  filtroLocal(tela, { itens: 'tbody tr[data-v]', antes: '#vg-lista', campos: [{ k: 'sit', rotulo: 'Situação' }, { k: 'setor', rotulo: 'Setor' }], periodo: true, rotuloPeriodo: 'Aberta em' });
 });
 
 async function formRequisicao(tela, v = null) {

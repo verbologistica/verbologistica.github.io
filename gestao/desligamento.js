@@ -28,7 +28,7 @@ rota('/rh/experiencia', async tela => {
       <div class="cartao kpi"><div class="n">${ls.filter(x => x.s.decidir && expDias(x.s.ate) <= 5).length}</div><div class="r">vencem em até 5 dias</div></div>
       <div class="cartao kpi"><div class="n">${ls.filter(x => x.s.encerrar).length}</div><div class="r">encerramento(s) a iniciar pelo RH</div></div></div>
     ${P.rh && semGestor.length ? `<div class="cartao alerta-obs"><b>${semGestor.length} colaborador(es) sem gestor cadastrado</b> — o alerta não chega a ninguém além do RH: ${semGestor.map(x => `<a href="#/rh/colaboradores/editar/${x.id}">${esc(x.nome)}</a>`).join(', ')}. Cadastre o gestor na ficha.</div>` : ''}
-    <div class="cartao">${ls.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Colaborador</th><th>Admissão</th><th>1º período até</th><th>2º período até</th><th>Gestor</th><th>Situação</th><th></th></tr></thead><tbody>
+    <div class="cartao" id="exp-lista">${ls.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Colaborador</th><th>Admissão</th><th>1º período até</th><th>2º período até</th><th>Gestor</th><th>Situação</th><th></th></tr></thead><tbody>
       ${ls.map(x => `<tr data-x${fAttr('sit', x.s.decidir ? 'A decidir' : x.s.encerrar ? 'A encerrar' : 'Decidido')}${fAttr('vez', x.sou_gestor ? 'Minha equipe' : 'Outros')}${fAttr('busca', [x.nome, x.cargo, x.setor, x.gestor_nome].join(' '))}>
         <td data-r="Colaborador"><b>${esc(x.nome)}</b><div class="muted">${esc([x.cargo, x.setor].filter(Boolean).join(' · '))}</div></td>
         <td data-r="Admissão" class="nowrap">${dataBR(x.data_admissao)}</td>
@@ -40,7 +40,7 @@ rota('/rh/experiencia', async tela => {
           ${x.s.encerrar && P.rh ? `<a class="btn peq perigo" href="#/rh/colaboradores/ver/${x.id}?aba=desligamento&tipo=termino_experiencia&data=${x.s.fim}">Iniciar término</a>` : ''}</td></tr>`).join('')}
       </tbody></table></div>` : '<div class="vazio">Nenhum contrato de experiência em andamento na sua equipe.</div>'}</div>
     ${expLei()}`;
-  filtroLocal(tela, { itens: 'tbody tr[data-x]', antes: '.cartao:last-of-type', campos: [{ k: 'sit', rotulo: 'Situação' }, { k: 'vez', rotulo: 'Equipe' }] });
+  filtroLocal(tela, { itens: 'tbody tr[data-x]', antes: '#exp-lista', campos: [{ k: 'sit', rotulo: 'Situação' }, { k: 'vez', rotulo: 'Equipe' }] });
   $$('[data-dec]', tela).forEach(b => (b.onclick = () => expDecidir(ls.find(x => x.id === b.dataset.dec), P.criterios)));
 });
 
