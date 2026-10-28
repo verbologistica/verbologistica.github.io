@@ -474,24 +474,28 @@ const AD_LINK = { ficha: c => [`#/rh/colaboradores/editar/${c}`, 'Abrir ficha'],
 const AD_PERM_LINK = { ficha: () => editaRH(), docs: () => editaRH(), contrato: () => editaRH(), cnh: () => editaRH(), acessos: () => editaRH(), aso: () => tem('administrador', 'ssma'),
   tox: () => tem('administrador', 'ssma', 'rh'), epi: () => tem('administrador', 'almoxarifado', 'rh') };
 
+// modelos da biblioteca usados em cada etapa (gerados já preenchidos com os dados do colaborador)
+const AD_MODELOS = { ficha: [['RH-FOR-002', 'Ficha cadastral para assinatura']], docs: [['RH-LST-001', 'Lista de documentos para o colaborador']],
+  aso: [['RH-FOR-001', 'Encaminhamento para ASO']], tox: [['RH-FOR-003', 'Encaminhamento para toxicológico']], epi: [['SSMA-EPI-001', 'Ficha de EPI']], treinamentos: [['RH-TRE-001', 'Lista de presença']] };
 const AD_EVENTO = { avisado: 'Setor avisado', cobrado: 'Cobrança enviada ao setor', concluida: 'Concluída', nao_se_aplica: 'Marcada como não se aplica', reaberta: 'Reaberta pelo RH', conferida: 'Conferida pelo RH', devolvida: 'Devolvida ao setor' };
 // itens exigidos de cada etapa: o que o responsável precisa entregar e o que o RH confere
 function adRequisitos(e, D) {
   const c = D.col, k = D.cnh || {}, a = D.adm, hj = hojeISO(), R = (t, ok, obs) => ({ t, ok: !!ok, obs: obs || '' });
+  const docEt = k => (D.docs_exigidos || []).filter(d => d.etapa === k).map(d => R(d.nome + ' em Documentos da ficha', d.ok));
   const ordem = { A: 0, B: 1, AB: 1, C: 2, AC: 2, D: 3, AD: 3, E: 4, AE: 4 };
   const curso = (t, tem, val) => R(t, tem && (!val || val >= hj), tem ? (val ? (val < hj ? 'vencido em ' : 'válido até ') + dataBR(val) : 'validade não informada') : 'não consta na ficha');
   switch (e.codigo) {
     case 'ficha': return [R('CPF', D.rh ? c.cpf : true), R('Nascimento', c.data_nascimento), R('Telefone', c.telefone), R('Endereço', c.logradouro && c.cidade), R('Foto da ficha', c.foto_caminho),
       R('Foto do crachá', c.foto_cracha_caminho), R('Contato de emergência', c.emergencia_nome && c.emergencia_telefone), R('Conta ou Pix', c.tem_banco), R('Setor', c.setor_id)];
-    case 'docs': return (D.docs_exigidos || []).map(d => R(d.nome, d.ok));
-    case 'aso': return [R('ASO admissional lançado no SSMA', D.aso, D.aso && dataBR(D.aso.data)), R(D.aso?.resultado === 'apto_restricao' ? 'Resultado apto (com restrição)' : 'Resultado apto', D.aso && /^apto/.test(D.aso.resultado || ''), D.aso && !/^apto/.test(D.aso.resultado || '') ? D.aso.resultado : '')];
-    case 'tox': return [R('Toxicológico negativo lançado no SSMA', e.status === 'feito')];
+    case 'docs': return (D.docs_exigidos || []).filter(d => (d.etapa || 'docs') === 'docs').map(d => R(d.nome, d.ok));
+    case 'aso': return [R('ASO admissional lançado no SSMA', D.aso, D.aso && dataBR(D.aso.data)), ...docEt('aso'), R(D.aso?.resultado === 'apto_restricao' ? 'Resultado apto (com restrição)' : 'Resultado apto', D.aso && /^apto/.test(D.aso.resultado || ''), D.aso && !/^apto/.test(D.aso.resultado || '') ? D.aso.resultado : '')];
+    case 'tox': return [R('Toxicológico negativo lançado no SSMA', e.status === 'feito'), ...docEt('tox')];
     case 'cnh': { const L = [R(`Categoria${k.minima ? ' (mínimo ' + k.minima + ')' : ''}`, k.categoria && (!k.minima || (ordem[k.categoria] ?? -1) >= ordem[k.minima]), k.categoria || 'não informada'),
         R('Observação EAR', k.ear), R('CNH válida na admissão', k.validade && k.validade >= (a.data_prevista || hj), k.validade && 'até ' + dataBR(k.validade))];
       if (k.exige_indivisiveis) L.push(curso('Curso de cargas indivisíveis', k.indivisiveis, k.indivisiveis_validade));
       if (k.exige_mopp) L.push(curso('MOPP (produtos perigosos)', k.mopp, k.mopp_validade));
       L.push(R('Consulta de pontuação anexada', e.anexos.length)); return L; }
-    case 'contrato': return [R('Contrato de trabalho e de experiência assinados em Documentos da ficha', e.status === 'feito')];
+    case 'contrato': return docEt('contrato').length ? docEt('contrato') : [R('Contrato assinado em Documentos da ficha', e.status === 'feito')];
     case 'esocial': return [R('Recibo do S-2200 anexado', e.anexos.length), R('Enviado antes do 1º dia', e.status !== 'feito' || !a.data_prevista || (e.concluido_em || '').slice(0, 10) < a.data_prevista)];
     case 'os_seg': return [R('Ordem de serviço assinada anexada', e.anexos.length)];
     case 'epi': return [R('Entrega de EPI registrada no almoxarifado', D.epi, D.epi ? D.epi + ' item(ns)' : ''), R('Ficha de EPI assinada', e.status === 'feito')];
@@ -539,8 +543,8 @@ rota('/rh/admissoes/ver/:id', async (tela, id) => {
   const prontaConcluir = andamento && !pendentes.length && !aConferir.length;
   const bloqueio = e => (e.depende || []).map(k => est(k)).filter(x => x && x.status === 'pendente');
   const R = D.responsaveis || {};
-  const respTxt = s => { const x = R[s]; if (!x) return ''; return x.nomeado ? `<b>${esc(x.nomeado)}</b> (responsável)` : x.perfil?.length ? `sem responsável definido · aviso vai para ${x.perfil.length} pessoa(s) com perfil ${esc(s)}` : `<span class="txt-vermelho">ninguém com perfil ${esc(s)}</span>`; };
-  const respCurto = s => { const x = R[s]; if (!x) return '—'; return x.nomeado ? `<b>${esc(x.nomeado)}</b>` : x.perfil?.length ? `<span class="muted" title="${esc(x.perfil.join(', '))}">não definido · ${x.perfil.length} com o perfil</span>` : '<span class="txt-vermelho">ninguém</span>'; };
+  const respTxt = s => { const x = R[s]; if (!x) return ''; return x.nomeados?.length ? x.nomeados.map(n => `<b>${esc(n.nome)}</b>${n.cargo ? ` <span class="muted">(${esc(n.cargo)})</span>` : ''}`).join(', ') : x.perfil?.length ? `sem responsável definido · aviso vai para ${x.perfil.length} pessoa(s) com perfil ${esc(s)}` : `<span class="txt-vermelho">ninguém com perfil ${esc(s)}</span>`; };
+  const respCurto = s => { const x = R[s]; if (!x) return '—'; return x.nomeados?.length ? x.nomeados.map(n => esc(n.nome.split(' ').slice(0, 2).join(' '))).join('<br>') : x.perfil?.length ? `<span class="muted" title="${esc(x.perfil.join(', '))}">não definido · ${x.perfil.length} com o perfil</span>` : '<span class="txt-vermelho">ninguém</span>'; };
   const ultAviso = e => [...(e.eventos || [])].reverse().find(v => v.evento === 'avisado' || v.evento === 'cobrado');
   const itemEtapa = e => { const [stT, stC, ic] = ST_ETAPA[e.status], bl = bloqueio(e), meu = meus.includes(e.setor) || rh;
     const lk = AD_LINK[e.codigo]?.(c.id), plk = AD_PERM_LINK[e.codigo]?.();
@@ -561,6 +565,7 @@ rota('/rh/admissoes/ver/:id', async (tela, id) => {
       ${adAnexosHtml(e.anexos)}
       ${e.codigo === 'cliente' && e.status === 'feito' && D.cli_sugestao && !trs.some(t => t.setor === 'Cliente' && t.status !== 'cancelado') && andamento ? `<div class="alerta-obs" style="margin-top:6px">Próxima integração possível no cliente: <b>${dataBR(D.cli_sugestao)}</b>${rh ? ' <button class="btn peq prim" data-cli="agendar">Agendar integração</button>' : ' (o RH agenda)'}</div>` : ''}
       ${andamento ? `<div class="ad-et-a">${lk && plk ? `<a class="btn peq" href="${lk[0]}">${esc(lk[1])}</a>` : ''}
+        ${e.status === 'pendente' && meu ? (AD_MODELOS[e.codigo] || []).map(([cod, t]) => `<button class="btn peq" data-mod="${cod}" title="Gera o documento preenchido para baixar e enviar">📄 ${esc(t)}</button>`).join('') : ''}
         ${e.codigo === 'cliente' && (meu || rh) && (e.status === 'pendente' || (e.status === 'nao_se_aplica' && rh)) ? `<button class="btn peq" data-cli="definir">${a.cliente ? 'Trocar cliente' : 'Informar cliente'}</button>` : ''}
         ${e.codigo === 'cliente' && e.status === 'pendente' && meu && a.cliente ? `${!a.cli_enviado_em ? '<button class="btn peq prim" data-cli="enviar">Docs enviados ao cliente</button>' : '<button class="btn peq ok" data-cli="aprovar">Cliente aprovou</button><button class="btn peq" data-cli="recusar">Cliente pediu ajuste</button>'}` : ''}
         ${e.status === 'pendente' && meu ? `${e.codigo === 'cliente' ? '' : !e.auto || devolvida ? `<button class="btn peq ok" data-concl="${e.id}">${devolvida ? 'Corrigido: concluir' : 'Concluir'}${e.exige_anexo ? ' (com anexo)' : ''}</button>` : `<button class="btn peq" data-verif>Verificar agora</button>`}
@@ -620,6 +625,8 @@ rota('/rh/admissoes/ver/:id', async (tela, id) => {
     try { if (r.arquivos.length) await anexar('admissao_etapa', e.id, r.arquivos, e.etapa); await api.rpc('concluir_etapa_admissao', { p_etapa: e.id, p_status: 'feito', p_obs: r.obs || null }); aviso('Etapa concluída.'); navegar(); } catch (err) { falha(err); } }));
   $$('[data-na]', tela).forEach(b => (b.onclick = async () => { const m = await confirmar('Por que esta etapa não se aplica?', { comMotivo: true, botao: 'Confirmar' }); if (!m) return;
     try { await api.rpc('concluir_etapa_admissao', { p_etapa: b.dataset.na, p_status: 'nao_se_aplica', p_obs: m }); navegar(); } catch (err) { falha(err); } }));
+  $$('[data-mod]', tela).forEach(b => (b.onclick = async () => { const m = await modeloPorCodigo(b.dataset.mod); if (!m) return aviso('Modelo não encontrado na biblioteca (Modelos de documentos).', true);
+    try { await gerarDocumento(m, c.id); } catch (err) { falha(err); } }));
   $$('[data-cobrar]', tela).forEach(b => (b.onclick = async () => { try { const n = await api.rpc('cobrar_etapa_admissao', { p_etapa: b.dataset.cobrar });
     aviso(n ? `Cobrança enviada a ${n} pessoa(s).` : 'Ninguém recebeu: defina o responsável do setor.', !n); navegar(); } catch (err) { falha(err); } }));
   $$('[data-conferir]', tela).forEach(b => (b.onclick = async () => { const e = ets.find(x => x.id === b.dataset.conferir), reqs = adRequisitos(e, D), falta = reqs.filter(x => !x.ok);
@@ -637,10 +644,11 @@ rota('/rh/admissoes/ver/:id', async (tela, id) => {
   $('#ad-resp')?.addEventListener('click', async () => {
     const us = (await usuarios()).filter(u => u.ativo);
     const r = await modal(`<form><h2>Responsáveis por setor nas admissões</h2><div class="form">
-      <p class="muted largo">O responsável recebe os avisos e as cobranças das etapas do setor. Sem responsável, o aviso vai para todos com o perfil do setor — hoje há perfis com muitas pessoas, o que dilui a responsabilidade.</p>
-      ${setoresProc.map(s => `<label class="campo">${esc(s)}<select name="s_${esc(s)}"><option value="">— todos com o perfil (${R[s]?.perfil?.length || 0}) —</option>${us.map(u => `<option value="${u.id}" ${u.id === R[s]?.nomeado_id ? 'selected' : ''}>${esc(u.nome)}${(R[s]?.perfil || []).includes(u.nome) ? '' : ' (sem o perfil)'}</option>`).join('')}</select></label>`).join('')}</div>
+      <p class="muted largo">Marque o assistente, o analista, o supervisor e o coordenador de cada setor: eles recebem os avisos e as cobranças. Qualquer pessoa com o perfil do setor continua podendo lançar. Sem ninguém marcado, o aviso vai para todos com o perfil.</p>
+      ${setoresProc.map(s => { const sel = new Set((R[s]?.nomeados || []).map(n => n.id)), perf = R[s]?.perfil || [];
+        return `<fieldset class="largo ad-resp-set"><legend><b>${esc(s)}</b> <span class="muted">${perf.length} com o perfil</span></legend>${us.filter(u => sel.has(u.id) || perf.includes(u.nome)).map(u => `<label class="check"><input type="checkbox" name="r_${esc(s)}_${u.id}" ${sel.has(u.id) ? 'checked' : ''}> ${esc(u.nome)}</label>`).join('')}</fieldset>`; }).join('')}</div>
       <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Salvar</button></div></form>`);
-    if (!r) return; const p = {}; setoresProc.forEach(s => { if (r['s_' + s]) p[s] = r['s_' + s]; });
+    if (!r) return; const p = {}; setoresProc.forEach(s => { const ids = us.filter(u => r[`r_${s}_${u.id}`]).map(u => u.id); if (ids.length) p[s] = ids; });
     try { await api.rpc('salvar_responsaveis_admissao', { p }); aviso('Responsáveis salvos. Valem para todas as admissões.'); navegar(); } catch (err) { falha(err); } });
   $$('[data-reabrir]', tela).forEach(b => (b.onclick = async () => { if (!await confirmar('Reabrir esta etapa?', { botao: 'Reabrir' })) return;
     try { await api.rpc('concluir_etapa_admissao', { p_etapa: b.dataset.reabrir, p_status: 'pendente' }); navegar(); } catch (err) { falha(err); } }));

@@ -1401,3 +1401,4 @@ body.tema-vx .ss-vg-l:hover { background: rgba(255,255,255,.05); } body.tema-vx 
 .tabela tr.destaque td { background: var(--amarelo-claro); }
 .fer-dia-fds { opacity: .6; }
 .tabela-rol { overflow-x: auto; } .tabela.compacta td, .tabela.compacta th { padding: 6px 8px; vertical-align: top; }
+.ad-resp-set { border: 1px solid var(--borda); border-radius: 8px; padding: 6px 10px; display: flex; flex-wrap: wrap; gap: 4px 14px; } .ad-resp-set legend { padding: 0 4px; }
