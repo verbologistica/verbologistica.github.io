@@ -135,6 +135,7 @@ function prepararOutros(raiz = document) {
     else if (!EH_OUTRO.test((el.closest('label')?.textContent || '').trim())) continue;
     el.dataset.outroOk = '1';
     const inp = document.createElement('input');
+    const ref = 'o' + Math.random().toString(36).slice(2, 9); el.dataset.outroRef = ref; inp.dataset.outroId = ref;
     inp.className = 'campo-outro'; inp.dataset.outroDe = el.name; inp.placeholder = 'Qual? Escreva o nome'; inp.setAttribute('aria-label', 'Descreva a opção Outro');
     // valor já salvo que não está na lista: marca "Outro" e mostra o texto
     const salvo = el.dataset.valor;
@@ -145,7 +146,7 @@ function prepararOutros(raiz = document) {
   }
 }
 function sincOutro(el) {
-  const inp = el.form ? el.form.querySelector(`[data-outro-de="${CSS.escape(el.name)}"]`) : el.parentElement?.querySelector(`[data-outro-de="${CSS.escape(el.name)}"]`);
+  const inp = (el.dataset.outroRef && document.querySelector(`[data-outro-id="${el.dataset.outroRef}"]`)) || (el.form ? el.form.querySelector(`[data-outro-de="${CSS.escape(el.name)}"]`) : el.parentElement?.querySelector(`[data-outro-de="${CSS.escape(el.name)}"]`));
   if (!inp) return;
   const on = el.tagName === 'SELECT' ? !!el.selectedOptions[0]?.dataset.outro : el.checked;
   inp.hidden = !on; inp.required = on && el.tagName === 'SELECT'; if (on && document.activeElement === el) setTimeout(() => inp.focus(), 0);

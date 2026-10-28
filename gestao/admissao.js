@@ -108,9 +108,9 @@ function adStepper(passos) {
 rota('/rh/vagas/ver/:id', async (tela, id) => {
   const v = await api.um('vagas', `id=eq.${id}&select=*`);
   if (!v) { tela.innerHTML = '<div class="cartao vazio">Vaga não encontrada ou sem acesso.</div>'; return; }
-  const [cgs, ss, ccs, us, evs, anx, dir, adms] = await Promise.all([cargosL(), setoresL(), centros(), usuarios(), api.listar('vaga_eventos', `vaga_id=eq.${id}&order=em`).catch(() => []),
+  const [cgs, ss, ccs, us, evs, anx, dir, adms, ENC] = await Promise.all([cargosL(), setoresL(), centros(), usuarios(), api.listar('vaga_eventos', `vaga_id=eq.${id}&order=em`).catch(() => []),
     api.listar('anexos', `entidade=eq.vaga&entidade_id=eq.${id}&cancelado_em=is.null&order=enviado_em`).catch(() => []), api.rpc('eh_diretoria_vagas').catch(() => false),
-    api.rpc('admissoes_painel', { p_status: 'todas' }).then(l => l.filter(a => a.vaga_id === id)).catch(() => [])]);
+    api.rpc('admissoes_painel', { p_status: 'todas' }).then(l => l.filter(a => a.vaga_id === id)).catch(() => []), api.rpc('encargos_estimativa').catch(() => null)]);
   const U = porId(us), cargo = cgs.find(c => c.id === v.cargo_id), setor = ss.find(s => s.id === v.setor_id);
   const ev = k => [...evs].reverse().find(e => e.evento === k);
   const aprov = !VG_APROV.includes(v.status) && v.status !== 'cancelada';
@@ -119,6 +119,7 @@ rota('/rh/vagas/ver/:id', async (tela, id) => {
     ['Diretoria', v.dir_em ? dataBR(v.dir_em.slice(0, 10)) : v.status === 'aguardando_diretoria' ? 'aguardando' : '', v.dir_em ? 'ok' : v.status === 'reprovada' && v.rh_em ? 'x' : v.status === 'aguardando_diretoria' ? 'atual' : ''],
     ['Seleção', aprov ? (v.status === 'preenchida' ? 'preenchida' : 'em andamento') : '', v.status === 'preenchida' ? 'ok' : aprov ? 'atual' : ''],
     ['Admissão', adms.length ? `${adms.filter(a => a.status === 'concluida').length}/${v.quantidade} concluída(s)` : '', adms.length && adms.every(a => a.status === 'concluida') && adms.length >= v.quantidade ? 'ok' : adms.length ? 'atual' : '']];
+  let benHtmlOut = '';
   const caixaAcao = (() => {
     if (v.status === 'aguardando_rh' && tem('administrador', 'rh')) return `<form class="cartao form" id="f-rh"><h2 class="largo" style="margin:0">Validação do RH</h2>
       <p class="muted largo" style="margin:0">Confira salário x faixa do cargo${cargo?.salario_base ? ` (base ${brl(cargo.salario_base)})` : ''}, contrato, requisitos e orçamento. Os ajustes ficam registrados.</p>
@@ -130,32 +131,36 @@ rota('/rh/vagas/ver/:id', async (tela, id) => {
       ${vgFormBenHtml(v)}
       <label class="campo largo">Parecer do RH<textarea name="parecer" rows="2" placeholder="Obrigatório para devolver ou reprovar"></textarea></label>
       <div class="largo acoes"><button class="btn ok" value="aprovado">Validar e enviar à diretoria</button><button class="btn" value="devolvido">Devolver ao gestor</button><button class="btn perigo" value="reprovado">Reprovar</button></div></form>`;
-    const benHtml = editaRH() && ['aguardando_diretoria', 'aberta', 'em_selecao'].includes(v.status) ? `<form class="cartao form" id="f-ben"><h2 class="largo" style="margin:0">Benefícios e custo estimado (RH)</h2>
+    benHtmlOut = editaRH() && ['aguardando_diretoria', 'aberta', 'em_selecao'].includes(v.status) ? `<form class="cartao form" id="f-ben" hidden><h2 class="largo" style="margin:0">Benefícios e custo estimado (RH)</h2>
       <p class="muted largo" style="margin:0">Ajuste os benefícios, a premiação e o custo do funcionário. Fica registrado no histórico da vaga${v.status === 'aguardando_diretoria' ? ' e a diretoria vê antes de aprovar' : ''}.</p>
       <label class="campo">Salário (R$)<input name="salario_ofertado" inputmode="decimal" value="${v.salario_ofertado != null ? Number(v.salario_ofertado).toFixed(2).replace('.', ',') : ''}" readonly title="O salário muda só na validação do RH"></label>
       ${vgFormBenHtml(v)}
-      <div class="largo acoes"><button class="btn prim">Salvar benefícios</button></div></form>` : '';
-    if (v.status === 'aguardando_diretoria' && dir) return benHtml + `<form class="cartao form" id="f-dir"><h2 class="largo" style="margin:0">Aprovação da diretoria</h2>
-      <p class="muted largo" style="margin:0">Ao aprovar, a seleção é aberta e o PDF da requisição sai com o seu registro de aprovação e o código de verificação.</p>
+      <div class="largo acoes"><button class="btn prim">Salvar benefícios</button><button type="button" class="btn" id="f-ben-cancelar">Cancelar</button></div></form>` : '';
+    if (v.status === 'aguardando_diretoria' && dir) return `<form class="cartao form" id="f-dir"><h2 class="largo" style="margin:0">Aprovação da diretoria</h2>
+      <p class="muted largo" style="margin:0">Confira acima o resumo (custo por funcionário e total da vaga). Ao aprovar, a seleção é aberta e o PDF da requisição sai com o seu registro de aprovação e o código de verificação.</p>
       <label class="campo largo">Parecer<textarea name="parecer" rows="2" placeholder="Obrigatório para devolver ou reprovar"></textarea></label>
       <div class="largo acoes"><button class="btn ok" value="aprovado">Aprovar vaga</button><button class="btn" value="devolvido">Devolver ao RH</button><button class="btn perigo" value="reprovado">Reprovar</button></div></form>`;
     if (v.status === 'devolvida' && (v.solicitante_id === estado.usuario.id || editaRH())) return `<div class="cartao alerta-obs"><b>Devolvida para ajuste:</b> ${esc(ev('devolvida')?.parecer || '')}
       <div style="margin-top:8px"><a class="btn prim" href="#/rh/vagas/corrigir/${v.id}">Corrigir e reenviar</a></div></div>`;
-    return benHtml;
+    return '';
   })();
+  // resumo para decisão: o que a vaga custa (por funcionário e no total) e o que ela oferece
+  const veSal = editaRH() || dir || v.solicitante_id === estado.usuario.id;
+  const editandoNaValidacao = v.status === 'aguardando_rh' && tem('administrador', 'rh');
+  const resumoHtml = veSal && !editandoNaValidacao ? vgHtmlResumo(v, ENC, !!benHtmlOut) : '';
   const L = (k, t) => t ? `<div><div class="muted">${k}</div><b>${esc(t)}</b></div>` : '';
   tela.innerHTML = `<div class="topo"><div><h1>${esc(v.numero || 'Vaga')} · ${esc(cargo?.nome || 'Cargo')}</h1>
       <p class="sub"><span class="tag ${ST_VAGA[v.status]?.[1] || ''}">${esc(ST_VAGA[v.status]?.[0] || v.status)}</span> · ${v.quantidade} vaga(s)${setor ? ' · ' + esc(setor.nome) : ''} · requisitada por ${esc(U[v.solicitante_id]?.nome || '—')}</p></div>
       <div class="acoes"><button class="btn" id="pdf-req">⬇ Requisição (PDF)</button>${aprov && editaRH() ? `<a class="btn prim" href="#/rh/recrutamento/vaga/${v.id}">Seleção de candidatos</a>` : ''}<a class="btn" href="#/rh/vagas">Voltar</a></div></div>
     ${adStepper(passos)}
     ${v.status === 'reprovada' ? `<div class="cartao alerta-obs"><b>Reprovada</b> por ${esc(U[v.reprovada_por]?.nome || '—')} em ${dataBR((v.reprovada_em || '').slice(0, 10))}: ${esc(v.motivo_reprovacao || '')}</div>` : ''}
+    ${resumoHtml}${benHtmlOut}
     ${caixaAcao}
     <div class="cartao"><h2>Dados da vaga</h2><div class="form">
       ${L('Motivo', v.motivo)}${L('Contrato', TIPOS_CONTRATO[v.tipo_contrato])}${v.salario_ofertado != null && (editaRH() || dir || v.solicitante_id === estado.usuario.id) ? L('Salário', brl(v.salario_ofertado)) : ''}
       ${L('Centro de custo', ccs.find(c => c.id === v.centro_custo_id)?.nome)}${L('Local de trabalho', v.local_trabalho)}${L('Cliente / contrato', v.cliente)}${L('Escala / horário', v.escala)}
       ${L('Início desejado', dataBR(v.data_inicio_desejada))}${L('Prazo para preencher', dataBR(v.prazo))}
-      ${(editaRH() || dir || v.solicitante_id === estado.usuario.id) && ((v.beneficios_itens || []).length || v.premiacao?.tem || v.custo_estimado) ? `<div class="largo">${vgHtmlBeneficios(v)}</div>` : ''}
-      <div class="largo">${L('Justificativa', v.justificativa)}</div>${v.requisitos ? `<div class="largo">${L('Requisitos', v.requisitos)}</div>` : ''}${v.beneficios ? `<div class="largo">${L('Benefícios', v.beneficios)}</div>` : ''}
+      <div class="largo">${L('Justificativa', v.justificativa)}</div>${v.requisitos ? `<div class="largo">${L('Requisitos', v.requisitos)}</div>` : ''}${v.beneficios ? `<div class="largo">${L('Observações dos benefícios', v.beneficios)}</div>` : ''}
       ${v.codigo_verificacao ? `<div class="largo muted">Código de verificação da aprovação: <b class="mono">${esc(v.codigo_verificacao)}</b></div>` : ''}</div></div>
     ${adms.length ? `<div class="cartao"><h2>Admissões desta vaga</h2><ul class="lista-simples">${adms.map(a => `<li><span><b>${esc(a.colaborador)}</b> <span class="muted">${esc(a.numero || '')}</span> <span class="tag ${a.status === 'concluida' ? 'verde' : a.status === 'cancelada' ? '' : 'amarelo'}">${a.status === 'concluida' ? 'Admitido' : a.status === 'cancelada' ? 'Cancelada' : 'Em admissão'}</span></span><a class="btn peq" href="#/rh/admissoes/ver/${a.id}">Abrir</a></li>`).join('')}</ul></div>` : ''}
     <div class="cartao"><h2>Histórico</h2><ol class="ad-hist">${evs.map(e => `<li><b>${esc(VG_EVENTO[e.evento] || e.evento)}</b> <span class="muted">${dtHora(e.em)} · ${esc(U[e.por]?.nome || '')}</span>${e.parecer ? `<div>${esc(e.parecer)}</div>` : ''}</li>`).join('')}</ol></div>
@@ -164,12 +169,16 @@ rota('/rh/vagas/ver/:id', async (tela, id) => {
   const decidir = (form, rpc, extra) => form?.addEventListener('submit', async e => { e.preventDefault(); const d = formDados(form), dec = e.submitter.value;
     if (dec !== 'aprovado' && !d.parecer) return aviso('Escreva o motivo no parecer.', true);
     if (dec === 'aprovado' && !await vgConferirSalario(num(d.salario_ofertado), cargo)) return;
+    if (dec === 'aprovado' && form.id === 'f-rh' && vgCalc?.itens().some(b => b.tipo === 'Outro' && !b.obs)) return aviso('Escreva o nome do benefício "Outro".', true);
     if (dec === 'reprovado' && !await confirmar('Reprovar esta requisição de vaga?', { botao: 'Reprovar' })) return;
     await ocupado(e.submitter, async () => { try { await api.rpc(rpc, { p_vaga: v.id, p_decisao: dec, p_parecer: d.parecer || null, ...(extra ? extra(d) : {}) });
       aviso(dec === 'aprovado' ? (rpc === 'rh_decidir_vaga' ? 'Validada e enviada à diretoria.' : 'Vaga aprovada: a seleção está aberta.') : 'Decisão registrada.'); navegar(); } catch (err) { falha(err); } }); });
+  $('#ver-editar-ben')?.addEventListener('click', () => { const f = $('#f-ben'); f.hidden = !f.hidden; if (!f.hidden) f.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+  $('#f-ben-cancelar')?.addEventListener('click', () => navegar());
   const fBen = $('#f-ben');
   if (fBen) { const calc = await vgEditorBeneficios(fBen, v, cargo);
     fBen.onsubmit = async e => { e.preventDefault(); const d = formDados(fBen);
+      if (calc.itens().some(b => b.tipo === 'Outro' && !b.obs)) return aviso('Escreva o nome do benefício "Outro".', true);
       await ocupado(e.submitter, async () => { try { await api.rpc('rh_beneficios_vaga', { p_vaga: v.id, p: { beneficios: d.beneficios, beneficios_itens: calc.itens(),
           premiacao: d.prem_tem ? { tem: true, criterio: d.prem_criterio, valor_ref: num(d.prem_valor), periodicidade: d.prem_per } : { tem: false }, custo_estimado: calc.custo(), juridico_descontos: !!d.juridico_descontos } });
         aviso('Benefícios salvos.'); navegar(); } catch (err) { falha(err); } }); }; }
@@ -600,6 +609,23 @@ function vgHtmlCusto(c) {
     <tr><td><b>Total por mês</b></td><td class="nowrap" style="text-align:right"><b>${brl(c.total)}</b></td></tr><tr><td class="muted">Total por ano (×12)</td><td class="nowrap muted" style="text-align:right">${brl(c.total * 12)}</td></tr></table>
     <div class="muted" style="font-size:.85em">Estimativa sobre o salário bruto. Não inclui horas extras, adicionais nem premiação variável.</div></div>`;
 }
+function vgHtmlResumo(v, E, podeEditar) {
+  const bs = v.beneficios_itens || [], q = Number(v.quantidade) || 1;
+  const c = v.custo_estimado?.linhas ? v.custo_estimado : (v.salario_ofertado ? vgCalcularCusto(v.salario_ofertado, bs, E) : null);
+  const k = (n, r, cls = '') => `<div class="cartao kpi ${cls}" style="margin:0"><div class="n">${n}</div><div class="r">${r}</div></div>`;
+  return `<div class="cartao"><div class="topo" style="margin:0 0 10px"><div><h2 style="margin:0">Resumo para decisão</h2>
+      <div class="muted">${v.custo_estimado?.linhas ? 'Custo calculado na validação do RH' : 'Custo calculado agora com os parâmetros atuais'} · estimativa, não substitui a folha</div></div>
+      ${podeEditar ? '<button class="btn" id="ver-editar-ben">Editar benefícios e custo</button>' : ''}</div>
+    <div class="grade" style="margin-bottom:12px">
+      ${k(q, 'vaga(s)')}${k(v.salario_ofertado != null ? brl(v.salario_ofertado) : '—', 'salário por funcionário')}
+      ${k(c ? brl(c.total) : '—', 'custo mensal por funcionário')}${k(c ? brl(c.total * q) : '—', `custo mensal da vaga (× ${q})`, q > 1 ? 'alerta' : '')}${k(c ? brl(c.total * q * 12) : '—', 'custo anual da vaga')}</div>
+    ${bs.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Benefício</th><th>Empresa paga (mês)</th><th>Desconto do colaborador</th><th>Observação</th></tr></thead><tbody>
+      ${bs.map(b => `<tr><td data-r="Benefício"><b>${esc(b.tipo === 'Outro' && b.obs ? b.obs : b.tipo)}</b></td><td data-r="Empresa paga" class="nowrap">${brl(vgBenMensal(b))}${b.base === 'dia' ? `<div class="muted">${brl(b.empresa)}/dia × ${b.dias || 22}</div>` : ''}</td>
+        <td data-r="Desconto" class="nowrap">${b.colaborador ? brl(b.colaborador) : '<span class="muted">não desconta</span>'}</td><td data-r="Observação">${esc(b.tipo === 'Outro' ? '' : b.obs || '')}</td></tr>`).join('')}</tbody></table></div>`
+      : '<p class="muted">Nenhum benefício com valor cadastrado.' + (podeEditar ? ' Use “Editar benefícios e custo”.' : '') + '</p>'}
+    ${v.premiacao?.tem ? `<p style="margin:8px 0 0"><b>Premiação por metas (${esc(v.premiacao.periodicidade || '')}):</b> ${esc(v.premiacao.criterio || '')}${v.premiacao.valor_ref ? ` · referência ${brl(v.premiacao.valor_ref)}` : ''}</p>` : ''}
+    ${c ? `<details style="margin-top:10px"><summary>Como o custo foi calculado</summary>${vgHtmlCusto(c)}</details>` : ''}</div>`;
+}
 function vgHtmlBeneficios(v) {
   const bs = v.beneficios_itens || [];
   return `${bs.length ? `<div class="muted">Benefícios</div><ul class="lista-simples">${bs.map(b => `<li><span><b>${esc(b.tipo)}</b>${b.obs ? ' · ' + esc(b.obs) : ''}${b.base === 'dia' ? ` <span class="muted">${brl(b.empresa)}/dia × ${b.dias || 22}</span>` : ''}</span>
@@ -611,12 +637,12 @@ async function vgEditorBeneficios(f, v, cargo) {
   let E = await api.rpc('encargos_estimativa').catch(() => null) || ENC_PADRAO;
   const lista = $('#ben-lista', f);
   const linha = (b = {}) => `<div class="ben-linha" data-ben>
-    <label class="campo">Benefício<select name="_bt">${VG_BENEF.map(t => `<option ${t === (b.tipo || 'Vale-transporte') ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+    <label class="campo">Benefício<select name="_bt" data-sem-outro>${VG_BENEF.map(t => `<option ${t === (b.tipo || 'Vale-transporte') ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
     <label class="campo">Empresa paga (R$)<input name="_be" inputmode="decimal" value="${b.empresa != null ? String(b.empresa).replace('.', ',') : ''}"></label>
     <label class="campo">Base<select name="_bb"><option value="mensal" ${b.base !== 'dia' ? 'selected' : ''}>por mês</option><option value="dia" ${b.base === 'dia' ? 'selected' : ''}>por dia trabalhado</option></select></label>
     <label class="campo" data-dias ${b.base === 'dia' ? '' : 'hidden'}>Dias/mês<input name="_bd" inputmode="numeric" value="${b.dias || E.dias_mes || 22}"></label>
     <label class="campo">Desconto do colaborador (R$/mês)<input name="_bc" inputmode="decimal" value="${b.colaborador ? String(b.colaborador).replace('.', ',') : ''}" placeholder="0 = não desconta"></label>
-    <label class="campo">Obs.<input name="_bo" value="${esc(b.obs || '')}" placeholder="Operadora, plano, linha…"></label>
+    <label class="campo">${b.tipo === 'Outro' ? 'Qual benefício? *' : 'Obs.'}<input name="_bo" value="${esc(b.obs || '')}" placeholder="Operadora, plano, linha…"></label>
     <button type="button" class="btn peq perigo" data-ben-rm title="Remover">✕</button><div class="muted ben-dica" style="flex-basis:100%"></div></div>`;
   const ler = () => $$('[data-ben]', lista).map(el => { const g = n => $(`[name=${n}]`, el).value;
     return { tipo: g('_bt'), empresa: num(g('_be')) || 0, base: g('_bb'), dias: g('_bb') === 'dia' ? Number(g('_bd')) || 22 : null, colaborador: num(g('_bc')) || 0, obs: g('_bo').trim() || null }; });
@@ -628,7 +654,8 @@ async function vgEditorBeneficios(f, v, cargo) {
       else if (['Vale-refeição', 'Vale-alimentação'].includes(b.tipo)) d.innerHTML = `PAT: desconto até 20% do custo (máx. ${brl((vgBenMensal(b) + b.colaborador) * 0.2)}).${b.colaborador > (vgBenMensal(b) + b.colaborador) * 0.2 + 0.005 ? ' <b class="txt-verm">Acima do limite.</b>' : ''}`;
       else if (['Plano de saúde', 'Plano odontológico'].includes(b.tipo)) d.textContent = b.colaborador ? 'Desconto de plano só com autorização prévia e escrita do colaborador (Súmula 342 TST).' : '';
       else if (b.tipo === 'Diária de viagem' || b.tipo === 'Ajuda de custo') d.textContent = 'Confira a convenção coletiva: diárias e ajuda de custo não integram o salário quando pagas para despesas de trabalho (CLT art. 457 §2º).';
-      else d.textContent = ''; });
+      else d.textContent = b.tipo === 'Outro' ? 'Escreva o nome do benefício no último campo.' : '';
+      const lb = $('[name=_bo]', el).closest('label'); if (lb?.firstChild?.nodeType === 3) lb.firstChild.textContent = b.tipo === 'Outro' ? 'Qual benefício? *' : 'Obs.'; });
     $('#c-jur-ben', f).hidden = !its.some(b => b.colaborador > 0);
     $('#c-prem', f).hidden = !f.prem_tem.checked;
     $('#vg-custo', f).innerHTML = vgHtmlCusto(vgCalcularCusto(sal, its, E)) + (tem('administrador', 'rh', 'dp', 'financeiro', 'diretoria') ? '<button type="button" class="btn peq" id="enc-param" style="margin-top:6px">Parâmetros dos encargos</button>' : '');
