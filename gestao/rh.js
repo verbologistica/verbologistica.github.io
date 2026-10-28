@@ -116,6 +116,7 @@ async function formColaborador(tela, c = null) {
         ${campo('Nome social', inp('nome_social'))}${campo('Apelido (como é chamado)', inp('apelido'))}
         ${campo('CPF', `<input name="cpf" value="${esc(fmtCPF(c?.cpf || ''))}" inputmode="numeric">`)}
         ${campo('Data de nascimento', dt('data_nascimento'))}
+        ${campo('Tipo sanguíneo', sel('tipo_sanguineo', ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map(x => [x, x]), c?.tipo_sanguineo, 'Não informado'))}
         ${campo('RG', inp('rg'))}${campo('Órgão emissor', inp('rg_orgao'))}${campo('UF do RG', sel('rg_uf', UFS.map(u => [u, u]), c?.rg_uf))}${campo('Emissão do RG', dt('rg_emissao'))}
         ${campo('Sexo', sel('sexo', [['F', 'Feminino'], ['M', 'Masculino'], ['Outro', 'Outro']], c?.sexo))}
         ${campo('Estado civil', sel('estado_civil', ['Solteiro(a)', 'Casado(a)', 'União estável', 'Divorciado(a)', 'Viúvo(a)'].map(x => [x, x]), c?.estado_civil))}
@@ -222,7 +223,7 @@ rota('/rh/colaboradores/ver/:id', async (tela, id) => {
   const conteudo = {
     dados: `${fotosFicha ? `<div class="cartao">${fotosFicha}</div>` : ''}<div class="cartao"><div class="form">
         ${linha('Matrícula', c.matricula)}${linha('CPF', fmtCPF(c.cpf || ''))}${linha('Nascimento', c.data_nascimento ? `${dataBR(c.data_nascimento)} (${idade(c.data_nascimento)} anos)` : '')}
-        ${linha('RG', fmtRG(c.rg, c.rg_orgao, c.rg_uf))}${linha('Estado civil', c.estado_civil)}${linha('Escolaridade', c.escolaridade)}
+        ${linha('RG', fmtRG(c.rg, c.rg_orgao, c.rg_uf))}${linha('Estado civil', c.estado_civil)}${linha('Tipo sanguíneo', c.tipo_sanguineo)}${linha('Escolaridade', c.escolaridade)}
         ${linha('Mãe', c.nome_mae)}${linha('PIS', c.pis)}${linha('CTPS', [c.ctps_numero, c.ctps_serie, c.ctps_uf].filter(Boolean).join(' / '))}
         ${linha('CNH', c.cnh_categoria ? `${c.cnh_numero || ''} · ${c.cnh_categoria}${c.cnh_ear ? ' · EAR' : ''} · validade ${dataBR(c.cnh_validade) || '—'}` : '')}
         ${linha('Telefone', [c.telefone, c.telefone2].filter(Boolean).map(fmtTel).join(' · '))}${linha('E-mail', c.email_corporativo || c.email)}

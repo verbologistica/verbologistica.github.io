@@ -54,7 +54,7 @@ function crAjustar(ctx, texto, { fonte, peso, max, min, larg, maxL, esp = 0, cai
 }
 function crRet(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
 
-// d = { nome, nomeCompleto, cargo, setor, matricula, admissao, cpf, foto (ImageBitmap|Image), ajuste {z,x,y}, empresa, emergencia, mostrarCPF }
+// d = { nome, nomeCompleto, cargo, setor, matricula, admissao, cpf, foto (ImageBitmap|Image), ajuste {z,x,y}, empresa, emergencia, sangue, mostrarSangue }
 // k = px por mm · b = sangria (mm)
 function crDesenhar(ctx, lado, d, A, k, b = 0) {
   const W = CR_W, H = CR_H;
@@ -165,7 +165,7 @@ function crVerso(ctx, d, A, W, H, b) {
   campo('Nome', d.nomeCompleto, { max: 2.6, linhas: 2 });
   campo('Cargo', d.cargo, { max: 2.3, linhas: 2 });
   dupla('Matrícula', d.matricula, 'Admissão', d.admissao);
-  if (d.mostrarCPF) campo('CPF', crCPFParcial(d.cpf), { max: 2.3, linhas: 1 });
+  if (d.mostrarSangue && d.sangue) campo('Tipo sanguíneo', d.sangue, { max: 2.6, linhas: 1 });
   if (d.emergencia) campo('Em caso de emergência', d.emergencia, { max: 2.1, linhas: 2 });
   // aviso e devolução
   const E = d.empresa || {};
@@ -203,7 +203,7 @@ async function crDados(c, extra = {}) {
   const emerg = [c.emergencia_nome, c.emergencia_parentesco && `(${c.emergencia_parentesco})`, c.emergencia_telefone && fmtTel(c.emergencia_telefone)].filter(Boolean).join(' ');
   return {
     nome: c.cracha_nome || nomeCrachaPadrao(c), nomeCompleto: c.nome_social || c.nome, cargo: cgs.find(x => x.id === c.cargo_id)?.nome || '', setor: ss.find(x => x.id === c.setor_id)?.nome || '',
-    matricula: c.matricula || '', admissao: c.data_admissao ? dataBR(c.data_admissao) : '', cpf: c.cpf, mostrarCPF: true, emergencia: '', emergTexto: emerg,
+    matricula: c.matricula || '', admissao: c.data_admissao ? dataBR(c.data_admissao) : '', sangue: c.tipo_sanguineo || '', mostrarSangue: true, emergencia: '', emergTexto: emerg,
     ajuste: c.cracha_ajuste || {}, empresa: es[0] || {}, foto: await crFotoDe(c.foto_cracha_caminho).catch(() => null), ...extra };
 }
 const crNomeArq = (d, lado) => `Crachá ${d.nome.replace(/[\\/:*?"<>|]/g, '')}${lado ? ' - ' + lado : ''}`;
@@ -264,7 +264,7 @@ rota('/rh/crachas', async tela => {
   [cvF, cvV].forEach(cv => { cv.width = Math.round(CR_W * KP * dens); cv.height = Math.round(CR_H * KP * dens); cv.style.width = CR_W * KP + 'px'; cv.style.aspectRatio = `${CR_W} / ${CR_H}`; });
   let col = null, d = null;
   const desenhar = () => { if (!d) return; crDesenhar(cvF.getContext('2d'), 'frente', d, A, KP * dens); crDesenhar(cvV.getContext('2d'), 'verso', d, A, KP * dens); };
-  const vazio = { nome: 'Nome do colaborador', nomeCompleto: 'Nome completo do colaborador', cargo: 'Cargo', setor: 'Setor', matricula: '0000', admissao: dataBR(hojeISO()), empresa: (await empresasL().catch(() => []))[0] || {}, mostrarCPF: false };
+  const vazio = { nome: 'Nome do colaborador', nomeCompleto: 'Nome completo do colaborador', cargo: 'Cargo', setor: 'Setor', matricula: '0000', admissao: dataBR(hojeISO()), empresa: (await empresasL().catch(() => []))[0] || {}, mostrarSangue: false };
   d = vazio; desenhar(); d = null;
 
   const abrir = async id => {
@@ -279,7 +279,7 @@ rota('/rh/crachas', async tela => {
         <label class="campo">Foto do crachá ${d.foto ? '(trocar)' : '*'}<input type="file" id="cr-foto" accept="image/*"></label>
         <label class="campo">Zoom da foto<input type="range" id="cr-zoom" min="1" max="3" step="0.01" value="${Number(d.ajuste.z) || 1}"></label>
         <div class="cr-acoes-foto"><button type="button" class="btn peq" id="cr-centro">Centralizar foto</button></div>
-        <label class="check"><input type="checkbox" id="cr-cpf" checked> Mostrar CPF parcial no verso (***.456.789-**)</label>
+        <label class="check"><input type="checkbox" id="cr-sangue" ${d.sangue ? 'checked' : 'disabled'}> Mostrar tipo sanguíneo no verso${d.sangue ? ` (${esc(d.sangue)})` : ' <span class="muted">(não cadastrado — informe no cadastro do colaborador)</span>'}</label>
         <label class="check"><input type="checkbox" id="cr-emerg" ${d.emergTexto ? '' : 'disabled'}> Mostrar contato de emergência no verso${d.emergTexto ? '' : ' <span class="muted">(não cadastrado)</span>'}</label>
       </div>
       <div class="cr-botoes">
@@ -294,7 +294,7 @@ rota('/rh/crachas', async tela => {
     $('#cr-nome').oninput = e => { d.nome = e.target.value.trim() || nomeCrachaPadrao(col); desenhar(); };
     $('#cr-zoom').oninput = e => { d.ajuste = { ...d.ajuste, z: Number(e.target.value) }; desenhar(); };
     $('#cr-centro').onclick = () => { d.ajuste = { z: 1, x: 0, y: -0.35 }; $('#cr-zoom').value = 1; desenhar(); };
-    $('#cr-cpf').onchange = e => { d.mostrarCPF = e.target.checked; desenhar(); };
+    $('#cr-sangue').onchange = e => { d.mostrarSangue = e.target.checked; desenhar(); };
     $('#cr-emerg').onchange = e => { d.emergencia = e.target.checked ? d.emergTexto : ''; desenhar(); };
     $('#cr-foto').onchange = async e => { const f = e.target.files[0]; if (!f) return;
       try { aviso('Enviando foto…'); await salvarFotoColaborador(col.id, f, 'cracha'); col = await api.um('colaboradores', `id=eq.${col.id}&select=*`);
