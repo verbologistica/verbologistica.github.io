@@ -9,7 +9,7 @@ const CATEG_DOC_RH = { identificacao: 'Identificação', trabalhista: 'Trabalhis
 const tagColab = s => `<span class="tag ${STATUS_COLAB[s]?.[1] || ''}">${STATUS_COLAB[s]?.[0] || s}</span>`;
 const idade = d => { if (!d) return null; const n = new Date(d + 'T12:00:00'), h = new Date(); let a = h.getFullYear() - n.getFullYear(); if (h < new Date(h.getFullYear(), n.getMonth(), n.getDate())) a--; return a; };
 const setoresL = f => cad('setores', 'select=id,nome,sigla,ativo&order=nome', f);
-const cargosL = f => cad('cargos', 'select=id,nome,cbo,setor_id,motorista,cnh_minima,experiencia_dias,proximo_cargo_id,requisitos_promocao,ativo&order=nome', f);
+const cargosL = f => cad('cargos', 'select=id,nome,cbo,setor_id,motorista,cnh_minima,experiencia_dias,proximo_cargo_id,requisitos_promocao,salario_base,ativo&order=nome', f);
 const tiposDocRH = f => cad('rh_tipos_documento', 'select=*&order=ordem,nome', f);
 const exigidoPara = (t, motorista) => t.exigido_admissao === 'todos' || (t.exigido_admissao === 'motoristas' && motorista);
 

@@ -11,7 +11,7 @@ const dataBR = s => { if (!s) return ''; const [a, m, d] = String(s).slice(0, 10
 const dataHoraBR = s => s ? new Date(s).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '';
 const somaDias = (iso, n) => { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
 const somaMeses = (iso, n) => { const d = new Date(iso + 'T12:00:00'); d.setMonth(d.getMonth() + n); return d.toISOString().slice(0, 10); };
-const num = v => { if (v === '' || v == null) return null; let t = String(v).replace(/[R$\s]/g, ''); if (t.includes(',')) t = t.replace(/\./g, '').replace(',', '.'); const n = Number(t); return isNaN(n) ? null : n; };
+const num = v => { if (v === '' || v == null) return null; let t = String(v).replace(/[R$\s]/g, ''); if (t.includes(',')) t = t.replace(/\./g, '').replace(',', '.'); else if (/^-?[1-9]\d{0,2}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, ''); const n = Number(t); return isNaN(n) ? null : n; };
 const lista = ids => 'in.(' + ids.map(encodeURIComponent).join(',') + ')';
 const nomeArquivo = n => n.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\w.-]+/g, '_').slice(-80);
 

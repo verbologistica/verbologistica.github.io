@@ -90,6 +90,7 @@ async function formRequisicao(tela, v = null) {
     if (c?.requisitos && !f.requisitos.value) f.requisitos.value = c.requisitos; if (c?.salario_base && !f.salario_ofertado.value) f.salario_ofertado.value = Number(c.salario_base).toFixed(2).replace('.', ','); });
   f.onsubmit = async e => { e.preventDefault(); const d = formDados(f);
     if (!d.cargo_id) return aviso('Escolha o cargo.', true);
+    if (!await vgConferirSalario(num(d.salario_ofertado), cgs.find(x => x.id === d.cargo_id))) return;
     const p = { ...d, salario_ofertado: num(d.salario_ofertado), substitui_colaborador_id: d.motivo === 'Substituição' ? d.substitui_colaborador_id : '' };
     await ocupado(e.submitter, async () => { try {
       if (v) { await api.rpc('reenviar_vaga', { p_vaga: v.id, p }); aviso('Requisição reenviada ao RH.'); location.hash = '#/rh/vagas/ver/' + v.id; }
@@ -162,6 +163,7 @@ rota('/rh/vagas/ver/:id', async (tela, id) => {
     <p class="muted">A aprovação no sistema vale como assinatura eletrônica (Lei 14.063/2020): registra usuário, data, hora e código de verificação. Assinatura gov.br fica só para o contrato de trabalho.</p>`;
   const decidir = (form, rpc, extra) => form?.addEventListener('submit', async e => { e.preventDefault(); const d = formDados(form), dec = e.submitter.value;
     if (dec !== 'aprovado' && !d.parecer) return aviso('Escreva o motivo no parecer.', true);
+    if (dec === 'aprovado' && !await vgConferirSalario(num(d.salario_ofertado), cargo)) return;
     if (dec === 'reprovado' && !await confirmar('Reprovar esta requisição de vaga?', { botao: 'Reprovar' })) return;
     await ocupado(e.submitter, async () => { try { await api.rpc(rpc, { p_vaga: v.id, p_decisao: dec, p_parecer: d.parecer || null, ...(extra ? extra(d) : {}) });
       aviso(dec === 'aprovado' ? (rpc === 'rh_decidir_vaga' ? 'Validada e enviada à diretoria.' : 'Vaga aprovada: a seleção está aberta.') : 'Decisão registrada.'); navegar(); } catch (err) { falha(err); } }); });
@@ -564,6 +566,13 @@ function vgFormBenHtml(v) {
         <p class="muted largo" style="margin:0">Prêmio por desempenho acima do esperado, com regra escrita, não integra o salário (CLT art. 457 §§2º e 4º). Sem regra clara pode virar salário e gerar encargos. PLR é outra coisa (Lei 10.101/2000, até 2 vezes por ano, com acordo).</p></div>
       <label class="campo largo">Observações dos benefícios<textarea name="beneficios" rows="2">${esc(v.beneficios || '')}</textarea></label>
       <div class="largo" id="vg-custo"></div>`;
+}
+// confere salário muito fora da faixa do cargo (erro de digitação: 34005 em vez de 3405)
+async function vgConferirSalario(sal, cargo) {
+  if (!sal) return true;
+  const base = Number(cargo?.salario_base) || 0;
+  const fora = base ? (sal > base * 2.5 || sal < base / 2.5) : sal > 30000;
+  return !fora || confirmar(`Salário de ${brl(sal)}${base ? ` está muito fora da base do cargo (${brl(base)})` : ' parece alto'}. Confira se não houve erro de digitação. Continuar com este valor?`, { botao: 'Sim, está certo' });
 }
 const VG_BENEF = ['Vale-transporte', 'Vale-refeição', 'Vale-alimentação', 'Cesta básica', 'Plano de saúde', 'Plano odontológico', 'Seguro de vida', 'Auxílio combustível', 'Ajuda de custo', 'Diária de viagem', 'Outro'];
 const vgBenMensal = b => (Number(b.empresa) || 0) * (b.base === 'dia' ? (Number(b.dias) || 22) : 1);
