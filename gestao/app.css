@@ -1372,3 +1372,8 @@ body.tema-vx .ss-vg-l:hover { background: rgba(255,255,255,.05); } body.tema-vx 
 .ad-ind li { display: grid; grid-template-columns: 120px 1fr auto auto auto; gap: 10px; align-items: center; }
 .ad-ind .ad-barra { margin: 0; }
 @media (max-width: 640px) { .ad-ind li { grid-template-columns: 1fr auto; } .ad-ind .ad-barra { grid-column: 1 / -1; } }
+/* Feriados */
+.fer-faixa { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+.fer-faixa .fer-lista { display: flex; flex-wrap: wrap; gap: 6px; flex: 1 1 100%; }
+.fer-item { background: var(--fundo-2, #f4f6f8); border-radius: 8px; padding: 4px 8px; font-size: .9em; }
+.fer-item.hoje { background: #fff4d6; }

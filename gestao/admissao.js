@@ -235,7 +235,9 @@ rota('/rh/admissoes', async tela => {
   if (aba === 'agenda') {
     const ts = ls.flatMap(a => (a.treinos || []).map(t => ({ ...t, adm: a })).filter(t => t.status !== 'cancelado')).sort((x, y) => x.inicio.localeCompare(y.inicio));
     const dias = [...new Set(ts.map(t => diaLocal(t.inicio)))];
-    tela.innerHTML = `${topo}<div class="cartao">${ts.length ? dias.map(d => `<div class="ad-dia" data-dia${fAttr('data', d)}><h3>${new Date(d + 'T12:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })}${d === hojeISO() ? ' <span class="tag azul">hoje</span>' : ''}</h3>
+    const fers = dias.length ? await api.rpc('feriados_periodo', { p_ini: dias[0], p_fim: dias[dias.length - 1] }).catch(() => []) : [];
+    const ferDia = d => fers.filter(f => f.data === d).map(f => `<span class="tag amarelo">📅 ${esc(typeof ferRotulo === 'function' ? ferRotulo(f) : f.nome)}</span>`).join(' ');
+    tela.innerHTML = `${topo}<div class="cartao">${ts.length ? dias.map(d => `<div class="ad-dia" data-dia${fAttr('data', d)}><h3>${new Date(d + 'T12:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })}${d === hojeISO() ? ' <span class="tag azul">hoje</span>' : ''} ${ferDia(d)}</h3>
         <ul class="ad-agenda">${ts.filter(t => diaLocal(t.inicio) === d).map(t => `<li data-t${fAttr('setor', t.setor === 'Cliente' ? 'Cliente' : t.setor)}${fAttr('busca', [t.titulo, t.adm.colaborador, t.cliente, t.responsavel, t.local].join(' '))}>
           <span class="ad-hora">${hora(t.inicio)}–${hora(t.fim)}</span>
           <span><b>${esc(t.titulo)}</b> · ${esc(t.adm.colaborador)} <span class="muted">${esc(t.adm.cargo || '')}</span><br><span class="muted">${esc([t.local, t.responsavel && 'resp. ' + t.responsavel, t.setor === 'Cliente' ? 'Cliente ' + (t.cliente || '') : t.setor, 'confirma: ' + t.confirma_setor].filter(Boolean).join(' · '))}</span></span>
@@ -384,12 +386,14 @@ rota('/rh/admissoes/ver/:id', async (tela, id) => {
     ${adStepper(passos)}
     ${andamento && !registro && trs.some(t => t.status === 'agendado') ? '<div class="cartao alerta-obs">⚖️ <b>Treinamento é tempo de trabalho.</b> Os treinamentos só podem ser confirmados depois do contrato assinado, do eSocial (S-2200) enviado e do ASO apto. Confira se as datas da agenda são posteriores ao registro.</div>' : ''}
     ${a.status === 'concluida' && a.motorista ? '<div class="cartao alerta-obs">🚛 Motorista admitido: a liberação definitiva (padrinho e viagens padrão) segue em <a href="#/ssma/integracoes">SSMA › Liberação de motoristas</a>.</div>' : ''}
+    ${typeof htmlFeriadosProcesso === 'function' ? htmlFeriadosProcesso(D, 'admissao', andamento, rh || meus.includes('SSMA')) : ''}
     ${AD_FASES.filter(f => f !== 'Integração e treinamentos').map(f => `<div class="cartao"><h2>${esc(f)}</h2><ol class="ad-ets">${ets.filter(e => e.fase === f).map(itemEtapa).join('')}</ol></div>`).join('')}
     <div class="cartao"><div class="topo" style="margin:0 0 8px"><div><h2 style="margin:0">Integração e treinamentos</h2><div class="muted">O RH monta a agenda; cada setor confirma a sua parte com a lista de presença ou o certificado. O treinamento no cliente é confirmado pelo SSMA.</div></div>
         ${rh && andamento ? '<div class="acoes"><button class="btn" id="tr-cargo">Sugerir do cargo</button><button class="btn prim" id="tr-novo">+ Agendar treinamento</button></div>' : ''}</div>
       <ol class="ad-ets">${ets.filter(e => e.fase === 'Integração e treinamentos').map(itemEtapa).join('')}</ol>
       ${trs.length ? `<ul class="ad-trs">${trs.map(linhaTreino).join('')}</ul>` : '<p class="muted">Nenhum treinamento agendado.</p>'}</div>`;
 
+  if (typeof ligarFeriadosProcesso === 'function') ligarFeriadosProcesso(tela, 'admissao', a.id);
   // ações das etapas
   const pedirArquivos = async (titulo, obrig) => modal(`<form><h2>${esc(titulo)}</h2><div class="form"><label class="campo largo">Arquivo(s)${obrig ? ' *' : ''}<input type="file" name="arquivos" multiple accept="image/*,application/pdf"></label>
       <label class="campo largo">Observação<input name="obs"></label></div><div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Salvar</button></div></form>`,
@@ -423,7 +427,8 @@ rota('/rh/admissoes/ver/:id', async (tela, id) => {
           <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Registrar envio</button></div></form>`,
           { validar: d => !ec.anexos.length && !d.arquivos.length ? 'Anexe o e-mail ou a documentação enviada.' : null }); if (!r) return;
         if (r.arquivos.length) await anexar('admissao_etapa', ec.id, r.arquivos, 'Documentação enviada ao cliente ' + a.cliente);
-        const x = await api.rpc('cliente_admissao', { p_adm: a.id, p_acao: 'enviar', p_data: r.data, p_obs: r.obs || null }); aviso(`Envio registrado. Resposta esperada até ${dataBR(x.prazo)}.`); return navegar(); }
+        const x = await api.rpc('cliente_admissao', { p_adm: a.id, p_acao: 'enviar', p_data: r.data, p_obs: r.obs || null });
+        aviso(`Envio registrado. Resposta esperada até ${dataBR(x.prazo)}.${x.feriados?.length ? ` No período: ${x.feriados.join(', ')} — se o cliente não trabalhar, registre em "Feriados no período".` : ''}`); return navegar(); }
       if (acao === 'aprovar') { const r = await modal(`<form><h2>Cliente ${esc(a.cliente)} aprovou</h2><div class="form">
           <label class="campo">Aprovado em *<input type="date" name="data" required value="${hojeISO()}"></label>
           <label class="campo largo">Aprovação do cliente (e-mail/print)<input type="file" name="arquivos" multiple accept="image/*,application/pdf"></label>
@@ -431,7 +436,7 @@ rota('/rh/admissoes/ver/:id', async (tela, id) => {
           <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Registrar aprovação</button></div></form>`); if (!r) return;
         if (r.arquivos.length) await anexar('admissao_etapa', ec.id, r.arquivos, 'Aprovação do cliente ' + a.cliente);
         const x = await api.rpc('cliente_admissao', { p_adm: a.id, p_acao: 'aprovar', p_data: r.data, p_obs: r.obs || null });
-        aviso(`Aprovação registrada. Próxima integração possível: ${dataBR(x.sugestao)}.`);
+        aviso(`Aprovação registrada. Próxima integração possível: ${dataBR(x.sugestao)}.${x.feriado ? ` Atenção: é ${x.feriado}. Se o cliente não fizer integração nesse dia, registre "Cliente respeitou" e a data muda.` : ''}`, !!x.feriado);
         if (rh && x.sugestao) return formTreino(null, false, preCliente(x.sugestao, D.cli_regra, a.cliente));
         return navegar(); }
       if (acao === 'recusar') { const m = await confirmar('O que o cliente recusou ou pediu para ajustar?', { comMotivo: true, botao: 'Registrar' }); if (!m) return;
@@ -458,11 +463,14 @@ rota('/rh/admissoes/ver/:id', async (tela, id) => {
       <label class="campo">Responsável (usuário)<select name="responsavel_id"><option value="">—</option>${us.filter(u => u.ativo).map(u => `<option value="${u.id}" ${u.id === t?.responsavel_id ? 'selected' : ''}>${esc(u.nome)}</option>`).join('')}</select></label>
       <label class="campo">ou nome do instrutor<input name="responsavel_nome" value="${esc(t?.responsavel_nome || '')}" placeholder="Instrutor externo / do cliente"></label>
       <label class="campo">Quem confirma a conclusão<select name="confirma_setor">${AD_SETORES.filter(s => s !== 'Cliente').map(s => `<option ${s === (t?.confirma_setor || 'RH') ? 'selected' : ''}>${s}</option>`).join('')}</select></label>
+      <p class="alerta-obs largo" id="fer-aviso" hidden></p>
       <p class="muted largo">Treinamento no cliente é confirmado pelo SSMA. Agende só a partir do 1º dia de registro do colaborador.</p></div>
       <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Salvar</button></div></form>`,
       { aoAbrir: f => { const fm = $('form', f); const sinc = () => { $('#c-cli', f).hidden = fm.setor.value !== 'Cliente'; if (fm.setor.value === 'Cliente') fm.confirma_setor.value = 'SSMA'; else if (!t || t._novo) fm.confirma_setor.value = fm.setor.value; };
           fm.setor.onchange = sinc; sinc(); fm.treinamento_id.onchange = () => { const x = cat.find(y => y.id === fm.treinamento_id.value); if (x && !fm.titulo.dataset.mexeu) fm.titulo.value = x.nome; };
-          fm.titulo.oninput = () => (fm.titulo.dataset.mexeu = 1); },
+          fm.titulo.oninput = () => (fm.titulo.dataset.mexeu = 1);
+          const fer = async () => { const t = typeof avisoFeriadoData === 'function' ? await avisoFeriadoData(fm.data.value) : ''; const el = $('#fer-aviso', f); if (el) { el.textContent = t; el.hidden = !t; } };
+          fm.data.addEventListener('change', fer); fer(); },
         validar: d => d.h2 <= d.h1 ? 'O fim deve ser depois do início.' : null });
     if (!r) return;
     const dados = { admissao_id: a.id, treinamento_id: r.treinamento_id || null, titulo: r.titulo, inicio: new Date(`${r.data}T${r.h1}`).toISOString(), fim: new Date(`${r.data}T${r.h2}`).toISOString(),

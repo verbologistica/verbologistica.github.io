@@ -126,7 +126,7 @@ function dsDica(e, D) {
   }); }
 
 rota('/rh/desligamentos/ver/:id', async (tela, id) => {
-  const D = await api.rpc('desligamento_detalhe', { p_id: id }).catch(err => { falha(err); return null; });
+  const D = await api.rpc('desligamento_detalhe_v2', { p_id: id }).catch(() => api.rpc('desligamento_detalhe', { p_id: id })).catch(err => { falha(err); return null; });
   if (!D) { tela.innerHTML = '<div class="cartao vazio">Desligamento não encontrado ou sem acesso.</div>'; return; }
   const d = D.desl, c = D.col, ets = D.etapas, meus = D.meus_setores || [], rh = D.rh, andamento = d.status === 'em_andamento';
   const est = k => ets.find(e => e.codigo === k);
@@ -153,10 +153,12 @@ rota('/rh/desligamentos/ver/:id', async (tela, id) => {
     ${andamento ? `<div class="cartao ${dias <= 3 ? 'alerta-obs' : ''}">💰 Verbas rescisórias, TRCT e eSocial até <b>${dataBR(d.prazo_pagamento)}</b> (${dias >= 0 ? `faltam ${dias} dia(s)` : `<b>atrasado ${-dias} dia(s)</b> — multa do art. 477 §8º`}).</div>` : ''}
     ${rh && andamento ? `<div class="acoes" style="margin-bottom:10px">${d.tipo === 'pedido_demissao' ? '<button class="btn peq" data-enc="RH-DES-002">Pedido de demissão</button>' : ''}${['sem_justa_causa', 'acordo'].includes(d.tipo) ? '<button class="btn peq" data-enc="RH-DES-001">Aviso prévio</button>' : ''}
       <button class="btn peq" data-enc="RH-DES-003">Termo de devolução</button><button class="btn peq" data-enc="RH-FOR-001">Encaminhamento ASO demissional</button><button class="btn peq" id="ds-entrevista">Entrevista de desligamento</button></div>` : ''}
+    ${typeof htmlFeriadosProcesso === 'function' ? htmlFeriadosProcesso(D, 'desligamento', andamento, rh) : ''}
     ${DS_FASES.map(f => `<div class="cartao"><h2>${esc(f)}</h2><ol class="ad-ets">${ets.filter(e => e.fase === f).map(item).join('') || '<li class="muted">—</li>'}</ol></div>`).join('')}
     ${ets.some(e => !e.fase) ? `<div class="cartao"><h2>Outras etapas</h2><ol class="ad-ets">${ets.filter(e => !e.fase).map(item).join('')}</ol></div>` : ''}
     ${avisoLei('desligamento')}`;
 
+  if (typeof ligarFeriadosProcesso === 'function') ligarFeriadosProcesso(tela, 'desligamento', d.id);
   const pedirArquivos = (titulo, obrig, extra = '') => modal(`<form><h2>${esc(titulo)}</h2><div class="form">${extra}<label class="campo largo">Arquivo(s)${obrig ? ' *' : ''}<input type="file" name="arquivos" multiple accept="image/*,application/pdf"></label>
       <label class="campo largo">Observação<input name="obs"></label></div><div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Salvar</button></div></form>`,
     { aoAbrir: raiz => { const f = $('form', raiz); if (f.desconto) f.desconto.onchange = () => ($('#ds-desc', raiz).hidden = f.desconto.value !== 'sim'); },

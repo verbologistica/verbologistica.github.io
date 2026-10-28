@@ -496,6 +496,7 @@ const MENU = [
   ['Cargos e funções', '#/cadastros/cargos', P_RH, 'etiqueta', null, true],
   ['Tipos de documento do RH', '#/cadastros/rh_tipos_documento', ['administrador', 'rh'], 'pasta', null, true],
   ['sub', 'Sistema'],
+  ['Feriados', '#/cadastros/feriados', [...P_RH, 'ssma', 'operacao', 'manutencao', 'almoxarifado', 'financeiro', 'qualidade', 'comprador', 'aprovador'], 'calendario', null, true],
   ['Dados da empresa', '#/cadastros/empresa', ['administrador'], 'predio', null, true],
   ['Usuários e perfis', '#/config/usuarios', ['administrador'], 'escudo_usuario', null, true],
   ['Auditoria', '#/config/auditoria', P_FIN, 'historico', null, true],
