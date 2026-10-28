@@ -1400,3 +1400,4 @@ body.tema-vx .ss-vg-l:hover { background: rgba(255,255,255,.05); } body.tema-vx 
 .txt-vermelho { color: var(--vermelho); font-weight: 600; }
 .tabela tr.destaque td { background: var(--amarelo-claro); }
 .fer-dia-fds { opacity: .6; }
+.tabela-rol { overflow-x: auto; } .tabela.compacta td, .tabela.compacta th { padding: 6px 8px; vertical-align: top; }

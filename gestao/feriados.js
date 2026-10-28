@@ -96,7 +96,7 @@ function htmlFeriadosProcesso(D, entidade, andamento, pode) {
       ${partes.map(p => `Sem expediente ${FER_POR[p]}: ${FER_EFEITO[p]}.`).join(' ')}
       Prazos legais não são prorrogados (${entidade === 'admissao' ? 'eSocial S-2200: transmissão até o dia anterior ao início das atividades' : 'pagamento das verbas rescisórias em até 10 dias (CLT art. 477, § 6º), eSocial S-2299, guias e ASO demissional'}): antecipe.</div></div>
       ${andamento && pode ? '<button class="btn peq" data-ferreg="" data-por="">+ Registrar outro dia</button>' : ''}</div>
-    ${linhas ? `<div class="tabela-wrap"><table class="tabela"><thead><tr><th>Data</th><th>Ocorrência</th>${partes.map(p => `<th>Expediente ${FER_POR[p]}</th>`).join('')}</tr></thead><tbody>${linhas}</tbody></table></div>`
+    ${linhas ? `<div class="tabela-rol"><table class="tabela compacta"><thead><tr><th>Data</th><th>Ocorrência</th>${partes.map(p => `<th>Expediente ${FER_POR[p]}</th>`).join('')}</tr></thead><tbody>${linhas}</tbody></table></div>`
       : '<p class="muted">Nenhum feriado ou ponto facultativo em dia útil no período do processo.</p>'}</div>`;
 }
 function ligarFeriadosProcesso(tela, entidade, id) {

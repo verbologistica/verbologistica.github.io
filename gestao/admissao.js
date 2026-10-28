@@ -484,7 +484,7 @@ function adRequisitos(e, D) {
     case 'ficha': return [R('CPF', D.rh ? c.cpf : true), R('Nascimento', c.data_nascimento), R('Telefone', c.telefone), R('Endereço', c.logradouro && c.cidade), R('Foto da ficha', c.foto_caminho),
       R('Foto do crachá', c.foto_cracha_caminho), R('Contato de emergência', c.emergencia_nome && c.emergencia_telefone), R('Conta ou Pix', c.tem_banco), R('Setor', c.setor_id)];
     case 'docs': return (D.docs_exigidos || []).map(d => R(d.nome, d.ok));
-    case 'aso': return [R('ASO admissional lançado no SSMA', D.aso, D.aso && dataBR(D.aso.data)), R('Resultado apto', D.aso && /^apto/.test(D.aso.resultado || ''), D.aso && D.aso.resultado.replace('_', ' com '))];
+    case 'aso': return [R('ASO admissional lançado no SSMA', D.aso, D.aso && dataBR(D.aso.data)), R(D.aso?.resultado === 'apto_restricao' ? 'Resultado apto (com restrição)' : 'Resultado apto', D.aso && /^apto/.test(D.aso.resultado || ''), D.aso && !/^apto/.test(D.aso.resultado || '') ? D.aso.resultado : '')];
     case 'tox': return [R('Toxicológico negativo lançado no SSMA', e.status === 'feito')];
     case 'cnh': { const L = [R(`Categoria${k.minima ? ' (mínimo ' + k.minima + ')' : ''}`, k.categoria && (!k.minima || (ordem[k.categoria] ?? -1) >= ordem[k.minima]), k.categoria || 'não informada'),
         R('Observação EAR', k.ear), R('CNH válida na admissão', k.validade && k.validade >= (a.data_prevista || hj), k.validade && 'até ' + dataBR(k.validade))];
@@ -540,6 +540,7 @@ rota('/rh/admissoes/ver/:id', async (tela, id) => {
   const bloqueio = e => (e.depende || []).map(k => est(k)).filter(x => x && x.status === 'pendente');
   const R = D.responsaveis || {};
   const respTxt = s => { const x = R[s]; if (!x) return ''; return x.nomeado ? `<b>${esc(x.nomeado)}</b> (responsável)` : x.perfil?.length ? `sem responsável definido · aviso vai para ${x.perfil.length} pessoa(s) com perfil ${esc(s)}` : `<span class="txt-vermelho">ninguém com perfil ${esc(s)}</span>`; };
+  const respCurto = s => { const x = R[s]; if (!x) return '—'; return x.nomeado ? `<b>${esc(x.nomeado)}</b>` : x.perfil?.length ? `<span class="muted" title="${esc(x.perfil.join(', '))}">não definido · ${x.perfil.length} com o perfil</span>` : '<span class="txt-vermelho">ninguém</span>'; };
   const ultAviso = e => [...(e.eventos || [])].reverse().find(v => v.evento === 'avisado' || v.evento === 'cobrado');
   const itemEtapa = e => { const [stT, stC, ic] = ST_ETAPA[e.status], bl = bloqueio(e), meu = meus.includes(e.setor) || rh;
     const lk = AD_LINK[e.codigo]?.(c.id), plk = AD_PERM_LINK[e.codigo]?.();
@@ -573,9 +574,9 @@ rota('/rh/admissoes/ver/:id', async (tela, id) => {
   const quadro = andamento ? `<div class="cartao"><div class="topo" style="margin:0 0 8px"><div><h2 style="margin:0">Responsáveis e situação</h2>
       <div class="muted">Cada setor recebe aviso automático quando a etapa dele fica liberada e vê a pendência em Início e no menu Admissões. As etapas feitas por outros setores passam pela conferência do RH antes de concluir a admissão.</div></div>
       ${tem('administrador', 'rh') ? '<button class="btn peq" id="ad-resp">Definir responsáveis</button>' : ''}</div>
-    <div class="tabela-wrap"><table class="tabela"><thead><tr><th>Setor</th><th>Responsável</th><th>Com o setor agora</th><th>Atrasadas</th><th>Aguardando conferência</th></tr></thead><tbody>
+    <div class="tabela-rol"><table class="tabela compacta"><thead><tr><th>Setor</th><th>Responsável</th><th>Com o setor agora</th><th>Atrasadas</th><th>Aguardando conferência</th></tr></thead><tbody>
     ${setoresProc.map(s => { const es = ets.filter(e => e.setor === s), agora = es.filter(e => e.status === 'pendente' && !bloqueio(e).length), atr = es.filter(adAtrasada), conf = es.filter(e => e.precisa_conferencia);
-      return `<tr class="${meus.includes(s) && agora.length ? 'destaque' : ''}"><td data-r="Setor"><b>${esc(s)}</b></td><td data-r="Responsável">${respTxt(s)}</td>
+      return `<tr class="${meus.includes(s) && agora.length ? 'destaque' : ''}"><td data-r="Setor"><b>${esc(s)}</b></td><td data-r="Responsável">${respCurto(s)}</td>
         <td data-r="Com o setor">${agora.length ? agora.map(e => esc(e.etapa.split(' (')[0])).join('<br>') : '<span class="muted">—</span>'}</td>
         <td data-r="Atrasadas">${atr.length ? `<span class="tag vermelho">${atr.length}</span>` : '—'}</td><td data-r="Conferência">${conf.length ? `<span class="tag amarelo">${conf.length}</span>` : '—'}</td></tr>`; }).join('')}
     </tbody></table></div></div>` : '';
