@@ -36,7 +36,7 @@ rota('/rh/vagas', async tela => {
   const [vs, cgs, ss] = await Promise.all([api.listar('vagas', 'select=*,cands:vaga_candidatos(etapa),solic:usuarios!vagas_solicitante_id_fkey(nome)&order=criado_em.desc').catch(() =>
     api.listar('vagas', 'select=*,cands:vaga_candidatos(etapa)&order=criado_em.desc')), cargosL(), setoresL()]);
   const CG = porId(cgs), SS = porId(ss);
-  const minhaVez = v => (v.status === 'aguardando_rh' && editaRH()) || (v.status === 'aguardando_diretoria' && estado._dirVagas) || (v.status === 'devolvida' && v.solicitante_id === estado.usuario.id);
+  const minhaVez = v => (v.status === 'aguardando_rh' && tem('administrador', 'rh')) || (v.status === 'aguardando_diretoria' && estado._dirVagas) || (v.status === 'devolvida' && v.solicitante_id === estado.usuario.id);
   estado._dirVagas = await api.rpc('eh_diretoria_vagas').catch(() => false);
   const cont = k => vs.filter(v => v.status === k).length;
   tela.innerHTML = `<div class="topo"><div><h1>Vagas e seleção</h1><p class="sub">Requisição do gestor → validação do RH → aprovação da diretoria → seleção → admissão</p></div>
@@ -120,7 +120,7 @@ rota('/rh/vagas/ver/:id', async (tela, id) => {
     ['Seleção', aprov ? (v.status === 'preenchida' ? 'preenchida' : 'em andamento') : '', v.status === 'preenchida' ? 'ok' : aprov ? 'atual' : ''],
     ['Admissão', adms.length ? `${adms.filter(a => a.status === 'concluida').length}/${v.quantidade} concluída(s)` : '', adms.length && adms.every(a => a.status === 'concluida') && adms.length >= v.quantidade ? 'ok' : adms.length ? 'atual' : '']];
   const caixaAcao = (() => {
-    if (v.status === 'aguardando_rh' && editaRH()) return `<form class="cartao form" id="f-rh"><h2 class="largo" style="margin:0">Validação do RH</h2>
+    if (v.status === 'aguardando_rh' && tem('administrador', 'rh')) return `<form class="cartao form" id="f-rh"><h2 class="largo" style="margin:0">Validação do RH</h2>
       <p class="muted largo" style="margin:0">Confira salário x faixa do cargo${cargo?.salario_base ? ` (base ${brl(cargo.salario_base)})` : ''}, contrato, requisitos e orçamento. Os ajustes ficam registrados.</p>
       <label class="campo">Salário (R$)<input name="salario_ofertado" inputmode="decimal" value="${v.salario_ofertado != null ? Number(v.salario_ofertado).toFixed(2).replace('.', ',') : ''}"></label>
       <label class="campo">Tipo de contrato<select name="tipo_contrato">${Object.entries(TIPOS_CONTRATO).map(([k, t]) => `<option value="${k}" ${k === v.tipo_contrato ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
@@ -130,18 +130,18 @@ rota('/rh/vagas/ver/:id', async (tela, id) => {
       ${vgFormBenHtml(v)}
       <label class="campo largo">Parecer do RH<textarea name="parecer" rows="2" placeholder="Obrigatório para devolver ou reprovar"></textarea></label>
       <div class="largo acoes"><button class="btn ok" value="aprovado">Validar e enviar à diretoria</button><button class="btn" value="devolvido">Devolver ao gestor</button><button class="btn perigo" value="reprovado">Reprovar</button></div></form>`;
-    if (editaRH() && ['aguardando_diretoria', 'aberta', 'em_selecao'].includes(v.status) && !(v.status === 'aguardando_diretoria' && dir && v.rh_por !== estado.usuario.id)) return `<form class="cartao form" id="f-ben"><h2 class="largo" style="margin:0">Benefícios e custo estimado (RH)</h2>
+    const benHtml = editaRH() && ['aguardando_diretoria', 'aberta', 'em_selecao'].includes(v.status) ? `<form class="cartao form" id="f-ben"><h2 class="largo" style="margin:0">Benefícios e custo estimado (RH)</h2>
       <p class="muted largo" style="margin:0">Ajuste os benefícios, a premiação e o custo do funcionário. Fica registrado no histórico da vaga${v.status === 'aguardando_diretoria' ? ' e a diretoria vê antes de aprovar' : ''}.</p>
       <label class="campo">Salário (R$)<input name="salario_ofertado" inputmode="decimal" value="${v.salario_ofertado != null ? Number(v.salario_ofertado).toFixed(2).replace('.', ',') : ''}" readonly title="O salário muda só na validação do RH"></label>
       ${vgFormBenHtml(v)}
-      <div class="largo acoes"><button class="btn prim">Salvar benefícios</button></div></form>`;
-    if (v.status === 'aguardando_diretoria' && dir) return `<form class="cartao form" id="f-dir"><h2 class="largo" style="margin:0">Aprovação da diretoria</h2>
+      <div class="largo acoes"><button class="btn prim">Salvar benefícios</button></div></form>` : '';
+    if (v.status === 'aguardando_diretoria' && dir) return benHtml + `<form class="cartao form" id="f-dir"><h2 class="largo" style="margin:0">Aprovação da diretoria</h2>
       <p class="muted largo" style="margin:0">Ao aprovar, a seleção é aberta e o PDF da requisição sai com o seu registro de aprovação e o código de verificação.</p>
       <label class="campo largo">Parecer<textarea name="parecer" rows="2" placeholder="Obrigatório para devolver ou reprovar"></textarea></label>
       <div class="largo acoes"><button class="btn ok" value="aprovado">Aprovar vaga</button><button class="btn" value="devolvido">Devolver ao RH</button><button class="btn perigo" value="reprovado">Reprovar</button></div></form>`;
     if (v.status === 'devolvida' && (v.solicitante_id === estado.usuario.id || editaRH())) return `<div class="cartao alerta-obs"><b>Devolvida para ajuste:</b> ${esc(ev('devolvida')?.parecer || '')}
       <div style="margin-top:8px"><a class="btn prim" href="#/rh/vagas/corrigir/${v.id}">Corrigir e reenviar</a></div></div>`;
-    return '';
+    return benHtml;
   })();
   const L = (k, t) => t ? `<div><div class="muted">${k}</div><b>${esc(t)}</b></div>` : '';
   tela.innerHTML = `<div class="topo"><div><h1>${esc(v.numero || 'Vaga')} · ${esc(cargo?.nome || 'Cargo')}</h1>
