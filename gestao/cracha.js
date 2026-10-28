@@ -159,7 +159,11 @@ function crVerso(ctx, d, A, W, H, b) {
   const campo = (rot, val, { max = 2.5, linhas = 2 } = {}) => { max *= K;
     if (!val) return;
     ctx.fillStyle = CR_COR.ouro; ctx.font = `600 1.45px ${CR_TXT}`; ctx.letterSpacing = '0.25px'; ctx.fillText(rot.toUpperCase(), X, y); y += 2.9 * K;
-    const V = crAjustar(ctx, val, { fonte: CR_TXT, peso: 600, max, min: 1.8, larg: L, maxL: linhas });
+    // "\n" no valor = linhas fixas (ex.: nome em cima, telefone embaixo), mesmo tamanho para todas
+    const V = String(val).includes('\n') ? (() => { const ps = String(val).split('\n').filter(Boolean); let s_ = max;
+        for (; s_ > 1.4; s_ -= 0.05) { ctx.font = `600 ${s_}px ${CR_TXT}`; ctx.letterSpacing = '0px'; if (ps.every(t => ctx.measureText(t).width <= L)) break; }
+        return { s: s_, ls: ps }; })()
+      : crAjustar(ctx, val, { fonte: CR_TXT, peso: 600, max, min: 1.8, larg: L, maxL: linhas });
     ctx.fillStyle = '#fff'; ctx.font = `600 ${V.s}px ${CR_TXT}`; ctx.letterSpacing = '0px';
     V.ls.forEach((l, i) => ctx.fillText(l, X, y + i * V.s * 1.2)); y += (V.ls.length - 1) * V.s * 1.2 + 3.9 * K;
   };
@@ -212,7 +216,7 @@ async function crFotoDe(caminho) {
 }
 async function crDados(c, extra = {}) {
   const [cgs, ss, es] = await Promise.all([cargosL(), setoresL(), empresasL().catch(() => [])]);
-  const emerg = [c.emergencia_nome, c.emergencia_parentesco && `(${c.emergencia_parentesco})`, c.emergencia_telefone && fmtTel(c.emergencia_telefone)].filter(Boolean).join(' ');
+  const emerg = [[c.emergencia_nome, c.emergencia_parentesco && `(${c.emergencia_parentesco})`].filter(Boolean).join(' '), c.emergencia_telefone && fmtTel(c.emergencia_telefone)].filter(Boolean).join('\n');
   return {
     nome: c.cracha_nome || nomeCrachaPadrao(c), nomeCompleto: c.nome_social || c.nome, cargo: cgs.find(x => x.id === c.cargo_id)?.nome || '', setor: ss.find(x => x.id === c.setor_id)?.nome || '',
     matricula: c.matricula || '', admissao: c.data_admissao ? dataBR(c.data_admissao) : '', sangue: c.tipo_sanguineo || '', mostrarSangue: true, brigadista: !!c.brigadista, cipa: !!c.cipeiro, cipaFuncao: c.cipa_funcao || '', emergencia: '', emergTexto: emerg,
