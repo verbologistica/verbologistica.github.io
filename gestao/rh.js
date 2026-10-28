@@ -9,7 +9,7 @@ const CATEG_DOC_RH = { identificacao: 'Identificação', trabalhista: 'Trabalhis
 const tagColab = s => `<span class="tag ${STATUS_COLAB[s]?.[1] || ''}">${STATUS_COLAB[s]?.[0] || s}</span>`;
 const idade = d => { if (!d) return null; const n = new Date(d + 'T12:00:00'), h = new Date(); let a = h.getFullYear() - n.getFullYear(); if (h < new Date(h.getFullYear(), n.getMonth(), n.getDate())) a--; return a; };
 const setoresL = f => cad('setores', 'select=id,nome,sigla,ativo&order=nome', f);
-const cargosL = f => cad('cargos', 'select=id,nome,cbo,setor_id,motorista,cnh_minima,experiencia_dias,proximo_cargo_id,requisitos_promocao,salario_base,ativo&order=nome', f);
+const cargosL = f => cad('cargos', 'select=id,nome,cbo,setor_id,motorista,cnh_minima,exige_indivisiveis,exige_mopp,experiencia_dias,proximo_cargo_id,requisitos_promocao,salario_base,ativo&order=nome', f);
 const tiposDocRH = f => cad('rh_tipos_documento', 'select=*&order=ordem,nome', f);
 const exigidoPara = (t, motorista) => t.exigido_admissao === 'todos' || (t.exigido_admissao === 'motoristas' && motorista);
 
@@ -137,6 +137,8 @@ async function formColaborador(tela, c = null) {
         ${campo('Categoria', sel('cnh_categoria', ['A', 'B', 'AB', 'C', 'AC', 'D', 'AD', 'E', 'AE'].map(x => [x, x]), c?.cnh_categoria))}
         ${campo('Validade da CNH', dt('cnh_validade'))}${campo('1ª habilitação', dt('cnh_primeira'))}${campo('UF da CNH', sel('cnh_uf', UFS.map(u => [u, u]), c?.cnh_uf))}
         <label class="check"><input type="checkbox" name="cnh_ear" ${c?.cnh_ear ? 'checked' : ''}> CNH com EAR (exerce atividade remunerada)</label>
+        <label class="check"><input type="checkbox" name="curso_indivisiveis" ${c?.curso_indivisiveis ? 'checked' : ''}> Curso de transporte de cargas indivisíveis (consta na CNH)</label>${campo('Validade do curso de cargas indivisíveis', dt('curso_indivisiveis_validade'))}
+        <label class="check"><input type="checkbox" name="curso_mopp" ${c?.curso_mopp ? 'checked' : ''}> MOPP — transporte de produtos perigosos (consta na CNH)</label>${campo('Validade do MOPP', dt('curso_mopp_validade'))}
         <div class="largo muted" id="aviso-cnh"></div>
       </div></div>
       <div class="cartao"><h2>Contato e endereço</h2><div class="form">
@@ -178,11 +180,15 @@ async function formColaborador(tela, c = null) {
       if (!cat) msgs.push(`O cargo ${cg.nome} exige CNH ${cg.cnh_minima || ''}.`);
       else if (cg.cnh_minima && (ordemCNH[cat] ?? -1) < (ordemCNH[cg.cnh_minima] ?? 0)) msgs.push(`⚠️ Categoria ${cat} é inferior à exigida para ${cg.nome} (${cg.cnh_minima}).`);
       if (!f.cnh_ear.checked) msgs.push('Motorista profissional precisa da observação EAR na CNH.');
+      if (cg.exige_indivisiveis && !f.curso_indivisiveis.checked) msgs.push(`O cargo ${cg.nome} exige o curso de transporte de cargas indivisíveis na CNH.`);
+      if (cg.exige_mopp && !f.curso_mopp.checked) msgs.push(`O cargo ${cg.nome} exige MOPP.`);
     }
     if (f.cnh_validade.value && f.cnh_validade.value < hojeISO()) msgs.push('⚠️ CNH vencida.');
+    if (f.curso_indivisiveis.checked && f.curso_indivisiveis_validade.value && f.curso_indivisiveis_validade.value < hojeISO()) msgs.push('⚠️ Curso de cargas indivisíveis vencido.');
+    if (f.curso_mopp.checked && f.curso_mopp_validade.value && f.curso_mopp_validade.value < hojeISO()) msgs.push('⚠️ MOPP vencido.');
     $('#aviso-cnh').innerHTML = msgs.map(esc).join('<br>');
   };
-  ['cnh_categoria', 'cnh_validade', 'cnh_ear'].forEach(n => f[n].addEventListener('change', avisoCNH)); avisoCNH();
+  ['cnh_categoria', 'cnh_validade', 'cnh_ear', 'curso_indivisiveis', 'curso_indivisiveis_validade', 'curso_mopp', 'curso_mopp_validade'].forEach(n => f[n].addEventListener('change', avisoCNH)); avisoCNH();
   f.onsubmit = async e => {
     e.preventDefault();
     const d = formDados(f);
@@ -230,7 +236,7 @@ rota('/rh/colaboradores/ver/:id', async (tela, id) => {
         ${linha('Matrícula', c.matricula)}${linha('CPF', fmtCPF(c.cpf || ''))}${linha('Nascimento', c.data_nascimento ? `${dataBR(c.data_nascimento)} (${idade(c.data_nascimento)} anos)` : '')}
         ${linha('RG', fmtRG(c.rg, c.rg_orgao, c.rg_uf))}${linha('Estado civil', c.estado_civil)}${linha('Tipo sanguíneo', c.tipo_sanguineo)}${linha('Segurança do trabalho', [c.brigadista && 'Brigadista', c.cipeiro && ('CIPA' + (c.cipa_funcao ? ' · ' + c.cipa_funcao : ''))].filter(Boolean).join(' · '))}${linha('Escolaridade', c.escolaridade)}
         ${linha('Mãe', c.nome_mae)}${linha('PIS', c.pis)}${linha('CTPS', [c.ctps_numero, c.ctps_serie, c.ctps_uf].filter(Boolean).join(' / '))}
-        ${linha('CNH', c.cnh_categoria ? `${c.cnh_numero || ''} · ${c.cnh_categoria}${c.cnh_ear ? ' · EAR' : ''} · validade ${dataBR(c.cnh_validade) || '—'}` : '')}
+        ${linha('CNH', c.cnh_categoria ? `${c.cnh_numero || ''} · ${c.cnh_categoria}${c.cnh_ear ? ' · EAR' : ''} · validade ${dataBR(c.cnh_validade) || '—'}` : '')}${linha('Cursos especializados', [c.curso_indivisiveis && 'Cargas indivisíveis' + (c.curso_indivisiveis_validade ? ' (até ' + dataBR(c.curso_indivisiveis_validade) + ')' : ''), c.curso_mopp && 'MOPP' + (c.curso_mopp_validade ? ' (até ' + dataBR(c.curso_mopp_validade) + ')' : '')].filter(Boolean).join(' · '))}
         ${linha('Telefone', [c.telefone, c.telefone2].filter(Boolean).map(fmtTel).join(' · '))}${linha('E-mail', c.email_corporativo || c.email)}
         <div class="largo">${linha('Endereço', [c.logradouro, c.numero, c.complemento, c.bairro, [c.cidade, c.uf].filter(Boolean).join('/'), c.cep && 'CEP ' + fmtCEP(c.cep)].filter(Boolean).join(', '))}</div>
         ${linha('Emergência', [c.emergencia_nome, c.emergencia_parentesco, fmtTel(c.emergencia_telefone || '')].filter(Boolean).join(' · '))}

@@ -39,6 +39,7 @@ const CADASTROS = {
              ['salario_base', 'Salário base (R$)', 'valor'], ['experiencia_dias', 'Contrato de experiência (dias)', 'numero', true],
              ['motorista', 'É motorista profissional (exige CNH, EAR e exame toxicológico)', 'bool', false, false],
              ['cnh_minima', 'Categoria mínima de CNH', 'lista', false, ['A', 'B', 'C', 'D', 'E']],
+             ['exige_indivisiveis', 'Exige curso de transporte de cargas indivisíveis na CNH (ex.: tritrem / madeira)', 'bool', false, false], ['exige_mopp', 'Exige MOPP (produtos perigosos)', 'bool', false, false],
              ['descricao', 'Descrição das atividades', 'textoLongo'], ['requisitos', 'Requisitos (escolaridade, cursos, experiência)', 'textoLongo'],
              ['nivel', 'Nível na carreira (1, 2, 3…)', 'numero'], ['proximo_cargo_id', 'Próximo cargo na carreira (promoção)', 'cargo'], ['requisitos_promocao', 'Requisitos para promoção', 'textoLongo']],
     colunas: ['nome', 'cbo', 'setor_id', 'cnh_minima', 'experiencia_dias'] },

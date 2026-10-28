@@ -943,6 +943,7 @@ rota('/inicio', async tela => {
       ${p.entrevistas_avaliar ? `<a class="cartao kpi alerta" href="#/rh/entrevistas"><div class="n">${p.entrevistas_avaliar}</div><div class="r">entrevista(s) de candidato para você avaliar</div></a>` : ''}
       ${p.vagas_aprovar ? `<a class="cartao kpi alerta" href="#/rh/vagas"><div class="n">${p.vagas_aprovar}</div><div class="r">requisição(ões) de vaga esperando você</div></a>` : ''}
       ${p.admissao_etapas ? `<a class="cartao kpi alerta" href="#/rh/admissoes"><div class="n">${p.admissao_etapas}</div><div class="r">etapa(s) de admissão com o seu setor</div></a>` : ''}
+      ${p.admissao_conferir ? `<a class="cartao kpi alerta" href="#/rh/admissoes"><div class="n">${p.admissao_conferir}</div><div class="r">etapa(s) de admissão para o RH conferir</div></a>` : ''}
       ${p.experiencia_decidir ? `<a class="cartao kpi alerta" href="#/rh/experiencia"><div class="n">${p.experiencia_decidir}</div><div class="r">contrato(s) de experiência para você decidir</div></a>` : ''}
       ${p.experiencia_encerrar ? `<a class="cartao kpi alerta" href="#/rh/experiencia"><div class="n">${p.experiencia_encerrar}</div><div class="r">término(s) de experiência a iniciar</div></a>` : ''}
       ${p.desligamento_etapas ? `<a class="cartao kpi alerta" href="#/rh/desligamentos"><div class="n">${p.desligamento_etapas}</div><div class="r">etapa(s) de desligamento com o seu setor</div></a>` : ''}

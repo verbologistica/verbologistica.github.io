@@ -511,7 +511,7 @@ rota('/rh/recrutamento/vaga/:id', async (tela, id) => {
       <div class="acoes">${editaRH() ? '<button class="btn" id="ed-vaga">Editar</button><button class="btn prim" id="add-cand">+ Candidato</button>' : ''}<a class="btn" href="#/rh/recrutamento">Voltar</a></div></div>
     ${v.requisitos ? `<div class="cartao"><b>Requisitos:</b> <span style="white-space:pre-line">${esc(v.requisitos)}</span></div>` : ''}
     ${porEtapa.length ? porEtapa.map(([k, l]) => `<div class="cartao"><h2>${ETAPAS_SEL[k]} (${l.length})</h2><ul class="lista-simples">${l.map(x => `<li style="flex-wrap:wrap"><span><b>${esc(x.cand?.nome || '')}</b>
-      <span class="muted">${esc([x.cand?.telefone && fmtTel(x.cand.telefone), x.cand?.cidade, x.cand?.cnh_categoria && 'CNH ' + x.cand.cnh_categoria + (x.cand.cnh_ear ? ' EAR' : ''), x.cand?.mopp && 'MOPP'].filter(Boolean).join(' · '))}</span>
+      <span class="muted">${esc([x.cand?.telefone && fmtTel(x.cand.telefone), x.cand?.cidade, x.cand?.cnh_categoria && 'CNH ' + x.cand.cnh_categoria + (x.cand.cnh_ear ? ' EAR' : ''), x.cand?.mopp && 'MOPP', x.cand?.curso_indivisiveis && 'Cargas indivisíveis'].filter(Boolean).join(' · '))}</span>
       ${x.parecer ? `<br><span class="muted">${esc(x.parecer)}</span>` : ''}</span>
       <span class="acoes"><span class="anx-cand" data-id="${x.candidato_id}"></span>${editaRH() && k !== 'contratado' ? `<select data-etapa="${x.id}">${Object.entries(ETAPAS_SEL).filter(([e]) => e !== 'contratado').map(([e, t]) => `<option value="${e}" ${e === k ? 'selected' : ''}>${t}</option>`).join('')}</select>
         <button class="btn peq" data-parecer="${x.id}">Parecer</button>${k === 'aprovado' ? `<button class="btn peq ok" data-contratar="${x.id}">Contratar</button>` : ''}` : ''}
@@ -548,7 +548,7 @@ async function formCandidato(c = null, cargoPret = '') {
     <label class="campo">UF<select name="uf" data-valor="${esc(c?.uf || '')}"><option value=""></option>${UFS.map(u => `<option ${u === c?.uf ? 'selected' : ''}>${u}</option>`).join('')}</select></label>
     <label class="campo">Cargo pretendido<input name="cargo_pretendido" value="${esc(c?.cargo_pretendido || cargoPret || '')}"></label>
     <label class="campo">CNH<select name="cnh_categoria"><option value="">Não possui</option>${['A', 'B', 'AB', 'C', 'AC', 'D', 'AD', 'E', 'AE'].map(x => `<option ${x === c?.cnh_categoria ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
-    <label class="check"><input type="checkbox" name="cnh_ear" ${c?.cnh_ear ? 'checked' : ''}> CNH com EAR</label><label class="check"><input type="checkbox" name="mopp" ${c?.mopp ? 'checked' : ''}> Possui MOPP</label>
+    <label class="check"><input type="checkbox" name="cnh_ear" ${c?.cnh_ear ? 'checked' : ''}> CNH com EAR</label><label class="check"><input type="checkbox" name="mopp" ${c?.mopp ? 'checked' : ''}> Possui MOPP</label><label class="check"><input type="checkbox" name="curso_indivisiveis" ${c?.curso_indivisiveis ? 'checked' : ''}> Curso de cargas indivisíveis na CNH</label>
     <label class="campo">Origem<select name="origem" data-valor="${esc(c?.origem || '')}">${['Indicação', 'Site / redes sociais', 'Agência / SINE', 'Currículo espontâneo', 'Ex-colaborador', 'Outro'].map(x => `<option ${x === c?.origem ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
     <label class="campo">Pretensão salarial (R$)<input name="pretensao_salarial" inputmode="decimal" value="${c?.pretensao_salarial ?? ''}"></label>
     <label class="campo largo">Experiência<textarea name="experiencia" rows="3">${esc(c?.experiencia || '')}</textarea></label>
@@ -558,7 +558,7 @@ async function formCandidato(c = null, cargoPret = '') {
     { validar: d => d.cpf && !cpfValido(d.cpf) ? 'CPF inválido.' : null });
   if (!r) return null;
   const dados = { nome: r.nome, cpf: soDigitos(r.cpf) || null, telefone: soDigitos(r.telefone) || null, email: r.email || null, cidade: r.cidade || null, uf: r.uf || null, cargo_pretendido: r.cargo_pretendido || null,
-    cnh_categoria: r.cnh_categoria || null, cnh_ear: r.cnh_ear, mopp: r.mopp, origem: r.origem || null, pretensao_salarial: num(r.pretensao_salarial), experiencia: r.experiencia || null,
+    cnh_categoria: r.cnh_categoria || null, cnh_ear: r.cnh_ear, mopp: r.mopp, curso_indivisiveis: r.curso_indivisiveis, origem: r.origem || null, pretensao_salarial: num(r.pretensao_salarial), experiencia: r.experiencia || null,
     consentimento_lgpd: r.consentimento_lgpd, consentimento_em: r.consentimento_lgpd ? (c?.consentimento_em || hojeISO()) : null };
   try {
     let id = c?.id; if (c) await api.alterar('candidatos', `id=eq.${id}`, dados); else [{ id }] = await api.inserir('candidatos', dados);
@@ -576,7 +576,7 @@ rota('/rh/talentos', async tela => {
     <form class="filtros" id="filtros"><input name="q" value="${esc(estado.params.get('q') || '')}" placeholder="Nome, cargo, cidade ou CNH"><button class="btn">Filtrar</button></form>
     <div class="cartao">${cs.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Nome</th><th>Cargo pretendido</th><th>Cidade</th><th>CNH</th><th>Cadastro</th><th>Situação</th></tr></thead><tbody>
       ${cs.map(c => `<tr class="clicavel" data-c="${c.id}"><td data-r="Nome"><b>${esc(c.nome)}</b>${c.consentimento_lgpd ? '' : ' <span class="tag vermelho" title="Sem consentimento LGPD">LGPD</span>'}</td><td data-r="Cargo">${esc(c.cargo_pretendido || '—')}</td>
-        <td data-r="Cidade">${esc([c.cidade, c.uf].filter(Boolean).join('/') || '—')}</td><td data-r="CNH">${esc(c.cnh_categoria || '—')}${c.cnh_ear ? ' EAR' : ''}${c.mopp ? ' · MOPP' : ''}</td>
+        <td data-r="Cidade">${esc([c.cidade, c.uf].filter(Boolean).join('/') || '—')}</td><td data-r="CNH">${esc(c.cnh_categoria || '—')}${c.cnh_ear ? ' EAR' : ''}${c.mopp ? ' · MOPP' : ''}${c.curso_indivisiveis ? ' · Indivisíveis' : ''}</td>
         <td data-r="Cadastro">${dataBR(c.criado_em)}</td><td data-r="Situação"><span class="tag ${ST[c.situacao]?.[1] || ''}">${ST[c.situacao]?.[0] || c.situacao}</span></td></tr>`).join('')}</tbody></table></div>` : '<div class="vazio">Nenhum candidato.</div>'}</div>
     <p class="muted">LGPD: candidatos com mais de 12 meses sem processo devem ter os dados revistos ou excluídos, conforme o prazo informado no consentimento.</p>`;
   $('#filtros').onsubmit = e => { e.preventDefault(); location.hash = '#/rh/talentos?q=' + encodeURIComponent(formDados(e.target).q); };

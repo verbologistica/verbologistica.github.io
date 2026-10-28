@@ -78,6 +78,9 @@ async function formRequisicao(tela, v = null) {
       <label class="campo">Início desejado<input type="date" name="data_inicio_desejada" value="${val('data_inicio_desejada')}"></label>
       <label class="campo">Prazo para preencher<input type="date" name="prazo" value="${val('prazo')}"></label>
       <label class="campo largo">Justificativa *<textarea name="justificativa" rows="3" required placeholder="Por que a vaga é necessária agora (aumento de demanda, contrato novo, saída de colaborador…)">${esc(v?.justificativa || '')}</textarea></label>
+      <div class="largo"><b>Cursos especializados da CNH exigidos</b>
+        <label class="check"><input type="checkbox" name="_ind" ${v?.exige_indivisiveis ? 'checked' : ''}> Transporte de cargas indivisíveis (AET — ex.: tritrem / madeira)</label>
+        <label class="check"><input type="checkbox" name="_mopp" ${v?.exige_mopp ? 'checked' : ''}> MOPP (produtos perigosos)</label></div>
       <label class="campo largo">Requisitos da função<textarea name="requisitos" rows="3" placeholder="CNH, cursos, experiência, conhecimentos…">${esc(v?.requisitos || '')}</textarea></label>
       <label class="campo largo">Benefícios<textarea name="beneficios" rows="2">${esc(v?.beneficios || '')}</textarea></label>
       ${v ? '<label class="campo largo">Comentário para o RH<input name="comentario" placeholder="O que foi ajustado"></label>' : ''}
@@ -87,14 +90,16 @@ async function formRequisicao(tela, v = null) {
   const sinc = () => ($('#c-subst').hidden = f.motivo.value !== 'Substituição');
   f.motivo.addEventListener('change', sinc); sinc();
   f.cargo_id.addEventListener('change', () => { const c = cgs.find(x => x.id === f.cargo_id.value); if (c?.setor_id && !f.setor_id.value) { f.setor_id.value = c.setor_id; f.setor_id.dispatchEvent(new Event('change')); }
+    if (c?.exige_indivisiveis) f._ind.checked = true; if (c?.exige_mopp) f._mopp.checked = true;
     if (c?.requisitos && !f.requisitos.value) f.requisitos.value = c.requisitos; if (c?.salario_base && !f.salario_ofertado.value) f.salario_ofertado.value = Number(c.salario_base).toFixed(2).replace('.', ','); });
   f.onsubmit = async e => { e.preventDefault(); const d = formDados(f);
     if (!d.cargo_id) return aviso('Escolha o cargo.', true);
     if (!await vgConferirSalario(num(d.salario_ofertado), cgs.find(x => x.id === d.cargo_id))) return;
+    const cursos = { p_indivisiveis: !!d._ind, p_mopp: !!d._mopp }; delete d._ind; delete d._mopp;
     const p = { ...d, salario_ofertado: num(d.salario_ofertado), substitui_colaborador_id: d.motivo === 'Substituição' ? d.substitui_colaborador_id : '' };
     await ocupado(e.submitter, async () => { try {
-      if (v) { await api.rpc('reenviar_vaga', { p_vaga: v.id, p }); aviso('Requisição reenviada ao RH.'); location.hash = '#/rh/vagas/ver/' + v.id; }
-      else { const id = await api.rpc('requisitar_vaga', { p }); aviso('Requisição enviada ao RH.'); location.hash = '#/rh/vagas/ver/' + id; }
+      if (v) { await api.rpc('reenviar_vaga', { p_vaga: v.id, p }); await api.rpc('vaga_cursos_cnh', { p_vaga: v.id, ...cursos }); aviso('Requisição reenviada ao RH.'); location.hash = '#/rh/vagas/ver/' + v.id; }
+      else { const id = await api.rpc('requisitar_vaga', { p }); await api.rpc('vaga_cursos_cnh', { p_vaga: id, ...cursos }); aviso('Requisição enviada ao RH.'); location.hash = '#/rh/vagas/ver/' + id; }
     } catch (err) { falha(err); } }); };
 }
 rota('/rh/vagas/nova', tela => podeRequisitar() ? formRequisicao(tela) : (tela.innerHTML = '<div class="cartao vazio">Somente gestores, diretoria e RH requisitam vagas.</div>'));
@@ -160,12 +165,20 @@ rota('/rh/vagas/ver/:id', async (tela, id) => {
       ${L('Motivo', v.motivo)}${L('Contrato', TIPOS_CONTRATO[v.tipo_contrato])}${v.salario_ofertado != null && (editaRH() || dir || v.solicitante_id === estado.usuario.id) ? L('Salário', brl(v.salario_ofertado)) : ''}
       ${L('Centro de custo', ccs.find(c => c.id === v.centro_custo_id)?.nome)}${L('Local de trabalho', v.local_trabalho)}${L('Cliente / contrato', v.cliente)}${L('Escala / horário', v.escala)}
       ${L('Início desejado', dataBR(v.data_inicio_desejada))}${L('Prazo para preencher', dataBR(v.prazo))}
+      <div class="largo"><b>Cursos especializados da CNH exigidos:</b> ${[v.exige_indivisiveis && 'Transporte de cargas indivisíveis', v.exige_mopp && 'MOPP (produtos perigosos)'].filter(Boolean).join(' · ') || '<span class="muted">nenhum</span>'}
+        ${editaRH() || (v.solicitante_id === estado.usuario.id && ['aguardando_rh', 'devolvida'].includes(v.status)) ? ' <button type="button" class="btn peq" id="vg-cursos">Alterar</button>' : ''}</div>
       <div class="largo">${L('Justificativa', v.justificativa)}</div>${v.requisitos ? `<div class="largo">${L('Requisitos', v.requisitos)}</div>` : ''}${v.beneficios ? `<div class="largo">${L('Observações dos benefícios', v.beneficios)}</div>` : ''}
       ${v.codigo_verificacao ? `<div class="largo muted">Código de verificação da aprovação: <b class="mono">${esc(v.codigo_verificacao)}</b></div>` : ''}</div></div>
     ${adms.length ? `<div class="cartao"><h2>Admissões desta vaga</h2><ul class="lista-simples">${adms.map(a => `<li><span><b>${esc(a.colaborador)}</b> <span class="muted">${esc(a.numero || '')}</span> <span class="tag ${a.status === 'concluida' ? 'verde' : a.status === 'cancelada' ? '' : 'amarelo'}">${a.status === 'concluida' ? 'Admitido' : a.status === 'cancelada' ? 'Cancelada' : 'Em admissão'}</span></span><a class="btn peq" href="#/rh/admissoes/ver/${a.id}">Abrir</a></li>`).join('')}</ul></div>` : ''}
     <div class="cartao"><h2>Histórico</h2><ol class="ad-hist">${evs.map(e => `<li><b>${esc(VG_EVENTO[e.evento] || e.evento)}</b> <span class="muted">${dtHora(e.em)} · ${esc(U[e.por]?.nome || '')}</span>${e.parecer ? `<div>${esc(e.parecer)}</div>` : ''}</li>`).join('')}</ol></div>
     ${anx.length ? `<div class="cartao"><h2>Documentos anexados</h2><div class="anexos">${anx.map(a => `<span class="anexo" data-arquivo="${esc(a.caminho_arquivo)}">📄 ${esc(a.nome_original || 'arquivo')} <small class="muted">${esc(a.descricao || '')} · ${esc(U[a.enviado_por]?.nome || '')}</small></span>`).join('')}</div></div>` : ''}
     <p class="muted">A aprovação no sistema vale como assinatura eletrônica (Lei 14.063/2020): registra usuário, data, hora e código de verificação. Assinatura gov.br fica só para o contrato de trabalho.</p>`;
+  $('#vg-cursos', tela)?.addEventListener('click', async () => { const r = await modal(`<form><h2>Cursos especializados da CNH exigidos</h2><div class="form">
+      <label class="check largo"><input type="checkbox" name="ind" ${v.exige_indivisiveis ? 'checked' : ''}> Transporte de cargas indivisíveis e outras objeto de AET (ex.: tritrem / madeira)</label>
+      <label class="check largo"><input type="checkbox" name="mopp" ${v.exige_mopp ? 'checked' : ''}> MOPP — transporte de produtos perigosos</label>
+      <p class="muted largo">Cursos especializados da Res. CONTRAN 789/2020: constam como observação na CNH e exigem atualização periódica. A etapa "CNH conferida" da admissão não conclui sem eles.</p></div>
+      <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Salvar</button></div></form>`); if (!r) return;
+    try { await api.rpc('vaga_cursos_cnh', { p_vaga: v.id, p_indivisiveis: r.ind, p_mopp: r.mopp }); aviso('Exigências atualizadas.'); navegar(); } catch (err) { falha(err); } });
   const decidir = (form, rpc, extra) => form?.addEventListener('submit', async e => { e.preventDefault(); const d = formDados(form), dec = e.submitter.value;
     if (dec !== 'aprovado' && !d.parecer) return aviso('Escreva o motivo no parecer.', true);
     if (dec === 'aprovado' && !await vgConferirSalario(num(d.salario_ofertado), cargo)) return;
@@ -270,7 +283,7 @@ rota('/rh/recrutamento/vaga/:id', async (tela, id) => {
       ...ev.filter(e => !['avaliada', 'agendada'].includes(e.evento)).map(e => ({ t: e.em, h: `<div class="av-item muted">${dtHora(e.em)} · ${esc(e.quem || '')} · ${esc(VC_EVENTO[e.evento] || e.evento)}${e.evento === 'etapa' ? ': <b>' + esc(ETAPAS_SEL[e.detalhe] || e.detalhe) + '</b>' : e.detalhe && e.evento !== 'incluido' ? ': ' + esc(e.detalhe) : ''}</div>` }))]
       .sort((p, q) => String(q.t).localeCompare(String(p.t)));
     return `<li class="sel-cand"><div class="sel-cab"><span><b>${esc(x.cand?.nome || '')}</b>
-        <span class="muted">${esc([x.cand?.telefone && fmtTel(x.cand.telefone), x.cand?.cidade, x.cand?.cnh_categoria && 'CNH ' + x.cand.cnh_categoria + (x.cand.cnh_ear ? ' EAR' : ''), x.cand?.mopp && 'MOPP'].filter(Boolean).join(' · '))}</span>
+        <span class="muted">${esc([x.cand?.telefone && fmtTel(x.cand.telefone), x.cand?.cidade, x.cand?.cnh_categoria && 'CNH ' + x.cand.cnh_categoria + (x.cand.cnh_ear ? ' EAR' : ''), x.cand?.mopp && 'MOPP', x.cand?.curso_indivisiveis && 'Cargas indivisíveis'].filter(Boolean).join(' · '))}</span>
         ${x.nota != null ? ` <span class="tag">nota ${String(x.nota).replace('.', ',')}</span>` : ''}</span>
       <span class="acoes">${rh && !['contratado'].includes(x.etapa) ? `<select data-etapa="${x.id}" aria-label="Etapa">${Object.entries(ETAPAS_SEL).filter(([e]) => e !== 'contratado').map(([e, t]) => `<option value="${e}" ${e === x.etapa ? 'selected' : ''}>${t}</option>`).join('')}</select>
           <button class="btn peq" data-agendar="${x.id}">Agendar entrevista</button>` : ''}
@@ -461,6 +474,33 @@ const AD_LINK = { ficha: c => [`#/rh/colaboradores/editar/${c}`, 'Abrir ficha'],
 const AD_PERM_LINK = { ficha: () => editaRH(), docs: () => editaRH(), contrato: () => editaRH(), cnh: () => editaRH(), acessos: () => editaRH(), aso: () => tem('administrador', 'ssma'),
   tox: () => tem('administrador', 'ssma', 'rh'), epi: () => tem('administrador', 'almoxarifado', 'rh') };
 
+const AD_EVENTO = { avisado: 'Setor avisado', cobrado: 'Cobrança enviada ao setor', concluida: 'Concluída', nao_se_aplica: 'Marcada como não se aplica', reaberta: 'Reaberta pelo RH', conferida: 'Conferida pelo RH', devolvida: 'Devolvida ao setor' };
+// itens exigidos de cada etapa: o que o responsável precisa entregar e o que o RH confere
+function adRequisitos(e, D) {
+  const c = D.col, k = D.cnh || {}, a = D.adm, hj = hojeISO(), R = (t, ok, obs) => ({ t, ok: !!ok, obs: obs || '' });
+  const ordem = { A: 0, B: 1, AB: 1, C: 2, AC: 2, D: 3, AD: 3, E: 4, AE: 4 };
+  const curso = (t, tem, val) => R(t, tem && (!val || val >= hj), tem ? (val ? (val < hj ? 'vencido em ' : 'válido até ') + dataBR(val) : 'validade não informada') : 'não consta na ficha');
+  switch (e.codigo) {
+    case 'ficha': return [R('CPF', D.rh ? c.cpf : true), R('Nascimento', c.data_nascimento), R('Telefone', c.telefone), R('Endereço', c.logradouro && c.cidade), R('Foto da ficha', c.foto_caminho),
+      R('Foto do crachá', c.foto_cracha_caminho), R('Contato de emergência', c.emergencia_nome && c.emergencia_telefone), R('Conta ou Pix', c.tem_banco), R('Setor', c.setor_id)];
+    case 'docs': return (D.docs_exigidos || []).map(d => R(d.nome, d.ok));
+    case 'aso': return [R('ASO admissional lançado no SSMA', D.aso, D.aso && dataBR(D.aso.data)), R('Resultado apto', D.aso && /^apto/.test(D.aso.resultado || ''), D.aso && D.aso.resultado.replace('_', ' com '))];
+    case 'tox': return [R('Toxicológico negativo lançado no SSMA', e.status === 'feito')];
+    case 'cnh': { const L = [R(`Categoria${k.minima ? ' (mínimo ' + k.minima + ')' : ''}`, k.categoria && (!k.minima || (ordem[k.categoria] ?? -1) >= ordem[k.minima]), k.categoria || 'não informada'),
+        R('Observação EAR', k.ear), R('CNH válida na admissão', k.validade && k.validade >= (a.data_prevista || hj), k.validade && 'até ' + dataBR(k.validade))];
+      if (k.exige_indivisiveis) L.push(curso('Curso de cargas indivisíveis', k.indivisiveis, k.indivisiveis_validade));
+      if (k.exige_mopp) L.push(curso('MOPP (produtos perigosos)', k.mopp, k.mopp_validade));
+      L.push(R('Consulta de pontuação anexada', e.anexos.length)); return L; }
+    case 'contrato': return [R('Contrato de trabalho e de experiência assinados em Documentos da ficha', e.status === 'feito')];
+    case 'esocial': return [R('Recibo do S-2200 anexado', e.anexos.length), R('Enviado antes do 1º dia', e.status !== 'feito' || !a.data_prevista || (e.concluido_em || '').slice(0, 10) < a.data_prevista)];
+    case 'os_seg': return [R('Ordem de serviço assinada anexada', e.anexos.length)];
+    case 'epi': return [R('Entrega de EPI registrada no almoxarifado', D.epi, D.epi ? D.epi + ' item(ns)' : ''), R('Ficha de EPI assinada', e.status === 'feito')];
+    case 'acessos': return [R('Crachá gerado', c.cracha_gerado_em, c.cracha_gerado_em && dataBR(c.cracha_gerado_em.slice(0, 10))), R('Acessos e patrimônio entregues', e.status === 'feito')];
+    case 'cliente': return a.cliente || e.status === 'pendente' ? [R('Cliente informado', a.cliente, a.cliente), R('Documentação enviada ao cliente', a.cli_enviado_em, a.cli_enviado_em && dataBR(a.cli_enviado_em)), R('Aprovação do cliente', a.cli_aprovado_em, a.cli_aprovado_em && dataBR(a.cli_aprovado_em))] : [];
+    case 'treinamentos': { const ts = (D.treinos || []).filter(t => t.status !== 'cancelado'); return [R('Agenda de integração montada', ts.length, ts.length ? ts.length + ' treinamento(s)' : ''), R('Todos confirmados pelos setores', ts.length && ts.every(t => t.status === 'concluido'))]; }
+  }
+  return [];
+}
 function adDica(e, D) {
   const c = D.col;
   if (e.codigo === 'ficha') { const f = [['CPF', D.rh ? c.cpf : true], ['nascimento', c.data_nascimento], ['telefone', c.telefone], ['endereço', c.logradouro && c.cidade], ['foto da ficha', c.foto_caminho],
@@ -495,21 +535,50 @@ rota('/rh/admissoes/ver/:id', async (tela, id) => {
     ...AD_FASES.map(fasePasso), ['Admitido', a.status === 'concluida' ? dataBR((a.concluida_em || '').slice(0, 10)) : '', a.status === 'concluida' ? 'ok' : a.status === 'cancelada' ? 'x' : '']];
   const registro = ['contrato', 'esocial', 'aso'].every(k => est(k)?.status !== 'pendente');
   const pendentes = ets.filter(e => e.status === 'pendente');
-  const prontaConcluir = andamento && !pendentes.length;
+  const aConferir = ets.filter(e => e.precisa_conferencia);
+  const prontaConcluir = andamento && !pendentes.length && !aConferir.length;
   const bloqueio = e => (e.depende || []).map(k => est(k)).filter(x => x && x.status === 'pendente');
+  const R = D.responsaveis || {};
+  const respTxt = s => { const x = R[s]; if (!x) return ''; return x.nomeado ? `<b>${esc(x.nomeado)}</b> (responsável)` : x.perfil?.length ? `sem responsável definido · aviso vai para ${x.perfil.length} pessoa(s) com perfil ${esc(s)}` : `<span class="txt-vermelho">ninguém com perfil ${esc(s)}</span>`; };
+  const ultAviso = e => [...(e.eventos || [])].reverse().find(v => v.evento === 'avisado' || v.evento === 'cobrado');
   const itemEtapa = e => { const [stT, stC, ic] = ST_ETAPA[e.status], bl = bloqueio(e), meu = meus.includes(e.setor) || rh;
     const lk = AD_LINK[e.codigo]?.(c.id), plk = AD_PERM_LINK[e.codigo]?.();
-    return `<li class="ad-et ${e.status}${adAtrasada(e) ? ' atrasada' : ''}"><span class="ad-ic">${ic}</span><div class="ad-et-c">
-      <div class="ad-et-t"><b>${esc(e.etapa)}</b> <span class="tag">${esc(e.setor)}</span> <span class="tag ${stC}">${stT}</span>${adAtrasada(e) ? ` <span class="tag vermelho">atrasada · prazo ${dataBR(e.prazo)}</span>` : e.status === 'pendente' && e.prazo ? ` <span class="muted">prazo ${dataBR(e.prazo)}</span>` : ''}</div>
-      ${e.status === 'pendente' ? `<div class="muted">${esc(adDica(e, D))}${bl.length ? ` <b>Aguardando:</b> ${bl.map(x => esc(x.etapa)).join('; ')}.` : ''}</div>` : `<div class="muted">${e.concluido_em ? dtHora(e.concluido_em) : ''}${e.feito_por_nome ? ' · ' + esc(e.feito_por_nome) : ''}${e.observacao ? ' · ' + esc(e.observacao) : ''}</div>`}
+    const reqs = adRequisitos(e, D), okN = reqs.filter(x => x.ok).length, devolvida = e.status === 'pendente' && e.devolvido_em;
+    const como = ['contrato', 'esocial', 'os_seg', 'epi', 'treinamentos', 'cnh', 'cliente'].includes(e.codigo) && e.status === 'pendente' ? adDica(e, D) : '';
+    const av = ultAviso(e);
+    const situacao = e.status === 'pendente'
+      ? (bl.length ? `<span class="tag">aguardando etapa anterior</span> <span class="muted">${bl.map(x => esc(x.etapa)).join('; ')}</span>`
+        : `<span class="tag ${devolvida ? 'vermelho' : 'azul'}">${devolvida ? 'devolvida ao setor' : 'com o setor'}</span>${av ? ` <span class="muted">${av.evento === 'cobrado' ? 'cobrado' : 'avisado'} em ${dtHora(av.em)}</span>` : ''}`)
+      : `<span class="muted">${e.status === 'nao_se_aplica' ? 'Marcada como não se aplica' : 'Concluída'}${e.feito_por_nome ? ' por <b>' + esc(e.feito_por_nome) + '</b>' : e.status === 'feito' ? ' pelo sistema' : ''}${e.concluido_em ? ' em ' + dtHora(e.concluido_em) : ''}${e.observacao ? ' · ' + esc(e.observacao) : ''}</span>
+         ${e.conferido_em ? ` <span class="tag verde">conferida por ${esc(e.conferido_por_nome || 'RH')} · ${dtHora(e.conferido_em)}</span>` : e.precisa_conferencia ? ' <span class="tag amarelo">aguardando conferência do RH</span>' : ''}`;
+    return `<li class="ad-et ${e.status}${adAtrasada(e) ? ' atrasada' : ''}${devolvida ? ' devolvida' : ''}"><span class="ad-ic">${ic}</span><div class="ad-et-c">
+      <div class="ad-et-t"><b>${esc(e.etapa)}</b> <span class="tag ${stC}">${stT}</span>${adAtrasada(e) ? ` <span class="tag vermelho">atrasada · prazo ${dataBR(e.prazo)}</span>` : e.status === 'pendente' && e.prazo ? ` <span class="muted">prazo ${dataBR(e.prazo)}</span>` : ''}</div>
+      <div class="ad-meta"><span><span class="muted">Responsável:</span> <b>${esc(e.setor)}</b>${e.setor !== 'Cliente' ? ' · ' + respTxt(e.setor) : ''}</span><span><span class="muted">Situação:</span> ${situacao}</span></div>
+      ${devolvida ? `<div class="alerta-obs erro">Devolvida por ${esc(e.devolvido_por_nome || 'RH')} em ${dtHora(e.devolvido_em)}: <b>${esc(e.devolvido_motivo || '')}</b></div>` : ''}
+      ${reqs.length ? `<div class="ad-req"><span class="muted">Itens exigidos (${okN}/${reqs.length}):</span>${reqs.map(x => `<span class="ad-ri ${x.ok ? 'ok' : 'falta'}">${x.ok ? '✓' : '✗'} ${esc(x.t)}${x.obs ? ` <i>${esc(x.obs)}</i>` : ''}</span>`).join('')}</div>` : ''}
+      ${como ? `<div class="muted ad-como">${esc(como)}</div>` : ''}
       ${adAnexosHtml(e.anexos)}
       ${e.codigo === 'cliente' && e.status === 'feito' && D.cli_sugestao && !trs.some(t => t.setor === 'Cliente' && t.status !== 'cancelado') && andamento ? `<div class="alerta-obs" style="margin-top:6px">Próxima integração possível no cliente: <b>${dataBR(D.cli_sugestao)}</b>${rh ? ' <button class="btn peq prim" data-cli="agendar">Agendar integração</button>' : ' (o RH agenda)'}</div>` : ''}
       ${andamento ? `<div class="ad-et-a">${lk && plk ? `<a class="btn peq" href="${lk[0]}">${esc(lk[1])}</a>` : ''}
         ${e.codigo === 'cliente' && (meu || rh) && (e.status === 'pendente' || (e.status === 'nao_se_aplica' && rh)) ? `<button class="btn peq" data-cli="definir">${a.cliente ? 'Trocar cliente' : 'Informar cliente'}</button>` : ''}
         ${e.codigo === 'cliente' && e.status === 'pendente' && meu && a.cliente ? `${!a.cli_enviado_em ? '<button class="btn peq prim" data-cli="enviar">Docs enviados ao cliente</button>' : '<button class="btn peq ok" data-cli="aprovar">Cliente aprovou</button><button class="btn peq" data-cli="recusar">Cliente pediu ajuste</button>'}` : ''}
-        ${e.status === 'pendente' && meu ? `${e.codigo === 'cliente' ? '' : !e.auto ? `<button class="btn peq ok" data-concl="${e.id}">Concluir${e.exige_anexo ? ' (com anexo)' : ''}</button>` : `<button class="btn peq" data-verif>Verificar agora</button>`}
+        ${e.status === 'pendente' && meu ? `${e.codigo === 'cliente' ? '' : !e.auto || devolvida ? `<button class="btn peq ok" data-concl="${e.id}">${devolvida ? 'Corrigido: concluir' : 'Concluir'}${e.exige_anexo ? ' (com anexo)' : ''}</button>` : `<button class="btn peq" data-verif>Verificar agora</button>`}
           <button class="btn peq" data-anx="${e.id}">📎 Anexar</button><button class="btn peq" data-na="${e.id}">Não se aplica</button>` : ''}
-        ${e.status !== 'pendente' && rh ? `<button class="btn peq" data-reabrir="${e.id}">Reabrir</button>` : ''}</div>` : ''}</div></li>`; };
+        ${e.status === 'pendente' && rh && !bl.length && e.setor !== 'Cliente' ? `<button class="btn peq" data-cobrar="${e.id}" title="Envia um aviso ao responsável do setor">Cobrar setor</button>` : ''}
+        ${e.precisa_conferencia && rh ? `<button class="btn peq prim" data-conferir="${e.id}">Conferir</button><button class="btn peq" data-devolver="${e.id}">Devolver ao setor</button>` : ''}
+        ${e.status !== 'pendente' && rh && !e.precisa_conferencia ? `<button class="btn peq" data-reabrir="${e.id}">Reabrir</button>` : ''}</div>` : ''}
+      ${(e.eventos || []).length ? `<details class="ad-ethist"><summary>Histórico da etapa (${e.eventos.length})</summary><ul>${e.eventos.map(v => `<li><span class="muted">${dtHora(v.em)}</span> · ${esc(AD_EVENTO[v.evento] || v.evento)}${v.por ? ' · ' + esc(v.por) : ''}${v.obs ? `<div class="muted">${esc(v.obs)}</div>` : ''}</li>`).join('')}</ul></details>` : ''}</div></li>`; };
+  // quadro: quem está com cada parte
+  const setoresProc = [...new Set(ets.map(e => e.setor))].filter(s => s !== 'Cliente');
+  const quadro = andamento ? `<div class="cartao"><div class="topo" style="margin:0 0 8px"><div><h2 style="margin:0">Responsáveis e situação</h2>
+      <div class="muted">Cada setor recebe aviso automático quando a etapa dele fica liberada e vê a pendência em Início e no menu Admissões. As etapas feitas por outros setores passam pela conferência do RH antes de concluir a admissão.</div></div>
+      ${tem('administrador', 'rh') ? '<button class="btn peq" id="ad-resp">Definir responsáveis</button>' : ''}</div>
+    <div class="tabela-wrap"><table class="tabela"><thead><tr><th>Setor</th><th>Responsável</th><th>Com o setor agora</th><th>Atrasadas</th><th>Aguardando conferência</th></tr></thead><tbody>
+    ${setoresProc.map(s => { const es = ets.filter(e => e.setor === s), agora = es.filter(e => e.status === 'pendente' && !bloqueio(e).length), atr = es.filter(adAtrasada), conf = es.filter(e => e.precisa_conferencia);
+      return `<tr class="${meus.includes(s) && agora.length ? 'destaque' : ''}"><td data-r="Setor"><b>${esc(s)}</b></td><td data-r="Responsável">${respTxt(s)}</td>
+        <td data-r="Com o setor">${agora.length ? agora.map(e => esc(e.etapa.split(' (')[0])).join('<br>') : '<span class="muted">—</span>'}</td>
+        <td data-r="Atrasadas">${atr.length ? `<span class="tag vermelho">${atr.length}</span>` : '—'}</td><td data-r="Conferência">${conf.length ? `<span class="tag amarelo">${conf.length}</span>` : '—'}</td></tr>`; }).join('')}
+    </tbody></table></div></div>` : '';
   const linhaTreino = t => { const [stT, stC] = ST_TREINO[t.status], conf = meus.includes(t.confirma_setor);
     return `<li class="ad-tr ${t.status}"><span class="ad-hora">${dataBR(diaLocal(t.inicio))}<br>${hora(t.inicio)}–${hora(t.fim)}</span><div>
       <b>${esc(t.titulo)}</b> <span class="tag ${stC}">${stT}</span>${t.status === 'agendado' && new Date(t.inicio) < new Date() ? ' <span class="tag vermelho">aguardando confirmação</span>' : ''}
@@ -523,17 +592,18 @@ rota('/rh/admissoes/ver/:id', async (tela, id) => {
   tela.innerHTML = `<div class="topo"><div><h1>Admissão ${esc(a.numero || '')} · ${esc(c.nome)}</h1>
       <p class="sub">${esc(D.cargo || '')}${D.setor ? ' · ' + esc(D.setor) : ''} · início previsto ${dataBR(a.data_prevista)} · <span class="tag ${a.status === 'concluida' ? 'verde' : a.status === 'cancelada' ? '' : 'amarelo'}">${a.status === 'concluida' ? 'Admitido' : a.status === 'cancelada' ? 'Cancelada' : 'Em andamento'}</span>${a.motorista ? ' <span class="tag">motorista</span>' : ''}</p></div>
       <div class="acoes">${rh ? `<a class="btn" href="#/rh/colaboradores/ver/${c.id}">Ficha</a>` : ''}${vg ? `<a class="btn" href="#/rh/vagas/ver/${vg.id}">Vaga ${esc(vg.numero || '')}</a>` : ''}
-        ${rh && andamento ? `<button class="btn ok" id="ad-concluir" ${prontaConcluir ? '' : 'disabled'} title="${prontaConcluir ? '' : 'Faltam etapas'}">Concluir admissão</button><button class="btn perigo" id="ad-cancelar">Cancelar</button>` : ''}
+        ${rh && andamento ? `<button class="btn ok" id="ad-concluir" ${prontaConcluir ? '' : 'disabled'} title="${prontaConcluir ? '' : pendentes.length ? 'Faltam etapas' : 'Falta a conferência do RH em ' + aConferir.length + ' etapa(s)'}">Concluir admissão</button><button class="btn perigo" id="ad-cancelar">Cancelar</button>` : ''}
         <a class="btn" href="#/rh/admissoes">Voltar</a></div></div>
     ${adStepper(passos)}
     ${andamento && !registro && trs.some(t => t.status === 'agendado') ? '<div class="cartao alerta-obs">⚖️ <b>Treinamento é tempo de trabalho.</b> Os treinamentos só podem ser confirmados depois do contrato assinado, do eSocial (S-2200) enviado e do ASO apto. Confira se as datas da agenda são posteriores ao registro.</div>' : ''}
     ${a.status === 'concluida' && a.motorista ? '<div class="cartao alerta-obs">🚛 Motorista admitido: a liberação definitiva (padrinho e viagens padrão) segue em <a href="#/ssma/integracoes">SSMA › Liberação de motoristas</a>.</div>' : ''}
-    ${typeof htmlFeriadosProcesso === 'function' ? htmlFeriadosProcesso(D, 'admissao', andamento, rh || meus.includes('SSMA')) : ''}
+    ${quadro}
     ${AD_FASES.filter(f => f !== 'Integração e treinamentos').map(f => `<div class="cartao"><h2>${esc(f)}</h2><ol class="ad-ets">${ets.filter(e => e.fase === f).map(itemEtapa).join('')}</ol></div>`).join('')}
     <div class="cartao"><div class="topo" style="margin:0 0 8px"><div><h2 style="margin:0">Integração e treinamentos</h2><div class="muted">O RH monta a agenda; cada setor confirma a sua parte com a lista de presença ou o certificado. O treinamento no cliente é confirmado pelo SSMA.</div></div>
         ${rh && andamento ? '<div class="acoes"><button class="btn" id="tr-cargo">Sugerir do cargo</button><button class="btn prim" id="tr-novo">+ Agendar treinamento</button></div>' : ''}</div>
       <ol class="ad-ets">${ets.filter(e => e.fase === 'Integração e treinamentos').map(itemEtapa).join('')}</ol>
-      ${trs.length ? `<ul class="ad-trs">${trs.map(linhaTreino).join('')}</ul>` : '<p class="muted">Nenhum treinamento agendado.</p>'}</div>`;
+      ${trs.length ? `<ul class="ad-trs">${trs.map(linhaTreino).join('')}</ul>` : '<p class="muted">Nenhum treinamento agendado.</p>'}</div>
+    ${typeof htmlFeriadosProcesso === 'function' ? htmlFeriadosProcesso(D, 'admissao', andamento, rh || meus.includes('SSMA')) : ''}`;
 
   if (typeof ligarFeriadosProcesso === 'function') ligarFeriadosProcesso(tela, 'admissao', a.id);
   // ações das etapas
@@ -549,6 +619,28 @@ rota('/rh/admissoes/ver/:id', async (tela, id) => {
     try { if (r.arquivos.length) await anexar('admissao_etapa', e.id, r.arquivos, e.etapa); await api.rpc('concluir_etapa_admissao', { p_etapa: e.id, p_status: 'feito', p_obs: r.obs || null }); aviso('Etapa concluída.'); navegar(); } catch (err) { falha(err); } }));
   $$('[data-na]', tela).forEach(b => (b.onclick = async () => { const m = await confirmar('Por que esta etapa não se aplica?', { comMotivo: true, botao: 'Confirmar' }); if (!m) return;
     try { await api.rpc('concluir_etapa_admissao', { p_etapa: b.dataset.na, p_status: 'nao_se_aplica', p_obs: m }); navegar(); } catch (err) { falha(err); } }));
+  $$('[data-cobrar]', tela).forEach(b => (b.onclick = async () => { try { const n = await api.rpc('cobrar_etapa_admissao', { p_etapa: b.dataset.cobrar });
+    aviso(n ? `Cobrança enviada a ${n} pessoa(s).` : 'Ninguém recebeu: defina o responsável do setor.', !n); navegar(); } catch (err) { falha(err); } }));
+  $$('[data-conferir]', tela).forEach(b => (b.onclick = async () => { const e = ets.find(x => x.id === b.dataset.conferir), reqs = adRequisitos(e, D), falta = reqs.filter(x => !x.ok);
+    const r = await modal(`<form><h2>Conferir · ${esc(e.etapa)}</h2><div class="form largo">
+      <p class="largo">Executada por <b>${esc(e.feito_por_nome || 'sistema')}</b>${e.concluido_em ? ' em ' + dtHora(e.concluido_em) : ''} (${esc(e.setor)}).${e.observacao ? '<br>Observação: ' + esc(e.observacao) : ''}</p>
+      ${reqs.length ? `<div class="largo ad-req">${reqs.map(x => `<span class="ad-ri ${x.ok ? 'ok' : 'falta'}">${x.ok ? '✓' : '✗'} ${esc(x.t)}</span>`).join('')}</div>` : ''}
+      ${e.anexos.length ? `<div class="largo">${adAnexosHtml(e.anexos)}</div>` : '<p class="muted largo">Sem anexos.</p>'}
+      ${falta.length ? `<p class="alerta-obs largo">Há ${falta.length} item(ns) não atendido(s). Se não houver justificativa, devolva ao setor.</p>` : ''}
+      <label class="check largo"><input type="checkbox" name="ok" required> Conferi os itens exigidos e os comprovantes desta etapa</label>
+      <label class="campo largo">Observação da conferência<input name="obs"></label></div>
+      <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Confirmar conferência</button></div></form>`);
+    if (!r) return; try { await api.rpc('conferir_etapa_admissao', { p_etapa: e.id, p_acao: 'conferir', p_motivo: r.obs || null }); aviso('Etapa conferida.'); navegar(); } catch (err) { falha(err); } }));
+  $$('[data-devolver]', tela).forEach(b => (b.onclick = async () => { const m = await confirmar('O que o setor precisa corrigir? O responsável recebe o aviso com este texto.', { comMotivo: true, botao: 'Devolver ao setor' }); if (!m) return;
+    try { await api.rpc('conferir_etapa_admissao', { p_etapa: b.dataset.devolver, p_acao: 'devolver', p_motivo: m }); aviso('Devolvida. O setor foi avisado.'); navegar(); } catch (err) { falha(err); } }));
+  $('#ad-resp')?.addEventListener('click', async () => {
+    const us = (await usuarios()).filter(u => u.ativo);
+    const r = await modal(`<form><h2>Responsáveis por setor nas admissões</h2><div class="form">
+      <p class="muted largo">O responsável recebe os avisos e as cobranças das etapas do setor. Sem responsável, o aviso vai para todos com o perfil do setor — hoje há perfis com muitas pessoas, o que dilui a responsabilidade.</p>
+      ${setoresProc.map(s => `<label class="campo">${esc(s)}<select name="s_${esc(s)}"><option value="">— todos com o perfil (${R[s]?.perfil?.length || 0}) —</option>${us.map(u => `<option value="${u.id}" ${u.id === R[s]?.nomeado_id ? 'selected' : ''}>${esc(u.nome)}${(R[s]?.perfil || []).includes(u.nome) ? '' : ' (sem o perfil)'}</option>`).join('')}</select></label>`).join('')}</div>
+      <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Salvar</button></div></form>`);
+    if (!r) return; const p = {}; setoresProc.forEach(s => { if (r['s_' + s]) p[s] = r['s_' + s]; });
+    try { await api.rpc('salvar_responsaveis_admissao', { p }); aviso('Responsáveis salvos. Valem para todas as admissões.'); navegar(); } catch (err) { falha(err); } });
   $$('[data-reabrir]', tela).forEach(b => (b.onclick = async () => { if (!await confirmar('Reabrir esta etapa?', { botao: 'Reabrir' })) return;
     try { await api.rpc('concluir_etapa_admissao', { p_etapa: b.dataset.reabrir, p_status: 'pendente' }); navegar(); } catch (err) { falha(err); } }));
   // liberação no cliente
@@ -570,7 +662,7 @@ rota('/rh/admissoes/ver/:id', async (tela, id) => {
           { validar: d => !ec.anexos.length && !d.arquivos.length ? 'Anexe o e-mail ou a documentação enviada.' : null }); if (!r) return;
         if (r.arquivos.length) await anexar('admissao_etapa', ec.id, r.arquivos, 'Documentação enviada ao cliente ' + a.cliente);
         const x = await api.rpc('cliente_admissao', { p_adm: a.id, p_acao: 'enviar', p_data: r.data, p_obs: r.obs || null });
-        aviso(`Envio registrado. Resposta esperada até ${dataBR(x.prazo)}.${x.feriados?.length ? ` No período: ${x.feriados.join(', ')} — se o cliente não trabalhar, registre em "Feriados no período".` : ''}`); return navegar(); }
+        aviso(`Envio registrado. Resposta esperada até ${dataBR(x.prazo)}.${x.feriados?.length ? ` No período: ${x.feriados.join(', ')} — se o cliente não tiver expediente, registre em "Calendário do processo".` : ''}`); return navegar(); }
       if (acao === 'aprovar') { const r = await modal(`<form><h2>Cliente ${esc(a.cliente)} aprovou</h2><div class="form">
           <label class="campo">Aprovado em *<input type="date" name="data" required value="${hojeISO()}"></label>
           <label class="campo largo">Aprovação do cliente (e-mail/print)<input type="file" name="arquivos" multiple accept="image/*,application/pdf"></label>
@@ -578,7 +670,7 @@ rota('/rh/admissoes/ver/:id', async (tela, id) => {
           <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Registrar aprovação</button></div></form>`); if (!r) return;
         if (r.arquivos.length) await anexar('admissao_etapa', ec.id, r.arquivos, 'Aprovação do cliente ' + a.cliente);
         const x = await api.rpc('cliente_admissao', { p_adm: a.id, p_acao: 'aprovar', p_data: r.data, p_obs: r.obs || null });
-        aviso(`Aprovação registrada. Próxima integração possível: ${dataBR(x.sugestao)}.${x.feriado ? ` Atenção: é ${x.feriado}. Se o cliente não fizer integração nesse dia, registre "Cliente respeitou" e a data muda.` : ''}`, !!x.feriado);
+        aviso(`Aprovação registrada. Próxima integração possível: ${dataBR(x.sugestao)}.${x.feriado ? ` Atenção: é ${x.feriado}. Se o cliente não tiver expediente nesse dia, registre "sem expediente" no Calendário do processo e a data é recalculada.` : ''}`, !!x.feriado);
         if (rh && x.sugestao) return formTreino(null, false, preCliente(x.sugestao, D.cli_regra, a.cliente));
         return navegar(); }
       if (acao === 'recusar') { const m = await confirmar('O que o cliente recusou ou pediu para ajustar?', { comMotivo: true, botao: 'Registrar' }); if (!m) return;

@@ -1385,3 +1385,18 @@ body.tema-vx .ss-vg-l:hover { background: rgba(255,255,255,.05); } body.tema-vx 
 .sel-cab { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; align-items: flex-start; }
 .sel-hist { border-left: 3px solid var(--borda, #e3e7e5); margin: 6px 0 0 4px; padding-left: 10px; display: grid; gap: 8px; }
 .av-item.cancelada { opacity: .6; }
+/* admissão: responsável, itens exigidos, conferência */
+.ad-meta { display: flex; flex-wrap: wrap; gap: 4px 18px; margin-top: 4px; font-size: .9em; }
+.ad-req { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; margin-top: 6px; font-size: .88em; }
+.ad-ri { border-radius: 999px; padding: 2px 9px; border: 1px solid var(--borda); background: var(--cinza-claro); }
+.ad-ri.ok { background: var(--verde-claro); color: var(--verde); border-color: transparent; }
+.ad-ri.falta { background: var(--vermelho-claro); color: var(--vermelho); border-color: transparent; }
+.ad-ri i { opacity: .8; font-style: normal; }
+.ad-como { margin-top: 4px; font-size: .88em; }
+.ad-et.devolvida .ad-ic { background: var(--vermelho-claro); color: var(--vermelho); }
+.alerta-obs.erro { background: var(--vermelho-claro); color: var(--vermelho); border-color: transparent; margin-top: 6px; }
+.ad-ethist { margin-top: 6px; font-size: .86em; } .ad-ethist summary { cursor: pointer; color: var(--cinza); }
+.ad-ethist ul { margin: 6px 0 0; padding-left: 16px; } .ad-ethist li { margin: 3px 0; }
+.txt-vermelho { color: var(--vermelho); font-weight: 600; }
+.tabela tr.destaque td { background: var(--amarelo-claro); }
+.fer-dia-fds { opacity: .6; }
