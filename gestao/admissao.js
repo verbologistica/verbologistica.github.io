@@ -9,7 +9,7 @@ Object.assign(ST_VAGA, { aguardando_rh: ['Aguardando RH', 'amarelo'], devolvida:
 const VG_APROV = ['aguardando_rh', 'devolvida', 'aguardando_diretoria', 'reprovada'];
 const VG_EVENTO = { requisitada: 'Requisição aberta pelo gestor', reenviada: 'Requisição corrigida e reenviada', validada_rh: 'Validada pelo RH e enviada à diretoria',
   devolvida: 'Devolvida ao gestor para ajuste', devolvida_diretoria: 'Devolvida pela diretoria ao RH', aprovada: 'Aprovada pela diretoria · seleção aberta',
-  reprovada: 'Reprovada', aberta_selecao: 'Vaga aberta', em_selecao: 'Seleção em andamento', preenchida: 'Vaga preenchida', cancelada: 'Vaga cancelada', suspensa: 'Vaga suspensa' };
+  reprovada: 'Reprovada', validacao_desfeita: 'Validação do RH desfeita (voltou ao RH)', beneficios_ajustados: 'Benefícios e custo ajustados pelo RH', aberta_selecao: 'Vaga aberta', em_selecao: 'Seleção em andamento', preenchida: 'Vaga preenchida', cancelada: 'Vaga cancelada', suspensa: 'Vaga suspensa' };
 const AD_SETORES = ['RH', 'DP', 'SSMA', 'Almoxarifado', 'Operação', 'Manutenção', 'Qualidade', 'Cliente'];
 const AD_FASES = ['Documentação e registro', 'Segurança e almoxarifado', 'Integração e treinamentos'];
 const ST_ETAPA = { pendente: ['Pendente', 'amarelo', '⏳'], feito: ['Concluída', 'verde', '✓'], nao_se_aplica: ['Não se aplica', '', '–'] };
@@ -126,9 +126,14 @@ rota('/rh/vagas/ver/:id', async (tela, id) => {
       <label class="campo">Quantidade<input type="number" min="1" name="quantidade" value="${v.quantidade}"></label><label class="campo">Prazo para preencher<input type="date" name="prazo" value="${v.prazo || ''}"></label>
       <label class="campo">Escala / horário<input name="escala" value="${esc(v.escala || '')}"></label>
       <label class="campo largo">Requisitos<textarea name="requisitos" rows="2">${esc(v.requisitos || '')}</textarea></label>
-      <label class="campo largo">Benefícios<textarea name="beneficios" rows="2">${esc(v.beneficios || '')}</textarea></label>
+      ${vgFormBenHtml(v)}
       <label class="campo largo">Parecer do RH<textarea name="parecer" rows="2" placeholder="Obrigatório para devolver ou reprovar"></textarea></label>
       <div class="largo acoes"><button class="btn ok" value="aprovado">Validar e enviar à diretoria</button><button class="btn" value="devolvido">Devolver ao gestor</button><button class="btn perigo" value="reprovado">Reprovar</button></div></form>`;
+    if (editaRH() && ['aguardando_diretoria', 'aberta', 'em_selecao'].includes(v.status) && !(v.status === 'aguardando_diretoria' && dir && v.rh_por !== estado.usuario.id)) return `<form class="cartao form" id="f-ben"><h2 class="largo" style="margin:0">Benefícios e custo estimado (RH)</h2>
+      <p class="muted largo" style="margin:0">Ajuste os benefícios, a premiação e o custo do funcionário. Fica registrado no histórico da vaga${v.status === 'aguardando_diretoria' ? ' e a diretoria vê antes de aprovar' : ''}.</p>
+      <label class="campo">Salário (R$)<input name="salario_ofertado" inputmode="decimal" value="${v.salario_ofertado != null ? Number(v.salario_ofertado).toFixed(2).replace('.', ',') : ''}" readonly title="O salário muda só na validação do RH"></label>
+      ${vgFormBenHtml(v)}
+      <div class="largo acoes"><button class="btn prim">Salvar benefícios</button></div></form>`;
     if (v.status === 'aguardando_diretoria' && dir) return `<form class="cartao form" id="f-dir"><h2 class="largo" style="margin:0">Aprovação da diretoria</h2>
       <p class="muted largo" style="margin:0">Ao aprovar, a seleção é aberta e o PDF da requisição sai com o seu registro de aprovação e o código de verificação.</p>
       <label class="campo largo">Parecer<textarea name="parecer" rows="2" placeholder="Obrigatório para devolver ou reprovar"></textarea></label>
@@ -148,6 +153,7 @@ rota('/rh/vagas/ver/:id', async (tela, id) => {
       ${L('Motivo', v.motivo)}${L('Contrato', TIPOS_CONTRATO[v.tipo_contrato])}${v.salario_ofertado != null && (editaRH() || dir || v.solicitante_id === estado.usuario.id) ? L('Salário', brl(v.salario_ofertado)) : ''}
       ${L('Centro de custo', ccs.find(c => c.id === v.centro_custo_id)?.nome)}${L('Local de trabalho', v.local_trabalho)}${L('Cliente / contrato', v.cliente)}${L('Escala / horário', v.escala)}
       ${L('Início desejado', dataBR(v.data_inicio_desejada))}${L('Prazo para preencher', dataBR(v.prazo))}
+      ${(editaRH() || dir || v.solicitante_id === estado.usuario.id) && ((v.beneficios_itens || []).length || v.premiacao?.tem || v.custo_estimado) ? `<div class="largo">${vgHtmlBeneficios(v)}</div>` : ''}
       <div class="largo">${L('Justificativa', v.justificativa)}</div>${v.requisitos ? `<div class="largo">${L('Requisitos', v.requisitos)}</div>` : ''}${v.beneficios ? `<div class="largo">${L('Benefícios', v.beneficios)}</div>` : ''}
       ${v.codigo_verificacao ? `<div class="largo muted">Código de verificação da aprovação: <b class="mono">${esc(v.codigo_verificacao)}</b></div>` : ''}</div></div>
     ${adms.length ? `<div class="cartao"><h2>Admissões desta vaga</h2><ul class="lista-simples">${adms.map(a => `<li><span><b>${esc(a.colaborador)}</b> <span class="muted">${esc(a.numero || '')}</span> <span class="tag ${a.status === 'concluida' ? 'verde' : a.status === 'cancelada' ? '' : 'amarelo'}">${a.status === 'concluida' ? 'Admitido' : a.status === 'cancelada' ? 'Cancelada' : 'Em admissão'}</span></span><a class="btn peq" href="#/rh/admissoes/ver/${a.id}">Abrir</a></li>`).join('')}</ul></div>` : ''}
@@ -159,7 +165,17 @@ rota('/rh/vagas/ver/:id', async (tela, id) => {
     if (dec === 'reprovado' && !await confirmar('Reprovar esta requisição de vaga?', { botao: 'Reprovar' })) return;
     await ocupado(e.submitter, async () => { try { await api.rpc(rpc, { p_vaga: v.id, p_decisao: dec, p_parecer: d.parecer || null, ...(extra ? extra(d) : {}) });
       aviso(dec === 'aprovado' ? (rpc === 'rh_decidir_vaga' ? 'Validada e enviada à diretoria.' : 'Vaga aprovada: a seleção está aberta.') : 'Decisão registrada.'); navegar(); } catch (err) { falha(err); } }); });
-  decidir($('#f-rh'), 'rh_decidir_vaga', d => ({ p: { salario_ofertado: num(d.salario_ofertado), tipo_contrato: d.tipo_contrato, quantidade: d.quantidade, prazo: d.prazo, escala: d.escala, requisitos: d.requisitos, beneficios: d.beneficios } }));
+  const fBen = $('#f-ben');
+  if (fBen) { const calc = await vgEditorBeneficios(fBen, v, cargo);
+    fBen.onsubmit = async e => { e.preventDefault(); const d = formDados(fBen);
+      await ocupado(e.submitter, async () => { try { await api.rpc('rh_beneficios_vaga', { p_vaga: v.id, p: { beneficios: d.beneficios, beneficios_itens: calc.itens(),
+          premiacao: d.prem_tem ? { tem: true, criterio: d.prem_criterio, valor_ref: num(d.prem_valor), periodicidade: d.prem_per } : { tem: false }, custo_estimado: calc.custo(), juridico_descontos: !!d.juridico_descontos } });
+        aviso('Benefícios salvos.'); navegar(); } catch (err) { falha(err); } }); }; }
+  const fRh = $('#f-rh'); let vgCalc = null;
+  if (fRh) vgCalc = await vgEditorBeneficios(fRh, v, cargo);
+  decidir(fRh, 'rh_decidir_vaga', d => ({ p: { salario_ofertado: num(d.salario_ofertado), tipo_contrato: d.tipo_contrato, quantidade: d.quantidade, prazo: d.prazo, escala: d.escala, requisitos: d.requisitos, beneficios: d.beneficios,
+    beneficios_itens: vgCalc.itens(), premiacao: d.prem_tem ? { tem: true, criterio: d.prem_criterio, valor_ref: num(d.prem_valor), periodicidade: d.prem_per } : { tem: false },
+    custo_estimado: vgCalc.custo(), juridico_descontos: !!d.juridico_descontos } }));
   decidir($('#f-dir'), 'diretoria_decidir_vaga');
   $('#anx-vaga')?.addEventListener('change', async e => { const fs = [...e.target.files]; if (!fs.length) return;
     try { await adEnviar(fs, `vaga/${v.id}`, 'anexar_vaga', { p_vaga: v.id, p_desc: 'Assinado (gov.br)' }); aviso('Documento anexado.'); navegar(); } catch (err) { falha(err); } });
@@ -183,7 +199,10 @@ async function pdfRequisicaoVaga(v, { cargo, setor, U, ccs, evs }) {
       { tabela: { cab: ['Item', 'Informação'], linhas: dados, colunas: { 0: { cellWidth: 48, fontStyle: 'bold' } } } },
       { negrito: 'Justificativa' }, v.justificativa || '—',
       ...(v.requisitos ? [{ negrito: 'Requisitos da função' }, v.requisitos] : []),
-      ...(v.beneficios ? [{ negrito: 'Benefícios' }, v.beneficios] : []),
+      ...((v.beneficios_itens || []).length ? [{ negrito: 'Benefícios' }, { tabela: { cab: ['Benefício', 'Empresa (R$/mês)', 'Desconto do colaborador (R$/mês)', 'Obs.'], linhas: v.beneficios_itens.map(b => [b.tipo, brl(vgBenMensal(b)), b.colaborador ? brl(b.colaborador) : '—', [b.base === 'dia' ? `${brl(b.empresa)}/dia × ${b.dias || 22}` : '', b.obs || ''].filter(Boolean).join(' · ')]) } }] : []),
+      ...(v.premiacao?.tem ? [{ negrito: 'Premiação por metas (variável)' }, `${v.premiacao.criterio}${v.premiacao.valor_ref ? ` · referência ${brl(v.premiacao.valor_ref)}` : ''} · ${v.premiacao.periodicidade || ''}`] : []),
+      ...(v.custo_estimado ? [{ negrito: 'Custo mensal estimado do funcionário' }, { tabela: { cab: ['Item', 'R$/mês'], linhas: v.custo_estimado.linhas.map(l => [l[0], brl(l[1])]).concat([['Total estimado', brl(v.custo_estimado.total)], ['Total anual estimado (×12)', brl(v.custo_estimado.total * 12)]]), colunas: { 1: { cellWidth: 40 } } } }, 'Estimativa sobre o salário bruto com os parâmetros de encargos do sistema (' + (v.custo_estimado.regime || '') + '). Não substitui o cálculo da folha.'] : []),
+      ...(v.beneficios ? [{ negrito: 'Observações dos benefícios' }, v.beneficios] : []),
       { negrito: 'Registro de aprovações (assinatura eletrônica no sistema)' },
       { tabela: { cab: ['Etapa', 'Responsável', 'Data e hora', 'Situação'], linhas: reg, colunas: { 2: { cellWidth: 34 }, 3: { cellWidth: 24 } } } },
       ...(pareceres.length ? [{ lista: pareceres }] : []),
@@ -528,4 +547,99 @@ async function painelAdmissaoNovo(box, c, adm, adms) {
       <label class="campo">Início previsto *<input type="date" name="data" required value="${c.data_admissao || ''}"></label><div class="largo"><button class="btn prim">Iniciar admissão</button></div></form>` : `<p class="muted">${c.status === 'ativo' ? 'Colaborador já admitido.' : ''}</p>`}`;
   $('#f-adm')?.addEventListener('submit', async e => { e.preventDefault(); const d = formDados(e.target);
     try { const id = await api.rpc('iniciar_admissao', { p_colaborador: c.id, p_cargo: d.cargo, p_data: d.data }); aviso('Admissão iniciada.'); location.hash = '#/rh/admissoes/ver/' + id; } catch (err) { falha(err); } });
+}
+
+
+// ===================== Benefícios e custo estimado da vaga =====================
+function vgFormBenHtml(v) {
+  return `      <div class="largo"><h3 style="margin:6px 0">Benefícios da vaga</h3>
+        <p class="muted" style="margin:0 0 6px">Valor pago pela empresa e desconto do colaborador. A lei limita o desconto (VT até 6% do salário; VR/VA até 20% do custo pelo PAT); a empresa pode descontar menos ou não descontar. Ao concluir a admissão, vão para DP › Benefícios.</p>
+        <div id="ben-lista"></div><button type="button" class="btn peq" id="ben-mais">+ Benefício</button></div>
+      <label class="check largo" id="c-jur-ben" hidden><input type="checkbox" name="juridico_descontos"> Há desconto do colaborador: confirmo a validação do jurídico (CLT art. 462 — desconto só com previsão em lei, contrato ou acordo; plano de saúde exige autorização escrita, Súmula 342 TST)</label>
+      <div class="largo"><label class="check"><input type="checkbox" name="prem_tem" ${v.premiacao?.tem ? 'checked' : ''}> Vaga com premiação por metas (variável)</label></div>
+      <div class="largo form" id="c-prem" hidden style="padding:0">
+        <label class="campo largo">Metas e critério de pagamento *<textarea name="prem_criterio" rows="2" placeholder="Ex.: até R$ 300/mês se atingir 95% de disponibilidade da frota e zero multas">${esc(v.premiacao?.criterio || '')}</textarea></label>
+        <label class="campo">Valor de referência (opcional)<input name="prem_valor" inputmode="decimal" value="${v.premiacao?.valor_ref != null ? Number(v.premiacao.valor_ref).toFixed(2).replace('.', ',') : ''}" placeholder="R$ máximo ou médio"></label>
+        <label class="campo">Periodicidade<select name="prem_per">${['Mensal', 'Trimestral', 'Semestral', 'Anual'].map(x => `<option ${x === (v.premiacao?.periodicidade || 'Mensal') ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
+        <p class="muted largo" style="margin:0">Prêmio por desempenho acima do esperado, com regra escrita, não integra o salário (CLT art. 457 §§2º e 4º). Sem regra clara pode virar salário e gerar encargos. PLR é outra coisa (Lei 10.101/2000, até 2 vezes por ano, com acordo).</p></div>
+      <label class="campo largo">Observações dos benefícios<textarea name="beneficios" rows="2">${esc(v.beneficios || '')}</textarea></label>
+      <div class="largo" id="vg-custo"></div>`;
+}
+const VG_BENEF = ['Vale-transporte', 'Vale-refeição', 'Vale-alimentação', 'Cesta básica', 'Plano de saúde', 'Plano odontológico', 'Seguro de vida', 'Auxílio combustível', 'Ajuda de custo', 'Diária de viagem', 'Outro'];
+const vgBenMensal = b => (Number(b.empresa) || 0) * (b.base === 'dia' ? (Number(b.dias) || 22) : 1);
+const ENC_PADRAO = { regime: 'Lucro Presumido / Real', inss_patronal: 20, rat_fap: 3, terceiros: 5.8, fgts: 8, decimo_terceiro: 8.33, ferias_terco: 11.11, incide_sobre_provisoes: true, multa_fgts_provisao: 3.2, dias_mes: 22 };
+function vgCalcularCusto(sal, itens, E) {
+  E = { ...ENC_PADRAO, ...(E || {}) }; sal = Number(sal) || 0;
+  const diretos = (+E.inss_patronal || 0) + (+E.rat_fap || 0) + (+E.terceiros || 0) + (+E.fgts || 0);
+  const prov = (+E.decimo_terceiro || 0) + (+E.ferias_terco || 0);
+  const r2 = x => Math.round(x * 100) / 100;
+  const linhas = [['Salário bruto', sal],
+    [`INSS patronal ${E.inss_patronal}% + RAT/FAP ${E.rat_fap}% + terceiros ${E.terceiros}%`, r2(sal * ((+E.inss_patronal || 0) + (+E.rat_fap || 0) + (+E.terceiros || 0)) / 100)],
+    [`FGTS ${E.fgts}%`, r2(sal * (+E.fgts || 0) / 100)],
+    [`Provisão de 13º (${E.decimo_terceiro}%) e férias + 1/3 (${E.ferias_terco}%)`, r2(sal * prov / 100)]];
+  if (E.incide_sobre_provisoes) linhas.push(['Encargos sobre as provisões', r2(sal * prov / 100 * diretos / 100)]);
+  if (+E.multa_fgts_provisao) linhas.push([`Provisão da multa de 40% do FGTS (${E.multa_fgts_provisao}%)`, r2(sal * (+E.multa_fgts_provisao) / 100)]);
+  const ben = (itens || []).reduce((a, b) => a + vgBenMensal(b), 0);
+  if (ben) linhas.push(['Benefícios pagos pela empresa', r2(ben)]);
+  const total = r2(linhas.reduce((a, l) => a + l[1], 0));
+  return { linhas, total, regime: E.regime, pct_encargos: sal ? r2((total - sal - ben) / sal * 100) : 0 };
+}
+function vgHtmlCusto(c) {
+  if (!c) return '';
+  return `<div class="cartao" style="margin:0;background:var(--fundo-2,#f6f8f7)"><b>Custo mensal estimado do funcionário</b> <span class="muted">(${esc(c.regime || '')} · encargos ≈ ${String(c.pct_encargos).replace('.', ',')}% do salário)</span>
+    <table class="tabela-notas" style="width:100%;margin-top:6px">${c.linhas.map(l => `<tr><td>${esc(l[0])}</td><td class="nowrap" style="text-align:right">${brl(l[1])}</td></tr>`).join('')}
+    <tr><td><b>Total por mês</b></td><td class="nowrap" style="text-align:right"><b>${brl(c.total)}</b></td></tr><tr><td class="muted">Total por ano (×12)</td><td class="nowrap muted" style="text-align:right">${brl(c.total * 12)}</td></tr></table>
+    <div class="muted" style="font-size:.85em">Estimativa sobre o salário bruto. Não inclui horas extras, adicionais nem premiação variável.</div></div>`;
+}
+function vgHtmlBeneficios(v) {
+  const bs = v.beneficios_itens || [];
+  return `${bs.length ? `<div class="muted">Benefícios</div><ul class="lista-simples">${bs.map(b => `<li><span><b>${esc(b.tipo)}</b>${b.obs ? ' · ' + esc(b.obs) : ''}${b.base === 'dia' ? ` <span class="muted">${brl(b.empresa)}/dia × ${b.dias || 22}</span>` : ''}</span>
+      <span>empresa ${brl(vgBenMensal(b))}${b.colaborador ? ` · desconto ${brl(b.colaborador)}` : ''}</span></li>`).join('')}</ul>` : ''}
+    ${v.premiacao?.tem ? `<p><b>Premiação por metas (${esc(v.premiacao.periodicidade || '')}):</b> ${esc(v.premiacao.criterio || '')}${v.premiacao.valor_ref ? ` · referência ${brl(v.premiacao.valor_ref)}` : ''}</p>` : ''}
+    ${vgHtmlCusto(v.custo_estimado)}`;
+}
+async function vgEditorBeneficios(f, v, cargo) {
+  let E = await api.rpc('encargos_estimativa').catch(() => null) || ENC_PADRAO;
+  const lista = $('#ben-lista', f);
+  const linha = (b = {}) => `<div class="ben-linha" data-ben>
+    <label class="campo">Benefício<select name="_bt">${VG_BENEF.map(t => `<option ${t === (b.tipo || 'Vale-transporte') ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+    <label class="campo">Empresa paga (R$)<input name="_be" inputmode="decimal" value="${b.empresa != null ? String(b.empresa).replace('.', ',') : ''}"></label>
+    <label class="campo">Base<select name="_bb"><option value="mensal" ${b.base !== 'dia' ? 'selected' : ''}>por mês</option><option value="dia" ${b.base === 'dia' ? 'selected' : ''}>por dia trabalhado</option></select></label>
+    <label class="campo" data-dias ${b.base === 'dia' ? '' : 'hidden'}>Dias/mês<input name="_bd" inputmode="numeric" value="${b.dias || E.dias_mes || 22}"></label>
+    <label class="campo">Desconto do colaborador (R$/mês)<input name="_bc" inputmode="decimal" value="${b.colaborador ? String(b.colaborador).replace('.', ',') : ''}" placeholder="0 = não desconta"></label>
+    <label class="campo">Obs.<input name="_bo" value="${esc(b.obs || '')}" placeholder="Operadora, plano, linha…"></label>
+    <button type="button" class="btn peq perigo" data-ben-rm title="Remover">✕</button><div class="muted ben-dica" style="flex-basis:100%"></div></div>`;
+  const ler = () => $$('[data-ben]', lista).map(el => { const g = n => $(`[name=${n}]`, el).value;
+    return { tipo: g('_bt'), empresa: num(g('_be')) || 0, base: g('_bb'), dias: g('_bb') === 'dia' ? Number(g('_bd')) || 22 : null, colaborador: num(g('_bc')) || 0, obs: g('_bo').trim() || null }; });
+  const atualizar = () => {
+    const sal = num(f.salario_ofertado.value) || 0, its = ler();
+    $$('[data-ben]', lista).forEach((el, i) => { const b = its[i]; $('[data-dias]', el).hidden = b.base !== 'dia';
+      const d = $('.ben-dica', el);
+      if (b.tipo === 'Vale-transporte') d.innerHTML = `Desconto máximo pela lei: <b>${brl(sal * 0.06)}</b> (6% do salário). A empresa pode descontar menos ou não descontar.${b.colaborador > sal * 0.06 + 0.005 ? ' <b class="txt-verm">Acima do limite legal.</b>' : ''}`;
+      else if (['Vale-refeição', 'Vale-alimentação'].includes(b.tipo)) d.innerHTML = `PAT: desconto até 20% do custo (máx. ${brl((vgBenMensal(b) + b.colaborador) * 0.2)}).${b.colaborador > (vgBenMensal(b) + b.colaborador) * 0.2 + 0.005 ? ' <b class="txt-verm">Acima do limite.</b>' : ''}`;
+      else if (['Plano de saúde', 'Plano odontológico'].includes(b.tipo)) d.textContent = b.colaborador ? 'Desconto de plano só com autorização prévia e escrita do colaborador (Súmula 342 TST).' : '';
+      else if (b.tipo === 'Diária de viagem' || b.tipo === 'Ajuda de custo') d.textContent = 'Confira a convenção coletiva: diárias e ajuda de custo não integram o salário quando pagas para despesas de trabalho (CLT art. 457 §2º).';
+      else d.textContent = ''; });
+    $('#c-jur-ben', f).hidden = !its.some(b => b.colaborador > 0);
+    $('#c-prem', f).hidden = !f.prem_tem.checked;
+    $('#vg-custo', f).innerHTML = vgHtmlCusto(vgCalcularCusto(sal, its, E)) + (tem('administrador', 'rh', 'dp', 'financeiro', 'diretoria') ? '<button type="button" class="btn peq" id="enc-param" style="margin-top:6px">Parâmetros dos encargos</button>' : '');
+    $('#enc-param', f)?.addEventListener('click', async () => {
+      const campos = [['regime', 'Regime tributário', 'text'], ['inss_patronal', 'INSS patronal %'], ['rat_fap', 'RAT × FAP %'], ['terceiros', 'Terceiros (Sistema S, salário-educação) %'], ['fgts', 'FGTS %'],
+        ['decimo_terceiro', 'Provisão 13º %'], ['ferias_terco', 'Provisão férias + 1/3 %'], ['multa_fgts_provisao', 'Provisão multa FGTS %'], ['dias_mes', 'Dias trabalhados/mês (benefício por dia)']];
+      const r = await modal(`<form><h2>Parâmetros dos encargos</h2><p class="muted">Valem para todas as vagas. Simples Nacional (transporte de carga, Anexo III): INSS patronal, RAT e terceiros ficam no DAS — zere esses campos. Confirme com a contabilidade.</p><div class="form">
+        ${campos.map(([k, t, ty]) => `<label class="campo">${t}<input name="${k}" ${ty === 'text' ? '' : 'inputmode="decimal"'} value="${esc(String(E[k] ?? '').replace('.', ','))}"></label>`).join('')}
+        <label class="check largo"><input type="checkbox" name="incide_sobre_provisoes" ${E.incide_sobre_provisoes ? 'checked' : ''}> INSS/FGTS incidem sobre as provisões de 13º e férias</label></div>
+        <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Salvar</button></div></form>`);
+      if (!r) return;
+      const n = { regime: r.regime }; campos.slice(1).forEach(([k]) => (n[k] = num(r[k]) ?? 0)); n.incide_sobre_provisoes = !!r.incide_sobre_provisoes;
+      try { await api.rpc('salvar_encargos_estimativa', { p: n }); E = n; aviso('Parâmetros salvos.'); atualizar(); } catch (err) { falha(err); }
+    });
+  };
+  const ligar = () => { $$('[data-ben] input, [data-ben] select', lista).forEach(i => (i.oninput = i.onchange = atualizar)); $$('[data-ben-rm]', lista).forEach(b => (b.onclick = () => { b.closest('[data-ben]').remove(); atualizar(); })); };
+  const ini = (v.beneficios_itens || []).length ? v.beneficios_itens : [];
+  lista.innerHTML = ini.map(linha).join('');
+  $('#ben-mais', f).onclick = () => { lista.insertAdjacentHTML('beforeend', linha({ tipo: VG_BENEF.find(t => !ler().some(b => b.tipo === t)) })); ligar(); atualizar(); };
+  f.salario_ofertado.addEventListener('input', atualizar); f.prem_tem.addEventListener('change', atualizar);
+  ligar(); atualizar();
+  return { itens: ler, custo: () => vgCalcularCusto(num(f.salario_ofertado.value) || 0, ler(), E) };
 }
