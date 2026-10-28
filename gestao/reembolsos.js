@@ -129,7 +129,8 @@ async function formReembolso(tela, r = null) {
           <option value="adiantamento" ${custeioIni === 'adiantamento' ? 'selected' : ''}>Com adiantamento recebido (prestação de contas)</option>
           ${editaFin() || custeioIni === 'fundo_fixo' ? `<option value="fundo_fixo" ${custeioIni === 'fundo_fixo' ? 'selected' : ''}>Despesa paga com dinheiro do Fundo Fixo</option>` : ''}
           ${editaFin() && !r ? `<option value="adt_fundo" ${custeioIni === 'adt_fundo' ? 'selected' : ''}>Adiantamento entregue pelo Fundo Fixo (a pessoa vai prestar contas)</option>` : ''}</select></label>
-      <div class="largo aviso-lei" id="dica-adt" hidden>Vai para <b>Adiantamentos</b> (código ADT), já como entregue, e sai do saldo do Fundo Fixo. As despesas entram depois, na prestação de contas.</div>
+      <div class="largo aviso-lei" id="dica-adt" hidden>Use <b>só</b> quando o dinheiro foi entregue <b>antes</b> da compra e a pessoa ainda vai prestar contas. Vai para <b>Adiantamentos</b> (código ADT) e fica cobrando a prestação de contas.
+        <b>Se a compra já foi feita e você tem a nota ou o comprovante, escolha “Despesa paga com dinheiro do Fundo Fixo”.</b></div>
       <label class="campo" id="campo-adt" hidden>Adiantamento<select name="adiantamento_id" ${adtFixo ? 'disabled' : ''}></select></label>
       <label class="campo">Data da despesa<input type="date" name="data_despesa" required max="${hojeISO()}" value="${r?.data_despesa || hojeISO()}"></label>
       <label class="campo">Valor (R$)<input name="valor" inputmode="decimal" required placeholder="0,00" value="${r ? String(r.valor).replace('.', ',') : ''}"></label>
@@ -175,14 +176,19 @@ async function formReembolso(tela, r = null) {
     if (d.forma_custeio === 'adt_fundo') {
       const q = quem(); if (!q) return aviso('Escolha a pessoa que recebeu o adiantamento.', true);
       if (!d.arquivos?.length && (d.forma_pagamento || 'Dinheiro') !== 'Dinheiro') return aviso('Anexe o comprovante da entrega. Só dinheiro dispensa comprovante.', true);
+      if (!await confirmar('Adiantamento = dinheiro entregue ANTES da compra; a pessoa vai prestar contas depois. Se a compra já aconteceu (tem nota/comprovante), cancele e escolha "Despesa paga com dinheiro do Fundo Fixo". É mesmo um adiantamento?', { botao: 'Sim, é adiantamento' })) return;
       return ocupado(e.submitter, async () => {
         try {
           const pes = await resolverPessoaFin(q, d.quem_nome, listaPes);
+          // trava de duplicidade: mesmo valor, mesma pessoa e mesma data já lançados
+          const dup = await api.listar('adiantamentos', `select=numero&status=neq.cancelado&valor=eq.${valor}&data_entrega=eq.${d.data_despesa}&${pes.colaborador_id ? 'colaborador_id=eq.' + pes.colaborador_id : 'pessoa_sem_login_id=eq.' + pes.pessoa_sem_login_id}`).catch(() => []);
+          if (dup.length && !await confirmar(`Já existe ${dup.map(x => x.numero).join(', ')} com o mesmo valor (${brl(valor)}), pessoa e data. Lançar outro mesmo assim?`, { botao: 'Lançar outro' })) return;
           const fundo = await api.um('contas_bancarias', 'tipo=eq.fundo_fixo&ativo=eq.true&select=id');
           const forma = ['Pix', 'Transferência'].includes(d.forma_pagamento) ? d.forma_pagamento : 'Dinheiro';
           const id = await api.rpc('registrar_adiantamento_entregue', { p_colaborador: pes.colaborador_id, p_pessoa: pes.colaborador_id ? null : pes.pessoa_sem_login_id,
             p_valor: valor, p_motivo: d.descricao, p_data_entrega: d.data_despesa, p_conta: fundo.id, p_forma: forma, p_lancar_saida: true, p_prazo: null, p_cc: d.centro_custo_id || null, p_obs: null });
-          await anexar('adiantamento', id, d.arquivos);
+          try { await anexar('adiantamento', id, d.arquivos); }
+          catch (err) { aviso('Adiantamento registrado, mas o comprovante não subiu (' + (err.message || err) + '). NÃO lance de novo: anexe o comprovante nesta tela.', true); location.hash = '#/adiantamentos/ver/' + id; return; }
           aviso('Adiantamento registrado e lançado no Fundo Fixo.'); location.hash = '#/adiantamentos/ver/' + id;
         } catch (err) { falha(err); }
       });
@@ -205,8 +211,12 @@ async function formReembolso(tela, r = null) {
         if (r) { await api.alterar('reembolsos', `id=eq.${r.id}`, dados); id = r.id; }
         else {
           const quemDados = await resolverPessoaFin(q, d.quem_nome, listaPes);
+          const quemF = quemDados.colaborador_id ? 'colaborador_id=eq.' + quemDados.colaborador_id : quemDados.pessoa_sem_login_id ? 'pessoa_sem_login_id=eq.' + quemDados.pessoa_sem_login_id : 'criado_por=eq.' + estado.usuario.id;
+          const dup = await api.listar('reembolsos', `select=numero&status=not.in.(cancelado,reprovado)&valor=eq.${valor}&data_despesa=eq.${d.data_despesa}&${quemF}`).catch(() => []);
+          if (dup.length && !await confirmar(`Já existe ${dup.map(x => x.numero).join(', ')} com o mesmo valor (${brl(valor)}), pessoa e data. Lançar outro mesmo assim?`, { botao: 'Lançar outro' })) return;
           const [novo] = await api.inserir('reembolsos', { ...dados, ...quemDados }); id = novo.id; }
-        await anexar('reembolso', id, d.arquivos);
+        try { await anexar('reembolso', id, d.arquivos); }
+        catch (err) { aviso('Lançamento salvo, mas o arquivo não subiu (' + (err.message || err) + '). NÃO lance de novo: anexe o arquivo nesta tela.', true); location.hash = '#/reembolsos/ver/' + id; return; }
         aviso(r ? 'Reembolso reenviado.' : 'Reembolso enviado para aprovação.');
         location.hash = adtId ? '#/adiantamentos/ver/' + adtId : '#/reembolsos/ver/' + id;
       } catch (err) { falha(err); }

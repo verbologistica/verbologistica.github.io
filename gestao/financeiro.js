@@ -285,6 +285,9 @@ async function novoTitulo(tela, tipo) {
     if (!d.pessoa_id && !d.favorecido_nome) return aviso(`Escolha o ${T.cadastro.toLowerCase()} ou digite o nome.`, true);
     const v = num(d.valor); if (!v || v <= 0) return aviso('Informe o valor.', true);
     const itens = lerItensNota(f); if (!await itensConferem(itens, v)) return;
+    // conta 8.1 (Fundo Fixo) aqui não entra no saldo do fundo: reposição tem botão próprio
+    if (tipo === 'pagar' && /^8\.1\b|fundo fixo/i.test(f.conta_id?.selectedOptions?.[0]?.textContent || '')
+        && !await confirmar('Conta "Fundo fixo de colaboradores" = REPOSIÇÃO do Fundo Fixo. Quando esta conta for paga (por uma conta que não seja o próprio fundo), o valor entra sozinho no saldo do Fundo Fixo; se o pagamento for estornado, sai. Continuar?', { botao: 'Continuar' })) return;
     await ocupado(e.submitter, async () => {
       try {
         const [t] = await api.inserir('titulos', { tipo, itens, observacoes: d.observacoes || null, origem: d.legado ? 'legado' : 'avulso',
