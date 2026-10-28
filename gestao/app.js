@@ -447,7 +447,8 @@ const MENU = [
   ['Crachás', '#/rh/crachas', P_RH, 'cracha', null, true],
   ['Férias', '#/rh/ferias', P_RH, 'sol', 'ferias_vencendo', true],
   ['Ocorrências disciplinares', '#/rh/disciplinar', P_RH, 'balanca', null, true],
-  ['Desligamentos', '#/rh/desligamentos', P_RH, 'sair', 'desligamentos_andamento', true],
+  ['Contratos de experiência', '#/rh/experiencia', [...P_RH, 'aprovador', 'diretoria'], 'calendario_ok', 'experiencia_decidir', true],
+  ['Desligamentos', '#/rh/desligamentos', [...P_RH, 'ssma', 'almoxarifado', 'financeiro'], 'sair', 'desligamento_etapas', true],
   ['Organograma', '#/rh/organograma', P_RH, 'organograma', null, true],
   ['sub', 'Desenvolvimento'],
   ['Treinamentos', '#/rh/treinamentos', P_RH, 'formatura', 'treinamentos_pendentes', true],
@@ -938,6 +939,9 @@ rota('/inicio', async tela => {
       ${tem('administrador', 'rh', 'dp') && p.desligamentos_andamento ? `<a class="cartao kpi" href="#/rh/desligamentos"><div class="n">${p.desligamentos_andamento}</div><div class="r">desligamento(s) em andamento</div></a>` : ''}
       ${p.vagas_aprovar ? `<a class="cartao kpi alerta" href="#/rh/vagas"><div class="n">${p.vagas_aprovar}</div><div class="r">requisição(ões) de vaga esperando você</div></a>` : ''}
       ${p.admissao_etapas ? `<a class="cartao kpi alerta" href="#/rh/admissoes"><div class="n">${p.admissao_etapas}</div><div class="r">etapa(s) de admissão com o seu setor</div></a>` : ''}
+      ${p.experiencia_decidir ? `<a class="cartao kpi alerta" href="#/rh/experiencia"><div class="n">${p.experiencia_decidir}</div><div class="r">contrato(s) de experiência para você decidir</div></a>` : ''}
+      ${p.experiencia_encerrar ? `<a class="cartao kpi alerta" href="#/rh/experiencia"><div class="n">${p.experiencia_encerrar}</div><div class="r">término(s) de experiência a iniciar</div></a>` : ''}
+      ${p.desligamento_etapas ? `<a class="cartao kpi alerta" href="#/rh/desligamentos"><div class="n">${p.desligamento_etapas}</div><div class="r">etapa(s) de desligamento com o seu setor</div></a>` : ''}
       ${tem('administrador', 'rh', 'dp') && p.admissoes_andamento ? `<a class="cartao kpi" href="#/rh/admissoes"><div class="n">${p.admissoes_andamento}</div><div class="r">admissão(ões) em andamento</div></a>` : ''}
       ${tem('administrador', 'rh', 'dp') && p.rh_docs_vencendo ? `<a class="cartao kpi alerta" href="#/rh/documentos"><div class="n">${p.rh_docs_vencendo}</div><div class="r">documento(s) de colaboradores vencidos ou vencendo em 30 dias</div></a>` : ''}
       ${tem('administrador', 'rh', 'dp') && p.experiencia_vencendo ? `<a class="cartao kpi alerta" href="#/rh"><div class="n">${p.experiencia_vencendo}</div><div class="r">contrato(s) de experiência vencendo em 15 dias</div></a>` : ''}

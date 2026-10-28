@@ -152,9 +152,8 @@ rota('/rh/vagas/ver/:id', async (tela, id) => {
       ${v.codigo_verificacao ? `<div class="largo muted">Código de verificação da aprovação: <b class="mono">${esc(v.codigo_verificacao)}</b></div>` : ''}</div></div>
     ${adms.length ? `<div class="cartao"><h2>Admissões desta vaga</h2><ul class="lista-simples">${adms.map(a => `<li><span><b>${esc(a.colaborador)}</b> <span class="muted">${esc(a.numero || '')}</span> <span class="tag ${a.status === 'concluida' ? 'verde' : a.status === 'cancelada' ? '' : 'amarelo'}">${a.status === 'concluida' ? 'Admitido' : a.status === 'cancelada' ? 'Cancelada' : 'Em admissão'}</span></span><a class="btn peq" href="#/rh/admissoes/ver/${a.id}">Abrir</a></li>`).join('')}</ul></div>` : ''}
     <div class="cartao"><h2>Histórico</h2><ol class="ad-hist">${evs.map(e => `<li><b>${esc(VG_EVENTO[e.evento] || e.evento)}</b> <span class="muted">${dtHora(e.em)} · ${esc(U[e.por]?.nome || '')}</span>${e.parecer ? `<div>${esc(e.parecer)}</div>` : ''}</li>`).join('')}</ol></div>
-    <div class="cartao"><div class="topo" style="margin:0 0 8px"><div><h2 style="margin:0">Documentos assinados (opcional)</h2><div class="muted">A aprovação no sistema já vale como assinatura eletrônica (Lei 14.063/2020). Se quiser, baixe o PDF, assine no gov.br e anexe aqui.</div></div>
-      <label class="btn peq">📎 Anexar PDF assinado<input type="file" id="anx-vaga" accept="application/pdf,image/*" hidden></label></div>
-      ${anx.length ? `<div class="anexos">${anx.map(a => `<span class="anexo" data-arquivo="${esc(a.caminho_arquivo)}">📄 ${esc(a.nome_original || 'arquivo')} <small class="muted">${esc(a.descricao || '')} · ${esc(U[a.enviado_por]?.nome || '')}</small></span>`).join('')}</div>` : '<p class="muted">Nenhum documento anexado.</p>'}</div>`;
+    ${anx.length ? `<div class="cartao"><h2>Documentos anexados</h2><div class="anexos">${anx.map(a => `<span class="anexo" data-arquivo="${esc(a.caminho_arquivo)}">📄 ${esc(a.nome_original || 'arquivo')} <small class="muted">${esc(a.descricao || '')} · ${esc(U[a.enviado_por]?.nome || '')}</small></span>`).join('')}</div></div>` : ''}
+    <p class="muted">A aprovação no sistema vale como assinatura eletrônica (Lei 14.063/2020): registra usuário, data, hora e código de verificação. Assinatura gov.br fica só para o contrato de trabalho.</p>`;
   const decidir = (form, rpc, extra) => form?.addEventListener('submit', async e => { e.preventDefault(); const d = formDados(form), dec = e.submitter.value;
     if (dec !== 'aprovado' && !d.parecer) return aviso('Escreva o motivo no parecer.', true);
     if (dec === 'reprovado' && !await confirmar('Reprovar esta requisição de vaga?', { botao: 'Reprovar' })) return;
@@ -162,8 +161,8 @@ rota('/rh/vagas/ver/:id', async (tela, id) => {
       aviso(dec === 'aprovado' ? (rpc === 'rh_decidir_vaga' ? 'Validada e enviada à diretoria.' : 'Vaga aprovada: a seleção está aberta.') : 'Decisão registrada.'); navegar(); } catch (err) { falha(err); } }); });
   decidir($('#f-rh'), 'rh_decidir_vaga', d => ({ p: { salario_ofertado: num(d.salario_ofertado), tipo_contrato: d.tipo_contrato, quantidade: d.quantidade, prazo: d.prazo, escala: d.escala, requisitos: d.requisitos, beneficios: d.beneficios } }));
   decidir($('#f-dir'), 'diretoria_decidir_vaga');
-  $('#anx-vaga').onchange = async e => { const fs = [...e.target.files]; if (!fs.length) return;
-    try { await adEnviar(fs, `vaga/${v.id}`, 'anexar_vaga', { p_vaga: v.id, p_desc: 'Assinado (gov.br)' }); aviso('Documento anexado.'); navegar(); } catch (err) { falha(err); } };
+  $('#anx-vaga')?.addEventListener('change', async e => { const fs = [...e.target.files]; if (!fs.length) return;
+    try { await adEnviar(fs, `vaga/${v.id}`, 'anexar_vaga', { p_vaga: v.id, p_desc: 'Assinado (gov.br)' }); aviso('Documento anexado.'); navegar(); } catch (err) { falha(err); } });
   $('#pdf-req').onclick = e => ocupado(e.currentTarget, async () => { try { await pdfRequisicaoVaga(v, { cargo, setor, U, ccs, evs }); } catch (err) { falha(err); } });
 });
 
@@ -188,7 +187,7 @@ async function pdfRequisicaoVaga(v, { cargo, setor, U, ccs, evs }) {
       { negrito: 'Registro de aprovações (assinatura eletrônica no sistema)' },
       { tabela: { cab: ['Etapa', 'Responsável', 'Data e hora', 'Situação'], linhas: reg, colunas: { 2: { cellWidth: 34 }, 3: { cellWidth: 24 } } } },
       ...(pareceres.length ? [{ lista: pareceres }] : []),
-      v.codigo_verificacao ? `Código de verificação: ${v.codigo_verificacao}. As aprovações acima foram registradas no Verbo Gestão com usuário, data e hora (assinatura eletrônica — Lei 14.063/2020). Assinaturas gov.br, se houver, seguem anexadas ao processo.`
+      v.codigo_verificacao ? `Código de verificação: ${v.codigo_verificacao}. As aprovações acima foram registradas no Verbo Gestão com usuário, data e hora (assinatura eletrônica — Lei 14.063/2020).`
         : 'Documento emitido antes da aprovação final da diretoria.',
     ],
     assinatura: [['Recursos Humanos', 'b'], ['Verbo Logística']] });
@@ -225,9 +224,14 @@ rota('/rh/admissoes', async tela => {
   const ls = await api.rpc('admissoes_painel', { p_status: st }).catch(err => { falha(err); return []; });
   const meus = (await api.rpc('meus_setores_admissao').catch(() => [])) || [];
   const topo = `<div class="topo"><div><h1>Admissões</h1><p class="sub">Etapas por setor, em paralelo, com linha do tempo e agenda de treinamentos de integração</p></div>
-      <div class="acoes">${editaRH() ? '<a class="btn" href="#/rh/vagas">Vagas e seleção</a>' : ''}</div></div>
-    <div class="abas"><a href="#/rh/admissoes?aba=processos&status=${st}" class="${aba === 'processos' ? 'ativa' : ''}">Processos</a><a href="#/rh/admissoes?aba=agenda&status=${st}" class="${aba === 'agenda' ? 'ativa' : ''}">Agenda de treinamentos</a></div>
+      <div class="acoes">${tem('administrador', 'rh', 'ssma') ? '<button class="btn" id="ad-regras">Regras por cliente</button>' : ''}${editaRH() ? '<a class="btn" href="#/rh/vagas">Vagas e seleção</a>' : ''}</div></div>
+    <div class="abas"><a href="#/rh/admissoes?aba=processos&status=${st}" class="${aba === 'processos' ? 'ativa' : ''}">Processos</a><a href="#/rh/admissoes?aba=agenda&status=${st}" class="${aba === 'agenda' ? 'ativa' : ''}">Agenda de treinamentos</a><a href="#/rh/admissoes?aba=indicadores" class="${aba === 'indicadores' ? 'ativa' : ''}">Indicadores</a></div>
     <form class="filtros" id="f-st"><select name="status">${[['em_andamento', 'Em andamento'], ['concluida', 'Concluídas'], ['cancelada', 'Canceladas'], ['todas', 'Todas']].map(([k, t]) => `<option value="${k}" ${k === st ? 'selected' : ''}>${t}</option>`).join('')}</select></form>`;
+  if (aba === 'indicadores') {
+    await adIndicadores(tela, topo.replace(/<form class="filtros" id="f-st">[\s\S]*<\/form>/, ''));
+    $('#ad-regras')?.addEventListener('click', adRegrasCliente);
+    return;
+  }
   if (aba === 'agenda') {
     const ts = ls.flatMap(a => (a.treinos || []).map(t => ({ ...t, adm: a })).filter(t => t.status !== 'cancelado')).sort((x, y) => x.inicio.localeCompare(y.inicio));
     const dias = [...new Set(ts.map(t => diaLocal(t.inicio)))];
@@ -252,7 +256,60 @@ rota('/rh/admissoes', async tela => {
     filtroLocal(tela, { itens: 'tbody tr[data-a]', antes: '.cartao:last-of-type', campos: [{ k: 'vez', rotulo: 'De quem é a vez' }, { k: 'atraso', rotulo: 'Prazo' }] });
   }
   $('#f-st [name=status]').onchange = e => { location.hash = `#/rh/admissoes?aba=${aba}&status=${e.target.value}`; };
+  $('#ad-regras')?.addEventListener('click', adRegrasCliente);
 });
+
+// indicadores: tempo de resposta por etapa e setor (da liberação da etapa até a conclusão)
+async function adIndicadores(tela, topo) {
+  const ini = estado.params.get('de') || somaDias(hojeISO(), -90), fim = estado.params.get('ate') || hojeISO();
+  const I = await api.rpc('admissao_indicadores', { p_ini: ini, p_fim: fim }).catch(err => { falha(err); return null; });
+  const n = x => x == null ? '—' : String(x).replace('.', ',');
+  const corPrazo = p => p == null ? '' : p >= 90 ? 'verde' : p >= 70 ? 'amarelo' : 'vermelho';
+  const tab = (ls, cols) => ls?.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr>${cols.map(c => `<th>${c[0]}</th>`).join('')}</tr></thead><tbody>${ls.map(r => `<tr>${cols.map(c => `<td data-r="${c[0]}">${c[1](r)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>` : '<div class="vazio">Sem dados no período.</div>';
+  const maxS = Math.max(1, ...(I?.setores || []).map(s => Number(s.media_dias) || 0));
+  const V = I?.vagas || {}, A = I?.admissoes || {};
+  tela.innerHTML = `${topo}
+    <form class="filtros" id="f-per"><label>De <input type="date" name="de" value="${ini}"></label><label>Até <input type="date" name="ate" value="${fim}"></label><button class="btn">Aplicar</button></form>
+    ${I ? `<div class="grade" style="margin-bottom:14px">
+      <div class="cartao kpi"><div class="n">${n(V.rh_dias)}</div><div class="r">dias · requisição → validação do RH</div></div>
+      <div class="cartao kpi"><div class="n">${n(V.dir_dias)}</div><div class="r">dias · RH → aprovação da diretoria</div></div>
+      <div class="cartao kpi"><div class="n">${n(V.selecao_dias)}</div><div class="r">dias · aprovação → contratação</div></div>
+      <div class="cartao kpi"><div class="n">${n(A.total_dias)}</div><div class="r">dias · admissão do início ao fim (${A.concluidas || 0} concluída(s))</div></div>
+      <div class="cartao kpi"><div class="n">${n(A.cliente_dias)}</div><div class="r">dias · cliente para aprovar a documentação</div></div></div>
+    <div class="cartao"><h2>Por setor</h2><p class="muted">Tempo médio de resposta: da liberação da etapa (início do processo ou conclusão da etapa anterior) até a conclusão.</p>
+      ${(I.setores || []).length ? `<ul class="ad-ind">${I.setores.map(s => `<li><b>${esc(s.setor)}</b><span class="ad-barra"><i style="width:${Math.round((Number(s.media_dias) || 0) / maxS * 100)}%"></i></span>
+        <span>${n(s.media_dias)} dia(s)</span><span class="tag ${corPrazo(s.pct_prazo)}">${s.pct_prazo == null ? 'sem prazo' : s.pct_prazo + '% no prazo'}</span>${s.atrasadas ? `<span class="tag vermelho">${s.atrasadas} atrasada(s) agora</span>` : ''}</li>`).join('')}</ul>` : '<div class="vazio">Sem dados no período.</div>'}</div>
+    <div class="cartao"><h2>Por etapa da admissão</h2>${tab(I.etapas, [['Etapa', r => esc(r.etapa)], ['Setor', r => esc(r.setor)], ['Concluídas', r => r.concluidas], ['Tempo médio (dias)', r => n(r.media_dias)],
+      ['No prazo', r => r.pct_prazo == null ? '—' : `<span class="tag ${corPrazo(r.pct_prazo)}">${r.pct_prazo}%</span>`], ['Pendentes', r => r.pendentes], ['Atrasadas', r => r.atrasadas ? `<b class="txt-verm">${r.atrasadas}</b>` : 0]])}</div>
+    ${I.desligamentos ? `<div class="cartao"><h2>Por etapa do desligamento</h2>${tab(I.desligamentos, [['Etapa', r => esc(r.etapa)], ['Setor', r => esc(r.setor)], ['Concluídas', r => r.concluidas],
+      ['No prazo', r => r.pct_prazo == null ? '—' : `<span class="tag ${corPrazo(r.pct_prazo)}">${r.pct_prazo}%</span>`], ['Atrasadas', r => r.atrasadas ? `<b class="txt-verm">${r.atrasadas}</b>` : 0]])}</div>` : ''}` : ''}`;
+  $('#f-per').onsubmit = e => { e.preventDefault(); const d = formDados(e.target); location.hash = `#/rh/admissoes?aba=indicadores&de=${d.de}&ate=${d.ate}`; };
+}
+
+// regras de integração por cliente (prazo de resposta e dias permitidos)
+const AD_DIAS = [[1, 'seg'], [2, 'ter'], [3, 'qua'], [4, 'qui'], [5, 'sex'], [6, 'sáb'], [7, 'dom']];
+async function adRegrasCliente() {
+  const rs = await api.listar('admissao_clientes_regras', 'order=cliente').catch(err => { falha(err); return null; }); if (!rs) return;
+  const linha = (g = {}) => `<tr data-reg>
+    <td data-r="Cliente"><input name="cliente" value="${esc(g.cliente || '')}" ${g.cliente === '(padrão)' ? 'readonly' : ''} placeholder="Nome do cliente"></td>
+    <td data-r="Resposta (dias úteis)"><input type="number" min="0" name="prazo" value="${g.prazo_aprovacao_dias ?? 3}" style="width:70px"></td>
+    <td data-r="Dias da integração" class="nowrap">${AD_DIAS.map(([k, t]) => `<label class="check" style="display:inline-flex;margin-right:6px"><input type="checkbox" name="d${k}" ${(g.dias_semana || [2, 4]).includes(k) ? 'checked' : ''}> ${t}</label>`).join('')}</td>
+    <td data-r="Antecedência (dias)"><input type="number" min="0" name="ant" value="${g.antecedencia_dias ?? 1}" style="width:70px"></td>
+    <td data-r="Horário" class="nowrap"><input type="time" name="h1" value="${(g.hora_inicio || '08:00').slice(0, 5)}"> – <input type="time" name="h2" value="${(g.hora_fim || '12:00').slice(0, 5)}"></td>
+    <td data-r="Local"><input name="local" value="${esc(g.local || '')}"></td>
+    <td data-r="Documentos exigidos"><input name="docs" value="${esc(g.documentos || '')}" placeholder="ASO, ficha de registro, NR-…"></td></tr>`;
+  const r = await modal(`<form><h2>Integração nos clientes</h2><p class="muted">Prazo que cada cliente leva para aprovar a documentação e os dias em que faz a integração. "(padrão)" vale para quem não tem regra própria.</p>
+    <div class="tabela-wrap"><table class="responsiva" id="t-reg"><thead><tr><th>Cliente</th><th>Resposta (dias úteis)</th><th>Dias da integração</th><th>Antecedência</th><th>Horário</th><th>Local</th><th>Documentos exigidos</th></tr></thead>
+    <tbody>${rs.map(linha).join('')}</tbody></table></div><button type="button" class="btn peq" id="reg-mais">+ Cliente</button>
+    <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Salvar</button></div></form>`,
+    { aoAbrir: (raiz, fechar) => { $('.modal', raiz).classList.add('modal-largo'); $('#reg-mais', raiz).onclick = () => $('#t-reg tbody', raiz).insertAdjacentHTML('beforeend', linha());
+      $('form', raiz).onsubmit = e => { e.preventDefault(); fechar($$('[data-reg]', raiz).map(tr => { const v = k => $(`[name=${k}]`, tr); return { cliente: v('cliente').value.trim(), prazo_aprovacao_dias: Number(v('prazo').value) || 0,
+        dias_semana: AD_DIAS.map(([k]) => k).filter(k => v('d' + k).checked), antecedencia_dias: Number(v('ant').value) || 0, hora_inicio: v('h1').value || '08:00', hora_fim: v('h2').value || '12:00',
+        local: v('local').value.trim() || null, documentos: v('docs').value.trim() || null }; }).filter(x => x.cliente)); }; } });
+  if (!r?.length) return;
+  if (r.some(x => !x.dias_semana.length)) return aviso('Cada cliente precisa de pelo menos um dia de integração.', true);
+  try { await api.rest('admissao_clientes_regras?on_conflict=cliente', { metodo: 'POST', corpo: r, prefer: 'resolution=merge-duplicates,return=representation' }); aviso('Regras salvas.'); } catch (err) { falha(err); }
+}
 
 const AD_LINK = { ficha: c => [`#/rh/colaboradores/editar/${c}`, 'Abrir ficha'], docs: c => [`#/rh/colaboradores/ver/${c}?aba=docs`, 'Documentos'], aso: () => ['#/ssma/aso', 'ASO no SSMA'],
   tox: () => ['#/ssma/aso', 'Exames no SSMA'], cnh: c => [`#/rh/colaboradores/editar/${c}`, 'CNH na ficha'], contrato: c => [`#/rh/colaboradores/ver/${c}?aba=docs`, 'Anexar contrato'],
@@ -268,17 +325,22 @@ function adDica(e, D) {
   if (e.codigo === 'docs') return D.docs_faltando.length ? `Faltam ${D.docs_faltando.length}: ${D.docs_faltando.join(', ')}.` : 'Todos os documentos obrigatórios recebidos.';
   if (e.codigo === 'aso') return D.aso ? `ASO admissional de ${dataBR(D.aso.data)}: ${D.aso.resultado.replace('_', ' com ')}.` : 'Sem ASO admissional lançado no SSMA.';
   if (e.codigo === 'cnh') return c.cnh_categoria ? `CNH ${c.cnh_categoria}${c.cnh_ear ? ' · EAR' : ' · sem EAR'}${c.cnh_validade ? ' · validade ' + dataBR(c.cnh_validade) : ''}. Anexe a consulta de pontuação.` : 'CNH não informada na ficha.';
-  if (e.codigo === 'contrato') return 'Conclui sozinha quando o contrato assinado é anexado em Documentos da ficha.';
+  if (e.codigo === 'contrato') return 'Conclui sozinha quando o contrato assinado é anexado em Documentos da ficha. Pode ser assinado à mão ou pelo gov.br (assinatura avançada, gratuita).';
   if (e.codigo === 'esocial') return 'Anexe o recibo do S-2200. Envio obrigatório antes do 1º dia de trabalho.';
   if (e.codigo === 'os_seg') return 'Anexe a ordem de serviço de segurança assinada (riscos da função e EPIs obrigatórios).';
   if (e.codigo === 'epi') return D.epi ? `${D.epi} entrega(s) de EPI registrada(s). Conclui sozinha com a ficha de EPI assinada.` : 'Nenhuma entrega de EPI registrada no almoxarifado.';
   if (e.codigo === 'acessos') return c.cracha_gerado_em ? `Crachá gerado em ${dataBR(c.cracha_gerado_em.slice(0, 10))}.` : 'Crachá ainda não gerado.';
   if (e.codigo === 'treinamentos') return 'Conclui sozinha quando todos os treinamentos da agenda forem confirmados.';
+  if (e.codigo === 'cliente') { const a = D.adm, g = D.cli_regra || {};
+    if (!a.cliente) return 'Informe o cliente que o colaborador vai atender.';
+    if (!a.cli_enviado_em) return `Cliente ${a.cliente}. Envie a documentação exigida${g.documentos ? ` (${g.documentos})` : ''}, anexe o e-mail ou o pacote enviado e registre "Docs enviados".`;
+    const atr = a.cli_prazo && a.cli_prazo < hojeISO();
+    return `Cliente ${a.cliente} · documentação enviada em ${dataBR(a.cli_enviado_em)} · resposta esperada até ${dataBR(a.cli_prazo)}${atr ? ' — ATRASADO: cobrar o cliente' : ''}.`; }
   return '';
 }
 
 rota('/rh/admissoes/ver/:id', async (tela, id) => {
-  const D = await api.rpc('admissao_detalhe', { p_adm: id }).catch(err => { falha(err); return null; });
+  const D = await api.rpc('admissao_detalhe_v2', { p_adm: id }).catch(() => api.rpc('admissao_detalhe', { p_adm: id })).catch(err => { falha(err); return null; });
   if (!D) { tela.innerHTML = '<div class="cartao vazio">Admissão não encontrada ou sem acesso.</div>'; return; }
   const a = D.adm, c = D.col, ets = D.etapas, trs = D.treinos, meus = D.meus_setores || [], rh = D.rh;
   const andamento = a.status === 'em_andamento';
@@ -297,8 +359,11 @@ rota('/rh/admissoes/ver/:id', async (tela, id) => {
       <div class="ad-et-t"><b>${esc(e.etapa)}</b> <span class="tag">${esc(e.setor)}</span> <span class="tag ${stC}">${stT}</span>${adAtrasada(e) ? ` <span class="tag vermelho">atrasada · prazo ${dataBR(e.prazo)}</span>` : e.status === 'pendente' && e.prazo ? ` <span class="muted">prazo ${dataBR(e.prazo)}</span>` : ''}</div>
       ${e.status === 'pendente' ? `<div class="muted">${esc(adDica(e, D))}${bl.length ? ` <b>Aguardando:</b> ${bl.map(x => esc(x.etapa)).join('; ')}.` : ''}</div>` : `<div class="muted">${e.concluido_em ? dtHora(e.concluido_em) : ''}${e.feito_por_nome ? ' · ' + esc(e.feito_por_nome) : ''}${e.observacao ? ' · ' + esc(e.observacao) : ''}</div>`}
       ${adAnexosHtml(e.anexos)}
+      ${e.codigo === 'cliente' && e.status === 'feito' && D.cli_sugestao && !trs.some(t => t.setor === 'Cliente' && t.status !== 'cancelado') && andamento ? `<div class="alerta-obs" style="margin-top:6px">Próxima integração possível no cliente: <b>${dataBR(D.cli_sugestao)}</b>${rh ? ' <button class="btn peq prim" data-cli="agendar">Agendar integração</button>' : ' (o RH agenda)'}</div>` : ''}
       ${andamento ? `<div class="ad-et-a">${lk && plk ? `<a class="btn peq" href="${lk[0]}">${esc(lk[1])}</a>` : ''}
-        ${e.status === 'pendente' && meu ? `${!e.auto ? `<button class="btn peq ok" data-concl="${e.id}">Concluir${e.exige_anexo ? ' (com anexo)' : ''}</button>` : `<button class="btn peq" data-verif>Verificar agora</button>`}
+        ${e.codigo === 'cliente' && (meu || rh) && (e.status === 'pendente' || (e.status === 'nao_se_aplica' && rh)) ? `<button class="btn peq" data-cli="definir">${a.cliente ? 'Trocar cliente' : 'Informar cliente'}</button>` : ''}
+        ${e.codigo === 'cliente' && e.status === 'pendente' && meu && a.cliente ? `${!a.cli_enviado_em ? '<button class="btn peq prim" data-cli="enviar">Docs enviados ao cliente</button>' : '<button class="btn peq ok" data-cli="aprovar">Cliente aprovou</button><button class="btn peq" data-cli="recusar">Cliente pediu ajuste</button>'}` : ''}
+        ${e.status === 'pendente' && meu ? `${e.codigo === 'cliente' ? '' : !e.auto ? `<button class="btn peq ok" data-concl="${e.id}">Concluir${e.exige_anexo ? ' (com anexo)' : ''}</button>` : `<button class="btn peq" data-verif>Verificar agora</button>`}
           <button class="btn peq" data-anx="${e.id}">📎 Anexar</button><button class="btn peq" data-na="${e.id}">Não se aplica</button>` : ''}
         ${e.status !== 'pendente' && rh ? `<button class="btn peq" data-reabrir="${e.id}">Reabrir</button>` : ''}</div>` : ''}</div></li>`; };
   const linhaTreino = t => { const [stT, stC] = ST_TREINO[t.status], conf = meus.includes(t.confirma_setor);
@@ -340,11 +405,45 @@ rota('/rh/admissoes/ver/:id', async (tela, id) => {
     try { await api.rpc('concluir_etapa_admissao', { p_etapa: b.dataset.na, p_status: 'nao_se_aplica', p_obs: m }); navegar(); } catch (err) { falha(err); } }));
   $$('[data-reabrir]', tela).forEach(b => (b.onclick = async () => { if (!await confirmar('Reabrir esta etapa?', { botao: 'Reabrir' })) return;
     try { await api.rpc('concluir_etapa_admissao', { p_etapa: b.dataset.reabrir, p_status: 'pendente' }); navegar(); } catch (err) { falha(err); } }));
+  // liberação no cliente
+  const preCliente = (data, g, cliente) => { const h1 = (g?.hora_inicio || '08:00').slice(0, 5), h2 = (g?.hora_fim || '12:00').slice(0, 5);
+    return { titulo: `Integração no cliente ${cliente || ''}`.trim(), setor: 'Cliente', cliente, confirma_setor: 'SSMA', local: g?.local || '',
+      inicio: new Date(`${data}T${h1}`).toISOString(), fim: new Date(`${data}T${h2 > h1 ? h2 : h1}`).toISOString() }; };
+  $$('[data-cli]', tela).forEach(b => (b.onclick = async () => {
+    const acao = b.dataset.cli, ec = est('cliente');
+    try {
+      if (acao === 'definir') { const r = await modal(`<form><h2>Cliente desta admissão</h2><div class="form"><label class="campo largo">Cliente *<input name="cliente" required value="${esc(a.cliente || vg?.cliente || '')}"></label></div>
+          <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Salvar</button></div></form>`); if (!r) return;
+        await api.rpc('cliente_admissao', { p_adm: a.id, p_acao: 'definir', p_cliente: r.cliente }); aviso('Cliente informado.'); return navegar(); }
+      if (acao === 'enviar') { const r = await modal(`<form><h2>Documentação enviada ao cliente ${esc(a.cliente)}</h2><div class="form">
+          <label class="campo">Enviada em *<input type="date" name="data" required value="${hojeISO()}"></label>
+          <label class="campo largo">E-mail ou pacote enviado${ec.anexos.length ? '' : ' *'}<input type="file" name="arquivos" multiple accept="image/*,application/pdf"></label>
+          <label class="campo largo">Observação<input name="obs" placeholder="Para quem foi enviado, protocolo do portal do cliente…"></label>
+          <p class="muted largo">Prazo de resposta do cliente: ${D.cli_regra?.prazo_aprovacao_dias ?? 3} dia(s) útil(eis). Depois disso a etapa volta para a fila do SSMA como atrasada, para cobrar o cliente.</p></div>
+          <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Registrar envio</button></div></form>`,
+          { validar: d => !ec.anexos.length && !d.arquivos.length ? 'Anexe o e-mail ou a documentação enviada.' : null }); if (!r) return;
+        if (r.arquivos.length) await anexar('admissao_etapa', ec.id, r.arquivos, 'Documentação enviada ao cliente ' + a.cliente);
+        const x = await api.rpc('cliente_admissao', { p_adm: a.id, p_acao: 'enviar', p_data: r.data, p_obs: r.obs || null }); aviso(`Envio registrado. Resposta esperada até ${dataBR(x.prazo)}.`); return navegar(); }
+      if (acao === 'aprovar') { const r = await modal(`<form><h2>Cliente ${esc(a.cliente)} aprovou</h2><div class="form">
+          <label class="campo">Aprovado em *<input type="date" name="data" required value="${hojeISO()}"></label>
+          <label class="campo largo">Aprovação do cliente (e-mail/print)<input type="file" name="arquivos" multiple accept="image/*,application/pdf"></label>
+          <label class="campo largo">Observação<input name="obs"></label></div>
+          <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Registrar aprovação</button></div></form>`); if (!r) return;
+        if (r.arquivos.length) await anexar('admissao_etapa', ec.id, r.arquivos, 'Aprovação do cliente ' + a.cliente);
+        const x = await api.rpc('cliente_admissao', { p_adm: a.id, p_acao: 'aprovar', p_data: r.data, p_obs: r.obs || null });
+        aviso(`Aprovação registrada. Próxima integração possível: ${dataBR(x.sugestao)}.`);
+        if (rh && x.sugestao) return formTreino(null, false, preCliente(x.sugestao, D.cli_regra, a.cliente));
+        return navegar(); }
+      if (acao === 'recusar') { const m = await confirmar('O que o cliente recusou ou pediu para ajustar?', { comMotivo: true, botao: 'Registrar' }); if (!m) return;
+        await api.rpc('cliente_admissao', { p_adm: a.id, p_acao: 'recusar', p_obs: m }); aviso('Registrado. Ajuste e reenvie a documentação.'); return navegar(); }
+      if (acao === 'agendar') return formTreino(null, false, preCliente(D.cli_sugestao, D.cli_regra, a.cliente));
+    } catch (err) { falha(err); } }));
   // treinamentos
-  const formTreino = async (t = null, reag = false) => {
+  const formTreino = async (t = null, reag = false, pre = null) => {
     const [cat, us, tc] = await Promise.all([api.listar('treinamentos', 'ativo=eq.true&order=nome').catch(() => []), usuarios(), api.listar('treinamento_cargos', `cargo_id=eq.${a.cargo_id}&ativo=eq.true&select=treinamento_id`).catch(() => [])]);
     const doCargo = new Set(tc.map(x => x.treinamento_id));
-    const ini = t ? new Date(t.inicio) : null, fim = t ? new Date(t.fim) : null;
+    if (pre) t = { ...pre, _novo: true };
+    const ini = t?.inicio ? new Date(t.inicio) : null, fim = t?.fim ? new Date(t.fim) : null;
     const dLoc = d => d ? diaLocal(d.toISOString()) : '', hLoc = d => d ? d.toTimeString().slice(0, 5) : '';
     const r = await modal(`<form><h2>${t ? (reag ? 'Reagendar' : 'Editar') + ' treinamento' : 'Agendar treinamento de integração'}</h2><div class="form">
       <label class="campo largo">Treinamento<select name="treinamento_id"><option value="">Outro (descrever abaixo)</option>
@@ -361,7 +460,7 @@ rota('/rh/admissoes/ver/:id', async (tela, id) => {
       <label class="campo">Quem confirma a conclusão<select name="confirma_setor">${AD_SETORES.filter(s => s !== 'Cliente').map(s => `<option ${s === (t?.confirma_setor || 'RH') ? 'selected' : ''}>${s}</option>`).join('')}</select></label>
       <p class="muted largo">Treinamento no cliente é confirmado pelo SSMA. Agende só a partir do 1º dia de registro do colaborador.</p></div>
       <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Salvar</button></div></form>`,
-      { aoAbrir: f => { const fm = $('form', f); const sinc = () => { $('#c-cli', f).hidden = fm.setor.value !== 'Cliente'; if (fm.setor.value === 'Cliente') fm.confirma_setor.value = 'SSMA'; else if (!t) fm.confirma_setor.value = fm.setor.value; };
+      { aoAbrir: f => { const fm = $('form', f); const sinc = () => { $('#c-cli', f).hidden = fm.setor.value !== 'Cliente'; if (fm.setor.value === 'Cliente') fm.confirma_setor.value = 'SSMA'; else if (!t || t._novo) fm.confirma_setor.value = fm.setor.value; };
           fm.setor.onchange = sinc; sinc(); fm.treinamento_id.onchange = () => { const x = cat.find(y => y.id === fm.treinamento_id.value); if (x && !fm.titulo.dataset.mexeu) fm.titulo.value = x.nome; };
           fm.titulo.oninput = () => (fm.titulo.dataset.mexeu = 1); },
         validar: d => d.h2 <= d.h1 ? 'O fim deve ser depois do início.' : null });
@@ -369,7 +468,7 @@ rota('/rh/admissoes/ver/:id', async (tela, id) => {
     const dados = { admissao_id: a.id, treinamento_id: r.treinamento_id || null, titulo: r.titulo, inicio: new Date(`${r.data}T${r.h1}`).toISOString(), fim: new Date(`${r.data}T${r.h2}`).toISOString(),
       local: r.local || null, setor: r.setor, cliente: r.setor === 'Cliente' ? r.cliente || null : null, responsavel_id: r.responsavel_id || null, responsavel_nome: r.responsavel_nome || null,
       confirma_setor: r.setor === 'Cliente' ? 'SSMA' : r.confirma_setor, ...(reag ? { status: 'agendado', concluido_por: null, concluido_em: null } : {}) };
-    try { if (t) await api.alterar('admissao_treinamentos', `id=eq.${t.id}`, dados); else await api.inserir('admissao_treinamentos', dados); aviso('Agenda atualizada.'); navegar(); } catch (err) { falha(err); }
+    try { if (t && !t._novo) await api.alterar('admissao_treinamentos', `id=eq.${t.id}`, dados); else await api.inserir('admissao_treinamentos', dados); aviso('Agenda atualizada.'); navegar(); } catch (err) { falha(err); }
   };
   $('#tr-novo')?.addEventListener('click', () => formTreino());
   $('#tr-cargo')?.addEventListener('click', async () => {

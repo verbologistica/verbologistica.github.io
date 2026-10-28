@@ -1367,3 +1367,8 @@ body.tema-vx .ss-vg-l:hover { background: rgba(255,255,255,.05); } body.tema-vx 
 .ad-agenda { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .ad-agenda li { display: grid; grid-template-columns: 96px 1fr auto; gap: 10px; align-items: center; padding: 8px 10px; border: 1px solid var(--borda); border-radius: 8px; }
 @media (max-width: 640px) { .ad-agenda li { grid-template-columns: 1fr; } .ad-tr { flex-direction: column; } }
+/* Indicadores de admissão */
+.ad-ind { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.ad-ind li { display: grid; grid-template-columns: 120px 1fr auto auto auto; gap: 10px; align-items: center; }
+.ad-ind .ad-barra { margin: 0; }
+@media (max-width: 640px) { .ad-ind li { grid-template-columns: 1fr auto; } .ad-ind .ad-barra { grid-column: 1 / -1; } }
