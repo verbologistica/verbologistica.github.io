@@ -778,7 +778,7 @@ function orgMontar(cs, cgs, ss) {
 // foto (crachá ou ficha) no lugar das iniciais, quando houver
 const ORG_FOTOS = {};
 const orgAvatar = n => { const u = n.tipo === 'colab' && ORG_FOTOS[n.id];
-  return u ? `<span class="og-av og-foto"><img src="${esc(u)}" alt="" loading="lazy" onerror="this.parentNode.classList.remove('og-foto');this.parentNode.textContent='${esc(orgIniciais(n.nome))}'"></span>` : `<span class="og-av">${esc(orgIniciais(n.nome))}</span>`; };
+  return u ? `<span class="og-av og-foto"><img src="${esc(u)}" alt="" onerror="this.parentNode.classList.remove('og-foto');this.parentNode.textContent='${esc(orgIniciais(n.nome))}'"></span>` : `<span class="og-av">${esc(orgIniciais(n.nome))}</span>`; };
 function orgCard(n, abertos) {
   const sub = n.filhos.length;
   return `<div class="og-card og-${n.tipo}" data-k="${esc(n.k)}" style="--c:${n.cor}" tabindex="0">
