@@ -304,6 +304,11 @@ const veiculos = f => cad('veiculos', 'select=id,placa,modelo,ativo&order=placa'
 const porId = arr => Object.fromEntries(arr.map(x => [x.id, x]));
 // sou aprovador deste item (direto ou por aprovação conjunta)
 const aprovoComo = id => !!id && (id === estado.usuario?.id || id === estado.usuario?.aprova_junto_de);
+// sou um dos aprovadores do item (regra por valor: lista de supervisores, coordenadores, gestores ou validação)
+const souAprovadorDe = a => !!a && (aprovoComo(a.aprovador_id) || (a.aprovadores || []).some(aprovoComo) || (!!a.perfil_aprovador && tem(a.perfil_aprovador)));
+const REGRA_AP = { supervisor: 'supervisor do setor', coordenador: 'coordenador do setor', gestor: 'gestor', 'gestor+validacao': 'gestor, depois validação', validacao: 'validação acima do limite do gestor' };
+const aguardandoTxt = (a, nomes) => { const l = a.aprovadores?.length ? a.aprovadores : a.aprovador_id ? [a.aprovador_id] : [];
+  return (l.length ? l.map(i => nomes[i]?.nome || '—').join(' ou ') : 'perfil ' + (a.perfil_aprovador || '—')) + (REGRA_AP[a.regra] ? ` (${REGRA_AP[a.regra]})` : ''); };
 
 const opcoes = (arr, valor, rotulo, sel, vazio = '') =>
   (vazio !== null ? `<option value="">${esc(vazio)}</option>` : '') +
@@ -501,6 +506,7 @@ const MENU = [
   ['Feriados', '#/cadastros/feriados', [...P_RH, 'ssma', 'operacao', 'manutencao', 'almoxarifado', 'financeiro', 'qualidade', 'comprador', 'aprovador'], 'calendario', null, true],
   ['Dados da empresa', '#/cadastros/empresa', ['administrador'], 'predio', null, true],
   ['Usuários e perfis', '#/config/usuarios', ['administrador'], 'escudo_usuario', null, true],
+  ['Regras de aprovação', '#/config/aprovacoes', ['administrador', 'diretoria'], 'aprovar', null, true],
   ['Auditoria', '#/config/auditoria', P_FIN, 'historico', null, true],
   ['Calendário do CRLV', '#/config/calendario_crlv', ['administrador'], 'calendario', 'calendario_crlv', true],
   ['Importar sistema anterior', '#/config/importar', ['administrador'], 'enviar', null, true],

@@ -1473,3 +1473,11 @@ body.tema-vx .conteudo { --fundo: #123A2A; }
 .ac-sub { grid-column: 1 / -1; font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--cinza); margin-top: 6px; }
 .ac-item { min-width: 0; } .ac-guias { display: flex; flex-wrap: wrap; gap: 0 10px; padding-left: 24px; font-size: 12.5px; } .ac-guias .muted { width: 100%; font-size: 11.5px; }
 .cnh-cats { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 4px 0; }
+
+/* Regras de aprovação */
+.ra-sel > summary { cursor: pointer; list-style: none; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; min-height: 28px; }
+.ra-sel > summary::-webkit-details-marker { display: none; }
+.ra-mudar { font-size: 12px; color: var(--azul); text-decoration: underline; }
+.ra-lista { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 2px 12px; padding: 8px 0 4px; max-height: 260px; overflow: auto; }
+.ra-lim { width: 130px; display: inline-block; margin-left: 4px; }
+.ra-tab td { vertical-align: top; }

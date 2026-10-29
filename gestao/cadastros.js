@@ -438,6 +438,51 @@ const NOMES_TABELA = { reembolsos: 'Reembolso', titulos: 'Conta a pagar', titulo
   usuario_perfis: 'Perfil de usuário', aprovacoes: 'Aprovação', fornecedores: 'Fornecedor', plano_contas: 'Plano de contas', centros_custo: 'Centro de custo',
   contas_bancarias: 'Conta bancária', anexos: 'Anexo', movimentos_bancarios: 'Movimento bancário', configuracoes: 'Configuração', alcadas: 'Alçada' };
 
+// ===================== Regras de aprovação (por valor) =====================
+rota('/config/aprovacoes', async tela => {
+  const d = await api.rpc('regra_aprovacao');
+  const c = d.config || {}, us = d.usuarios || [], ed = !!d.edita, ss = d.setores || [];
+  const nome = id => us.find(u => u.id === id)?.nome || '—';
+  const fmt = v => Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const escolha = (campo, sel = []) => `<details class="ra-sel"><summary>${sel.length ? sel.map(i => `<span class="tag">${esc(nome(i))}</span>`).join(' ') : '<span class="muted">Ninguém</span>'}${ed ? ' <span class="ra-mudar">alterar</span>' : ''}</summary>
+    <div class="ra-lista">${us.map(u => `<label class="check"><input type="checkbox" name="${campo}" value="${u.id}" ${sel.includes(u.id) ? 'checked' : ''} ${ed ? '' : 'disabled'}> ${esc(u.nome)}${u.setor ? ` <span class="muted">· ${esc(u.setor)}</span>` : ''}</label>`).join('')}</div></details>`;
+  const lim = (k, v) => ed ? `<input name="${k}" inputmode="decimal" class="ra-lim" value="${fmt(v)}" required>` : `<b>${brl(v)}</b>`;
+  const qtd = id => us.filter(u => u.setor_id === id).length;
+  tela.innerHTML = `
+    <div class="topo"><div><h1>Regras de aprovação</h1><p class="sub">Quem aprova compras, reembolsos, despesas do Fundo Fixo e adiantamentos, conforme o valor</p></div></div>
+    <form id="ra">
+    <div class="cartao"><h2>Faixas de valor</h2>
+      <div class="tabela-wrap"><table class="tabela compacta"><thead><tr><th>Valor do item</th><th>Quem aprova</th><th>Vê itens de</th></tr></thead><tbody>
+        <tr><td>Até ${lim('limite_supervisor', c.limite_supervisor)}</td><td>Supervisor(es) do setor · uma aprovação libera</td><td>Só do próprio setor</td></tr>
+        <tr><td>Até ${lim('limite_coordenador', c.limite_coordenador)}</td><td>Coordenador(es) do setor · não passa pelo supervisor</td><td>Só do próprio setor</td></tr>
+        <tr><td>Até ${lim('limite_gestor', c.limite_gestor)}</td><td>Gestor: ${(c.gestores || []).map(nome).map(esc).join(' ou ') || '—'} · não passa pelos anteriores</td><td>Todos os setores</td></tr>
+        <tr><td>Acima do limite do gestor</td><td>Gestor aprova e depois ${(c.validadores || []).map(nome).map(esc).join(' ou ') || 'a validação'} valida para seguir</td><td>Todos os setores</td></tr>
+      </tbody></table></div>
+      <p class="muted" style="margin:8px 0 0">O setor do item é o setor de quem pediu (na compra, de quem fez a requisição). Sem supervisor no setor, sobe para o coordenador; sem coordenador, sobe para o gestor.
+        Ninguém aprova o próprio pedido: a pessoa sai da lista e, se ninguém sobrar, sobe um nível. A regra vale para o que for enviado para aprovação a partir da mudança.</p>
+    </div>
+    <div class="cartao"><h2>Gestores e validação</h2><div class="form">
+      <div class="campo largo"><span>Gestores (aprovam acima do coordenador, de qualquer setor)</span>${escolha('gestores', c.gestores || [])}</div>
+      <div class="campo largo"><span>Validação acima do limite do gestor</span>${escolha('validadores', c.validadores || [])}</div></div></div>
+    <div class="cartao"><h2>Supervisores e coordenadores por setor</h2>
+      <div class="tabela-wrap"><table class="tabela compacta ra-tab"><thead><tr><th>Setor</th><th>Supervisores (até ${brl(c.limite_supervisor)})</th><th>Coordenadores (até ${brl(c.limite_coordenador)})</th></tr></thead><tbody>
+      ${ss.map(s => `<tr><td data-r="Setor"><b>${esc(s.nome)}</b><br><span class="muted">${qtd(s.id)} usuário(s)</span></td><td data-r="Supervisores">${escolha('sup_' + s.id, s.supervisores || [])}</td><td data-r="Coordenadores">${escolha('coo_' + s.id, s.coordenadores || [])}</td></tr>`).join('')}
+      </tbody></table></div>
+      <p class="muted" style="margin:8px 0 0">O setor de cada pessoa vem do cadastro de usuário (campo Setor). Confira em Usuários e perfis se cada um está no setor certo.</p></div>
+    ${ed ? '<div class="acoes" style="justify-content:flex-end"><button class="btn prim">Salvar regras</button></div>' : '<p class="muted">Somente administrador ou diretoria alteram estas regras.</p>'}
+    </form>`;
+  const f = $('#ra', tela);
+  $$('.ra-sel input', f).forEach(i => i.addEventListener('change', () => { const box = i.closest('.ra-sel'), sel = $$('input:checked', box).map(x => x.value);
+    box.querySelector('summary').innerHTML = (sel.length ? sel.map(x => `<span class="tag">${esc(nome(x))}</span>`).join(' ') : '<span class="muted">Ninguém</span>') + ' <span class="ra-mudar">alterar</span>'; }));
+  f.onsubmit = async e => {
+    e.preventDefault(); const fd = new FormData(f);
+    const p = { config: { limite_supervisor: num(fd.get('limite_supervisor')), limite_coordenador: num(fd.get('limite_coordenador')), limite_gestor: num(fd.get('limite_gestor')),
+                          gestores: fd.getAll('gestores'), validadores: fd.getAll('validadores') },
+                setores: ss.map(s => ({ id: s.id, supervisores: fd.getAll('sup_' + s.id), coordenadores: fd.getAll('coo_' + s.id) })) };
+    await ocupado(e.submitter, async () => { try { await api.rpc('salvar_regra_aprovacao', { p }); aviso('Regras de aprovação salvas.'); navegar(); } catch (err) { falha(err); } });
+  };
+});
+
 rota('/config/auditoria', async tela => {
   const tab = estado.params.get('tabela') || '';
   const linhas = await api.listar('auditoria', `order=id.desc&limit=300${tab ? '&tabela=eq.' + tab : ''}`);

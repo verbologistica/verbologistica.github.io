@@ -326,10 +326,10 @@ rota('/financeiro/fundo', async tela => {
   const comColab = adts.reduce((s, a) => s + Number(a.valor), 0);
   const aAprovar = pendFundo.reduce((s, r) => s + Number(r.valor), 0);
   // com quem está cada despesa pendente
-  const apsF = pendFundo.length ? await api.listar('aprovacoes', `select=entidade_id,aprovador_id,perfil_aprovador&entidade=eq.reembolso&decisao=eq.pendente&entidade_id=${lista(pendFundo.map(r => r.id))}`).catch(() => []) : [];
+  const apsF = pendFundo.length ? await api.listar('aprovacoes', `select=entidade_id,aprovador_id,perfil_aprovador,aprovadores,regra&entidade=eq.reembolso&decisao=eq.pendente&entidade_id=${lista(pendFundo.map(r => r.id))}`).catch(() => []) : [];
   const nomesU = porId(await usuarios().catch(() => []));
-  const comQuem = [...new Set([...apsF.map(x => (nomesU[x.aprovador_id]?.nome || x.perfil_aprovador || '—') + (x.aprovador_id !== estado.usuario.id && aprovoComo(x.aprovador_id) ? ' e você' : '')), ...pendFundo.filter(r => r.status === 'devolvido').map(() => 'quem lançou (devolvida p/ correção)')])];
-  const minhas = apsF.some(x => aprovoComo(x.aprovador_id));
+  const comQuem = [...new Set([...apsF.map(x => aguardandoTxt(x, nomesU) + (souAprovadorDe(x) && ![x.aprovador_id, ...(x.aprovadores || [])].includes(estado.usuario.id) ? ' e você' : '')), ...pendFundo.filter(r => r.status === 'devolvido').map(() => 'quem lançou (devolvida p/ correção)')])];
+  const minhas = apsF.some(souAprovadorDe);
   // indicadores do período (ou de todo o histórico, sem filtro)
   const soma = f => movs.filter(f).reduce((x, m) => x + Number(m.valor), 0);
   const depositado = soma(m => ['transferencia', 'reposicao'].includes(m.origem) || (m.origem === 'ajuste' && Number(m.valor) > 0));

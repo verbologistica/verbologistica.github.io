@@ -107,7 +107,7 @@ async function formColaborador(tela, c = null) {
         ${campo('Jornada', inp('jornada', 'placeholder="Ex.: 44h semanais / 12x36"'))}${campo('Horário de trabalho', inp('horario_trabalho', 'placeholder="Ex.: das 07:30 às 17:18"'))}${campo('Horário de intervalo', inp('horario_intervalo', 'placeholder="Ex.: das 12:00 às 13:00"'))}
         ${campo('Escala', inp('escala', 'placeholder="Ex.: Turno A, 2MW"'))}
         ${campo('Salário (R$)', `<input name="salario" inputmode="decimal" value="${c?.salario != null ? Number(c.salario).toFixed(2).replace('.', ',') : ''}">`)}
-        <div class="campo"><span>Gestor imediato</span>${htmlSelPessoas('gestor', c?.gestor ? [c.gestor] : [], 'Buscar colaborador, usuário ou fornecedor…', 1)}</div>
+        <div class="campo"><span id="rot-gestor">Gestor imediato</span>${htmlSelPessoas('gestor', [c?.gestor, ...(c?.gestores_extra || [])].filter(Boolean), 'Buscar colaborador, usuário ou fornecedor…', 1)}<span class="muted" id="dica-gestor" hidden>Motorista pode ter mais de um líder imediato (líderes de campo). O primeiro é o que aparece no organograma.</span></div>
         ${campo('Acesso ao sistema (usuário)', sel('usuario_id', us.filter(u => u.ativo).map(u => [u.id, u.nome + ' · ' + loginDe(u)]), c?.usuario_id, 'Sem acesso'))}
         ${c?.status === 'desligado' || c?.data_desligamento ? campo('Data do desligamento', dt('data_desligamento')) + campo('Motivo do desligamento', inp('motivo_desligamento'), true) : ''}
       </div></div>
@@ -172,7 +172,13 @@ async function formColaborador(tela, c = null) {
     if (u && f.usuario_id && !f.usuario_id.value) { f.usuario_id.value = u.id; aviso(`Este CPF tem acesso ao sistema (${u.nome}): ligado ao colaborador.`); }
     if (u) { ['telefone', 'email'].forEach(n => { if (f[n] && !f[n].value && u[n]) { f[n].value = u[n]; f[n].dispatchEvent(new Event('input', { bubbles: true })); } }); } });
   f.cipeiro?.addEventListener('change', () => { $('#f-cipa-fn').hidden = !f.cipeiro.checked; if (!f.cipeiro.checked) f.cipa_funcao.value = ''; });
-  f.cargo_id.addEventListener('change', () => { const cg = cgs.find(x => x.id === f.cargo_id.value); if (cg?.setor_id && !f.setor_id.value) f.setor_id.value = cg.setor_id; avisoCNH(); });
+  f.cargo_id.addEventListener('change', () => { const cg = cgs.find(x => x.id === f.cargo_id.value); if (cg?.setor_id && !f.setor_id.value) f.setor_id.value = cg.setor_id; avisoCNH(); modoGestor(); });
+  // motorista: mais de um líder imediato (líderes de campo)
+  const ehMotorista = () => !!cgs.find(x => x.id === f.cargo_id.value)?.motorista;
+  const modoGestor = () => { const box = $('[data-selpes="gestor"]', f), m = ehMotorista(); if (!box) return;
+    if (m) delete box.dataset.max; else box.dataset.max = '1';
+    $('#rot-gestor', f).textContent = m ? 'Líderes imediatos (líderes de campo)' : 'Gestor imediato'; $('#dica-gestor', f).hidden = !m; };
+  modoGestor();
   const ordemCNH = { A: 0, B: 1, AB: 1, C: 2, AC: 2, D: 3, AD: 3, E: 4, AE: 4 };
   const cnhAtende = (cat, min) => { const nv = { B: 1, C: 2, D: 3, E: 4 }, alto = x => Math.max(0, ...[...String(x)].map(c => nv[c] || 0));
     return (!String(min).includes('A') || String(cat).includes('A')) && alto(cat) >= alto(min); };
@@ -199,7 +205,7 @@ async function formColaborador(tela, c = null) {
     for (const [k, val] of Object.entries(d)) { if (k.startsWith('_')) continue; dados[k] = typeof val === 'boolean' ? val : (val === '' ? null : val); }
     Object.assign(dados, { matricula: String(d.matricula || '').trim() || null, cpf: soDigitos(d.cpf) || null, telefone: soDigitos(d.telefone) || null, telefone2: soDigitos(d.telefone2) || null,
       emergencia_telefone: soDigitos(d.emergencia_telefone) || null, cep: soDigitos(d.cep) || null, salario: num(d.salario),
-      banco: (d.banco || '').match(/^\d{1,3}/)?.[0] || d.banco || null, gestor: lerPessoas(d.gestor)[0] || null });
+      banco: (d.banco || '').match(/^\d{1,3}/)?.[0] || d.banco || null, gestor: lerPessoas(d.gestor)[0] || null, gestores_extra: ehMotorista() ? lerPessoas(d.gestor).slice(1) : [] });
     await ocupado(e.submitter, async () => {
       try {
         let id = c?.id;
@@ -244,7 +250,7 @@ rota('/rh/colaboradores/ver/:id', async (tela, id) => {
         ${linha('Emergência', [c.emergencia_nome, c.emergencia_parentesco, fmtTel(c.emergencia_telefone || '')].filter(Boolean).join(' · '))}
         ${linha('Contrato', [TIPOS_CONTRATO[c.tipo_contrato], c.jornada, c.escala].filter(Boolean).join(' · '))}
         ${linha('Admissão', dataBR(c.data_admissao))}${c.experiencia_fim2 && ['clt', 'experiencia'].includes(c.tipo_contrato) ? linha('Experiência', `${dataBR(c.experiencia_fim1)} e ${dataBR(c.experiencia_fim2)}`) : ''}
-        ${c.salario != null ? linha('Salário', brl(c.salario)) : ''}${linha('Pix', c.pix_chave)}${linha('Gestor imediato', c.gestor?.nome ? c.gestor.nome + (c.gestor.fornecedor_id ? ' (fornecedor)' : c.gestor.externo ? ' (externo)' : '') : '')}
+        ${c.salario != null ? linha('Salário', brl(c.salario)) : ''}${linha('Pix', c.pix_chave)}${linha((c.gestores_extra || []).length ? 'Líderes imediatos' : 'Gestor imediato', [c.gestor, ...(c.gestores_extra || [])].filter(g => g?.nome).map(g => g.nome + (g.fornecedor_id ? ' (fornecedor)' : g.externo ? ' (externo)' : '')).join(', '))}
         ${c.status === 'desligado' ? linha('Desligamento', `${dataBR(c.data_desligamento)} · ${c.motivo_desligamento || ''}`) : ''}
         ${c.observacoes ? `<div class="largo"><div class="muted">Observações</div><div style="white-space:pre-line">${esc(c.observacoes)}</div></div>` : ''}
       </div></div>`,

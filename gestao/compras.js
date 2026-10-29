@@ -252,7 +252,8 @@ rota('/compras/cotacoes/ver/:id', async (tela, id) => {
   const anx = {}; await Promise.all(props.map(async p => (anx[p.id] = await htmlAnexos('proposta', p.id))));
   const conta = c.conta_id ? (await contas()).find(x => x.id === c.conta_id) : null;
   const apPend = aprs.find(a => a.decisao === 'pendente');
-  const souAprovador = apPend && (aprovoComo(apPend.aprovador_id) || (apPend.perfil_aprovador && tem(apPend.perfil_aprovador))) && c.comprador_id !== estado.usuario.id;
+  const nomesAp = aprs.length ? porId(await usuarios().catch(() => [])) : {};
+  const souAprovador = apPend && souAprovadorDe(apPend) && c.comprador_id !== estado.usuario.id;
   tela.innerHTML = `
     <div class="topo"><div><h1>Cotação ${esc(c.numero)}</h1><p class="sub">${tag(c.status)} · Requisição <a href="#/compras/requisicoes/ver/${c.requisicao_id}">${esc(r?.numero || '')}</a> · ${esc(r?.justificativa || '')}</p></div>
       <div class="acoes">${aberta ? '<button class="btn" id="nova-prop">+ Proposta</button><button class="btn prim" id="enviar">Enviar para aprovação</button>' : ''}
@@ -279,7 +280,7 @@ rota('/compras/cotacoes/ver/:id', async (tela, id) => {
       ${c.justificativa_escolha ? `<p class="alerta-obs" style="margin-top:10px"><b>Por que não a mais barata:</b> ${esc(c.justificativa_escolha)}</p>` : ''}
       ${conta ? `<p class="muted">Conta do plano: ${esc(conta.codigo + ' ' + conta.nome)}</p>` : ''}</div>
     <div class="cartao"><h2>Itens pedidos</h2>${tabelaItens(itens.map(i => ({ ...i, valor: i.valor_estimado })), 'Valor unit. estimado')}</div>
-    ${aprs.length ? `<div class="cartao"><h2>Aprovação</h2><ul class="lista-simples">${aprs.map(a => `<li><span>${tag(a.decisao)} ${a.comentario ? esc(a.comentario) : ''}</span><span class="muted">${dataHoraBR(a.decidido_em || a.solicitado_em)}</span></li>`).join('')}</ul></div>` : ''}`;
+    ${aprs.length ? `<div class="cartao"><h2>Aprovação</h2><ul class="lista-simples">${aprs.map(a => `<li><span>${a.decisao === 'pendente' ? 'Aguardando ' + esc(aguardandoTxt(a, nomesAp)) : `${tag(a.decisao)}${a.aprovador_id && nomesAp[a.aprovador_id] ? ' por ' + esc(nomesAp[a.aprovador_id].nome) : ''}`} ${a.comentario ? esc(a.comentario) : ''}</span><span class="muted">${dataHoraBR(a.decidido_em || a.solicitado_em)}</span></li>`).join('')}</ul></div>` : ''}`;
 
   $('#cancelar-cot')?.addEventListener('click', async () => {
     const motivo = await confirmar('Cancelar esta compra? A requisição, a cotação e a aprovação pendente são canceladas (o histórico fica guardado).', { comMotivo: true, botao: 'Cancelar compra' });
@@ -371,7 +372,7 @@ rota('/compras/cotacoes/ver/:id', async (tela, id) => {
 
 // ---------- Cartões de compra na tela Aprovações ----------
 async function cartoesCotacao(pend) {
-  const meus = pend.filter(a => a.entidade === 'cotacao' && (aprovoComo(a.aprovador_id) || (a.perfil_aprovador && tem(a.perfil_aprovador))));
+  const meus = pend.filter(a => a.entidade === 'cotacao' && souAprovadorDe(a));
   if (!meus.length) return { html: '', n: 0 };
   const ids = meus.map(a => a.entidade_id);
   const [cots, props, forns] = await Promise.all([

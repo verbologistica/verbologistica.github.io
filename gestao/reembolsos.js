@@ -262,7 +262,7 @@ rota('/reembolsos/ver/:id', async (tela, id) => {
     </div></div>
     <div class="cartao"><h2>Histórico</h2><ul class="lista-simples">
       <li><span>Lançado</span><span class="muted">${dataHoraBR(r.criado_em)}</span></li>
-      ${aprov.map(a => `<li><span>${a.decisao === 'pendente' ? 'Aguardando ' + (a.aprovador_id ? esc(nomes[a.aprovador_id]?.nome) : 'perfil ' + esc(a.perfil_aprovador)) : `${tag(a.decisao)} por ${esc(nomes[a.aprovador_id]?.nome || '—')}${a.comentario ? ' — “' + esc(a.comentario) + '”' : ''}`}</span>
+      ${aprov.map(a => `<li><span>${a.decisao === 'pendente' ? 'Aguardando ' + esc(aguardandoTxt(a, nomes)) : `${tag(a.decisao)} por ${esc(nomes[a.aprovador_id]?.nome || '—')}${a.comentario ? ' — “' + esc(a.comentario) + '”' : ''}`}</span>
         <span class="muted">${dataHoraBR(a.decidido_em || a.solicitado_em)}</span></li>`).join('')}
     </ul></div>`;
   ligarObservacao('reembolsos', id, r.observacoes);
@@ -370,9 +370,9 @@ rota('/aprovacoes', async tela => {
   const idsA = pend.filter(a => a.entidade === 'adiantamento').map(a => a.entidade_id);
   const adts = idsA.length ? porId(await api.listar('adiantamentos', `select=*,colab:usuarios(nome)&id=${lista(idsA)}`)) : {};
   const meusA = pend.filter(a => a.entidade === 'adiantamento' && adts[a.entidade_id]?.status === 'aguardando_aprovacao' && adts[a.entidade_id].colaborador_id !== estado.usuario.id
-                          && (aprovoComo(a.aprovador_id) || (a.perfil_aprovador && tem(a.perfil_aprovador))));
+                          && souAprovadorDe(a));
   const meus = pend.filter(a => a.entidade === 'reembolso' && docs[a.entidade_id]?.status === 'aguardando_aprovacao' && docs[a.entidade_id].colaborador_id !== estado.usuario.id
-                         && (aprovoComo(a.aprovador_id) || (a.perfil_aprovador && tem(a.perfil_aprovador))));
+                         && souAprovadorDe(a));
   const comp = await cartoesCotacao(pend);
   const auto = estado.usuario.autoaprovacao ? await api.rpc('minhas_autoaprovacoes').catch(() => []) : [];
   const ENT_AUTO = { reembolso: 'Reembolso', cotacao: 'Compra (cotação)', requisicao: 'Requisição', adiantamento: 'Adiantamento', pagamento: 'Pagamento' };
