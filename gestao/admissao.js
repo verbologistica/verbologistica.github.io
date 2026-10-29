@@ -652,7 +652,7 @@ rota('/rh/admissoes/ver/:id', async (tela, id) => {
       banco: !((col.pix_chave || '').trim() || (col.conta || '').trim()), setor: !col.setor_id, fotos: !(col.foto_caminho && col.foto_cracha_caminho) };
     const fotos = typeof htmlFotosColaborador === 'function' ? await htmlFotosColaborador(col, true) : '';
     const r = await modal(`<form><h2>Completar ficha · ${esc(col.nome)}</h2><div class="form">
-      <p class="muted largo">Só aparecem os dados que faltam para a etapa. Os demais ficam na ficha completa.</p>
+      <p class="muted largo">Aparecem só os dados que faltam e as fotos. O restante fica na ficha completa (menu Mais).</p>
       ${falta.cpf ? `<label class="campo">CPF *<input name="cpf" required value="${v('cpf')}"></label>` : ''}
       ${falta.nasc ? `<label class="campo">Data de nascimento *<input type="date" name="data_nascimento" required value="${v('data_nascimento')}"></label>` : ''}
       ${falta.tel ? `<label class="campo">Celular *<input name="telefone" required inputmode="tel" value="${esc(fmtTel(col.telefone || ''))}"></label>` : ''}
@@ -668,7 +668,7 @@ rota('/rh/admissoes/ver/:id', async (tela, id) => {
         <label class="campo">Agência<input name="agencia" value="${v('agencia')}"></label><label class="campo">Conta<input name="conta" value="${v('conta')}"></label>
         <label class="campo">Tipo de chave Pix<select name="pix_tipo"><option value=""></option>${(typeof TIPOS_PIX !== 'undefined' ? TIPOS_PIX : ['CPF', 'Celular', 'E-mail', 'Aleatória']).map(x => `<option ${x === col.pix_tipo ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
         <label class="campo">Chave Pix<input name="pix_chave" value="${v('pix_chave')}"></label>` : ''}
-      ${falta.fotos ? `<h3 class="largo">Fotos</h3><div class="largo">${fotos}</div>` : ''}</div>
+      <h3 class="largo">Fotos ${falta.fotos ? '<span class="tag vermelho">falta foto</span>' : '<span class="muted">(já enviadas — troque se precisar)</span>'}</h3><div class="largo">${fotos}</div></div>
       <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Salvar na ficha</button></div></form>`,
       { validar: d => falta.cpf && !cpfValido(d.cpf) ? 'CPF inválido.' : falta.banco && !(d.pix_chave || d.conta) ? 'Informe a conta ou a chave Pix.' : null });
     if (!r) return;
