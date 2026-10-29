@@ -561,6 +561,7 @@ rota('/rh/admissoes/ver/:id', async (tela, id) => {
       (AD_MODELOS[e.codigo] || []).forEach(([cod, t]) => P.push(`<button class="btn peq" data-mod="${cod}" title="Gera o documento preenchido para baixar e enviar">📄 ${esc(t)}</button>`));
       M.push(`<button class="btn peq" data-na="${e.id}">Não se aplica a este colaborador</button>`);
     }
+    if (!pend && rh && e.status === 'feito' && ['aso', 'tox', 'contrato'].includes(e.codigo) && docsFalta(e.codigo).length) P.push(`<button class="btn peq prim" data-docs="${e.codigo}">${e.codigo === 'aso' ? 'Anexar ASO à ficha' : e.codigo === 'tox' ? 'Anexar resultado à ficha' : 'Anexar contrato assinado'}</button>`);
     if (e.codigo === 'cliente' && (meu || rh) && (pend || (e.status === 'nao_se_aplica' && rh))) P.push(`<button class="btn peq" data-cli="definir">${a.cliente ? 'Trocar cliente' : 'Informar cliente'}</button>`);
     if (e.codigo === 'cliente' && pend && meu && a.cliente) P.push(!a.cli_enviado_em ? '<button class="btn peq prim" data-cli="enviar">Docs enviados ao cliente</button>' : '<button class="btn peq ok" data-cli="aprovar">Cliente aprovou</button><button class="btn peq" data-cli="recusar">Cliente pediu ajuste</button>');
     if (e.precisa_conferencia && rh) P.push(`<button class="btn peq prim" data-conferir="${e.id}">Conferir</button><button class="btn peq" data-devolver="${e.id}">Devolver ao setor</button>`);
