@@ -451,6 +451,10 @@ rota('/compras/pedidos/ver/:id', async (tela, id) => {
   const podeReceber = ativo && !entregue && recebeProduto();
   const anxF = fat ? await htmlAnexos('faturamento', fat.id) : '';
   const anxR = {}; await Promise.all(recsV.map(async x => (anxR[x.id] = await htmlAnexos('recebimento', x.id))));
+  const recIt = recsV.length ? await api.listar('recebimento_itens', `recebimento_id=in.(${recsV.map(x => x.id).join(',')})&order=criado_em`).catch(() => []) : [];
+  const SIT_REC = { conferido: '', avaria: ' <span class="tag vermelho">avaria</span>', diferente: ' <span class="tag amarelo">diferente</span>', anterior: ' <span class="muted">(registrado antes)</span>' };
+  const htmlRecIt = rid => { const l = recIt.filter(x => x.recebimento_id === rid); if (!l.length) return '';
+    return `<ul class="rec-lista">${l.map(x => { const it = itens.find(i => i.id === x.pedido_item_id); return `<li>${esc(it?.descricao || 'Item')} · <b>${Number(x.quantidade).toLocaleString('pt-BR', { maximumFractionDigits: 3 })} ${esc(it?.unidade || '')}</b>${SIT_REC[x.situacao] || ''}${x.observacao ? ' · ' + esc(x.observacao) : ''}</li>`; }).join('')}</ul>`; };
   const parcelas = fat?.titulo_id && veTudo() ? await api.listar('titulo_parcelas', `titulo_id=eq.${fat.titulo_id}&order=parcela`).catch(() => []) : [];
   const situacao = !ativo ? tag('cancelado') : fat && entregue ? '<span class="tag verde">Concluído: faturado e recebido</span>'
     : `${fat ? '<span class="tag verde">Documentos lançados</span>' : '<span class="tag amarelo">Sem documentos fiscais</span>'} ${entregue ? '<span class="tag verde">Produto recebido</span>' : recsV.length ? '<span class="tag amarelo">Recebido em parte</span>' : '<span class="tag azul">Aguardando entrega</span>'}`;
@@ -492,6 +496,7 @@ rota('/compras/pedidos/ver/:id', async (tela, id) => {
       ${recsV.length ? `<ul class="lista-simples">${recsV.map(x => `<li style="flex-wrap:wrap"><span><b>${x.entrega_completa ? (x.status === 'com_divergencia' ? 'Recebido com divergência' : 'Recebido e conferido') : 'Recebido em parte'}</b>
           · chegou em ${dataBR(x.data_recebimento)}${x.quem?.nome ? ' · ' + esc(x.quem.nome) : ''}</span>
           ${recebeProduto() ? `<button class="btn peq" data-cancelar-rec="${x.id}">Cancelar</button>` : ''}
+          ${htmlRecIt(x.id) ? `<div style="flex-basis:100%">${htmlRecIt(x.id)}</div>` : ''}
           ${x.divergencia ? `<div style="flex-basis:100%" class="alerta-obs">${x.entrega_completa ? 'Divergência' : 'Faltou'}: ${esc(x.divergencia)}</div>` : ''}
           ${x.observacao ? `<div style="flex-basis:100%" class="muted">${esc(x.observacao)}</div>` : ''}
           <div style="flex-basis:100%"><span class="muted">Fotos/arquivos:</span> ${anxR[x.id]}</div></li>`).join('')}</ul>
@@ -622,26 +627,46 @@ rota('/compras/pedidos/ver/:id', async (tela, id) => {
 
   // ----- 2) Recebimento do produto (Almoxarifado / Patrimônio) -----
   $('#receber')?.addEventListener('click', async () => {
-    const res = await modal(`<form><h2>Recebimento do pedido ${esc(p.numero)}</h2>
-      <p class="muted">Confira o que chegou com o pedido (quantidade, modelo, estado da embalagem). ${fat ? `Documento já lançado: <b>${esc(fat.tipo_documento)} ${esc(fat.numero_documento)}</b>.` : 'A nota fiscal e o boleto são lançados por Compras/Financeiro — aqui é só a chegada do produto.'}</p>
-      <div class="cartao" style="margin:8px 0"><b>${esc(nomeForn(forn))}</b><ul class="lista-simples">${itens.map(i => `<li><span>${esc(i.descricao)}</span><b>${Number(i.quantidade).toLocaleString('pt-BR')} ${esc(i.unidade)}</b></li>`).join('')}</ul></div>
+    const st = await api.rpc('pedido_itens_recebidos', { p_pedido: id });
+    const its = (st.itens || []).map(i => ({ ...i, falta: Math.max(0, Number(i.pedido) - Number(i.recebido)) })).filter(i => i.falta > 0);
+    const antigos = !!st.antigos_sem_itens;
+    const qf = n => Number(n || 0).toLocaleString('pt-BR', { maximumFractionDigits: 3 });
+    const res = await modal(`<form class="rec-form"><h2>Recebimento do pedido ${esc(p.numero)}</h2>
+      <p class="muted">Confira item a item o que chegou. ${fat ? `Documento já lançado: <b>${esc(fat.tipo_documento)} ${esc(fat.numero_documento)}</b>.` : 'A nota fiscal e o boleto são lançados por Compras/Financeiro — aqui é só a chegada do produto.'}</p>
+      ${antigos ? '<p class="alerta-obs">Já houve um recebimento parcial registrado sem os itens. Nos itens que chegaram naquela vez, escolha <b>Já tinha chegado antes</b>.</p>' : ''}
+      <div class="acoes" style="margin:6px 0"><button type="button" class="btn peq" data-tudo>Chegou tudo o que falta</button><button type="button" class="btn peq" data-nada>Zerar quantidades</button></div>
+      <div class="tabela-wrap"><table class="tabela compacta rec-itens"><thead><tr><th>Item</th><th class="num">Pedido</th><th class="num">Já recebido</th><th class="num">Chegou agora</th><th>Situação</th><th>Detalhe</th></tr></thead><tbody>
+      ${its.map(i => `<tr data-it="${i.id}"><td data-r="Item"><b>${esc(i.descricao)}</b></td><td data-r="Pedido" class="num nowrap">${qf(i.pedido)} ${esc(i.unidade)}</td><td data-r="Já recebido" class="num nowrap">${qf(i.recebido)}</td>
+        <td data-r="Chegou agora" class="num"><input type="number" name="q_${i.id}" min="0" max="${i.falta}" step="any" value="${i.falta}" class="rec-q" data-falta="${i.falta}"></td>
+        <td data-r="Situação"><select name="s_${i.id}"><option value="conferido">Conferido</option><option value="avaria">Com avaria</option><option value="diferente">Diferente do pedido</option>${antigos ? '<option value="anterior">Já tinha chegado antes</option>' : ''}</select></td>
+        <td data-r="Detalhe"><input name="o_${i.id}" placeholder="Ex.: 1 trincado"></td></tr>`).join('')}</tbody></table></div>
+      <p id="rec-resumo" class="muted" style="margin:8px 0"></p>
       <div class="form">
       <label class="campo">Data em que chegou<input type="date" name="data" value="${hojeISO()}" max="${hojeISO()}" required></label>
-      <label class="campo largo">Conferência<select name="conf">
-        <option value="ok">Chegou tudo, conforme o pedido</option>
-        <option value="div">Chegou tudo, mas com divergência (avaria, modelo diferente…)</option>
-        <option value="parcial">Chegou só uma parte (faltam itens)</option></select></label>
-      <label class="campo largo" id="campo-div" hidden><span id="rot-div">O que está diferente?</span><textarea name="div" rows="2"></textarea></label>
-      <label class="campo largo">Observação (opcional)<input name="obs" placeholder="Ex.: guardado na prateleira B, entregue ao setor de TI"></label>
+      <label class="campo largo">Observação (opcional)<input name="obs" placeholder="Ex.: guardado na prateleira B, entregue ao setor de SSMA"></label>
       <label class="campo largo">Fotos / canhoto assinado (opcional)<input type="file" name="fotos" multiple accept="image/*,application/pdf"></label></div>
       <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn ok">Confirmar recebimento</button></div></form>`, {
-      aoAbrir: raiz => { const f = $('form', raiz); const ajusta = () => { $('#campo-div', raiz).hidden = f.conf.value === 'ok'; $('#rot-div', raiz).textContent = f.conf.value === 'parcial' ? 'O que faltou chegar?' : 'O que está diferente?'; }; f.conf.onchange = ajusta; ajusta(); },
-      validar: d => !d.data ? 'Informe a data.' : d.data > hojeISO() ? 'A data não pode ser futura.' : d.conf !== 'ok' && !d.div ? (d.conf === 'parcial' ? 'Informe o que faltou chegar.' : 'Descreva a divergência.') : null });
+      aoAbrir: raiz => { const f = $('form', raiz);
+        const resumo = () => { const falt = its.map(i => { const s = f['s_' + i.id].value, q = s === 'anterior' ? i.falta : Number(f['q_' + i.id].value || 0); f['q_' + i.id].disabled = s === 'anterior';
+            return i.falta - q > 0 ? `${qf(i.falta - q)} ${i.unidade} de ${i.descricao}` : null; }).filter(Boolean);
+          $('#rec-resumo', raiz).innerHTML = falt.length ? `<b>Vai continuar faltando:</b> ${esc(falt.join('; '))}` : '<b>Pedido completo</b> com este recebimento.'; };
+        $$('input,select', $('.rec-itens', raiz)).forEach(x => x.addEventListener('input', resumo));
+        $('[data-tudo]', raiz).onclick = () => { its.forEach(i => (f['q_' + i.id].value = i.falta)); resumo(); };
+        $('[data-nada]', raiz).onclick = () => { its.forEach(i => (f['q_' + i.id].value = 0)); resumo(); };
+        resumo(); },
+      validar: d => {
+        if (!d.data) return 'Informe a data.'; if (d.data > hojeISO()) return 'A data não pode ser futura.';
+        for (const i of its) { const q = Number(d['q_' + i.id] || 0), s = d['s_' + i.id];
+          if (s !== 'anterior' && (q < 0 || q > i.falta)) return `${i.descricao}: informe de 0 a ${qf(i.falta)} ${i.unidade}.`;
+          if (['avaria', 'diferente'].includes(s) && q > 0 && !String(d['o_' + i.id] || '').trim()) return `${i.descricao}: descreva a avaria ou a diferença.`; }
+        if (!its.some(i => d['s_' + i.id] !== 'anterior' && Number(d['q_' + i.id] || 0) > 0)) return 'Informe a quantidade de pelo menos um item que chegou.';
+        return null; } });
     if (!res) return;
     try {
-      const out = await api.rpc('confirmar_recebimento', { p_pedido: id, p_data: res.data, p_completa: res.conf !== 'parcial', p_divergencia: res.conf === 'ok' ? null : res.div, p_obs: res.obs || null });
+      const itens = its.map(i => ({ item: i.id, qtd: Number(res['q_' + i.id] || 0), situacao: res['s_' + i.id], obs: res['o_' + i.id] || null }));
+      const out = await api.rpc('confirmar_recebimento_itens', { p_pedido: id, p_data: res.data, p_itens: itens, p_obs: res.obs || null });
       if (res.fotos?.length) await anexarEm([['recebimento', out.recebimento]], res.fotos, 'Recebimento');
-      aviso(res.conf === 'parcial' ? 'Recebimento parcial registrado. Quando o restante chegar, confirme de novo.'
+      aviso(!out.completo ? 'Recebimento parcial registrado. Quando o restante chegar, confirme de novo: o sistema já sabe o que falta.'
         : fat ? 'Recebimento confirmado. Pedido concluído: faturado e recebido.' : 'Recebimento confirmado. Compras foi avisado de que faltam a nota e o boleto.'); navegar();
     } catch (err) { falha(err); }
   });
