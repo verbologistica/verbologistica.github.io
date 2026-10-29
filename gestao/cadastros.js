@@ -263,6 +263,7 @@ function formUsuario(u, atuais, ccs, funcoes) {
         <label class="check"><input type="radio" name="menus_modo" value="pers" ${u?.menus?.length ? 'checked' : ''}> Acesso personalizado: eu escolho cada tela e guia</label>
         <div id="lista-menus" ${!u?.menus?.length ? 'hidden' : ''}>
           <p class="muted ac-nota">Aparece no menu exatamente o que estiver marcado. O perfil continua definindo o que a pessoa pode <b>alterar</b> em cada tela; sem o perfil do setor, a tela abre só com o que o banco de dados libera para ela.</p>
+          <div class="ac-alerta alerta-obs" id="ac-alerta" hidden></div>
           <div class="ac-acoes"><button type="button" class="btn peq" data-ac="perfis">Marcar o que os perfis liberam</button><button type="button" class="btn peq" data-ac="tudo">Marcar tudo</button><button type="button" class="btn peq" data-ac="nada">Desmarcar tudo</button></div>
           ${(() => { const blocos = []; let g = null;
             MENU.forEach((i, k) => {
@@ -271,7 +272,7 @@ function formUsuario(u, atuais, ccs, funcoes) {
               g.itens.push([i, k]); });
             return blocos.map((b, bi) => `<details class="ac-grupo" open><summary><label class="check" onclick="event.stopPropagation()"><input type="checkbox" data-grupo="${bi}"> ${ico(b.ic)} <b>${esc(b.nome)}</b></label></summary>
               <div class="ac-itens">${b.itens.map(([i, k]) => i[0] === 'sub' ? `<div class="ac-sub">${esc(i[1])}</div>`
-                : `<div class="ac-item"><label class="check"><input type="checkbox" name="m_${k}" data-g="${bi}" data-perfis="${(i[2] || []).join(',')}" ${!u?.menus?.length || u.menus.includes(i[1]) ? 'checked' : ''}> ${esc(i[0])}</label>
+                : `<div class="ac-item"><label class="check"><input type="checkbox" name="m_${k}" data-g="${bi}" data-perfis="${(i[2] || []).join(',')}" ${!u?.menus?.length || u.menus.includes(i[1]) ? 'checked' : ''}> ${esc(i[0])}</label><span class="ac-falta" data-falta="${k}" hidden></span>
                    ${GUIAS[i[1]] ? `<div class="ac-guias"><span class="muted">Guias:</span>${GUIAS[i[1]].itens.map(([gk, gt]) => { const sel = (u?.menus || []).filter(x => x.startsWith(i[1] + '::'));
                      return `<label class="check"><input type="checkbox" name="g_${k}_${gk}" data-mk="${k}" ${!sel.length || sel.includes(i[1] + '::' + gk) ? 'checked' : ''}> ${esc(gt)}</label>`; }).join('')}</div>` : ''}</div>`).join('')}</div></details>`).join(''); })()}
         </div></div>
@@ -289,18 +290,32 @@ function ligarMenus(raiz) {
   const sincGrupos = () => $$('[data-grupo]', raiz).forEach(c => { const xs = itens().filter(x => x.dataset.g === c.dataset.grupo);
     c.checked = xs.length && xs.every(x => x.checked); c.indeterminate = !c.checked && xs.some(x => x.checked); });
   const sincGuias = () => $$('[data-mk]', raiz).forEach(c => { const m = $(`[name="m_${c.dataset.mk}"]`, raiz); c.disabled = !m.checked; c.closest('label').style.opacity = m.checked ? 1 : .5; });
+  // tela marcada sem o perfil que libera os dados dela: avisa (o menu aparece, mas a tela abre vazia ou bloqueada)
+  const NOME_P = Object.fromEntries(PERFIS.map(p => [p[0], p[1]])), SEM_PERFIL = ['#/rh/organograma'];
+  const sincFalta = () => { const perfis = PERFIS.map(p => p[0]).filter(p => $(`[name=p_${p}]`, raiz)?.checked), adm = perfis.includes('administrador'), faltas = {};
+    itens().forEach(c => { const k = c.name.slice(2), el = $(`[data-falta="${k}"]`, raiz), req = (c.dataset.perfis ? c.dataset.perfis.split(',') : []).filter(p => !p.startsWith('fch:'));
+      const fch = (c.dataset.perfis || '').includes('fch:'), href = MENU[k]?.[1];
+      const precisa = c.checked && !adm && !SEM_PERFIL.includes(href) && (req.length ? !req.some(p => perfis.includes(p)) : false);
+      const ok = precisa && fch && !req.filter(p => p !== 'administrador').length;
+      el.hidden = !precisa; if (!precisa) return;
+      const opc = req.filter(p => p !== 'administrador'); el.textContent = ok || fch && !opc.length ? 'só o responsável pelo fechamento (Fechamentos) ou administrador' : opc.length ? 'precisa do perfil ' + opc.map(p => NOME_P[p] || p).join(' ou ') : 'só administrador';
+      if (opc.length) (faltas[opc[0]] ||= []).push(MENU[k][0]); });
+    const al = $('#ac-alerta', raiz), ks = Object.keys(faltas); al.hidden = !ks.length;
+    if (ks.length) { al.innerHTML = `<b>Telas marcadas que não vão abrir os dados sem o perfil:</b> ${ks.map(p => `${esc(NOME_P[p] || p)} (${esc(faltas[p].join(', '))})`).join('; ')}.
+      O perfil libera ver e alterar os dados daquele setor. <button type="button" class="btn peq" data-addperfis>Marcar esses perfis</button>`;
+      $('[data-addperfis]', al).onclick = () => { ks.forEach(p => { const cb = $(`[name=p_${p}]`, raiz); if (cb) cb.checked = true; }); sincFalta(); }; } };
   raiz.addEventListener('change', e => {
     if (e.target.name === 'menus_modo') { lista.hidden = $('[name=menus_modo]:checked', raiz)?.value !== 'pers';
       if (!lista.hidden && !itens().some(x => x.checked)) marcarPerfis(); }
     if (e.target.dataset.grupo != null) itens().filter(x => x.dataset.g === e.target.dataset.grupo).forEach(x => (x.checked = e.target.checked));
-    sincGrupos(); sincGuias();
+    sincGrupos(); sincGuias(); sincFalta();
   });
   const marcarPerfis = () => { const perfis = PERFIS.map(p => p[0]).filter(p => $(`[name=p_${p}]`, raiz)?.checked);
     itens().forEach(c => { const req = c.dataset.perfis ? c.dataset.perfis.split(',') : null; c.checked = perfis.includes('administrador') || !req || req.some(p => perfis.includes(p)); }); };
   $$('[data-ac]', raiz).forEach(b => (b.onclick = () => { const a = b.dataset.ac;
     if (a === 'perfis') marcarPerfis(); else itens().forEach(c => (c.checked = a === 'tudo'));
-    if (a !== 'nada') $$('[data-mk]', raiz).forEach(c => (c.checked = true)); sincGrupos(); sincGuias(); }));
-  sincGrupos(); sincGuias();
+    if (a !== 'nada') $$('[data-mk]', raiz).forEach(c => (c.checked = true)); sincGrupos(); sincGuias(); sincFalta(); }));
+  sincGrupos(); sincGuias(); sincFalta();
 }
 // telas marcadas + guias ("#/tela::guia"; só grava guias quando nem todas estão marcadas)
 const menusEscolhidos = r => {
