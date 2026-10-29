@@ -262,7 +262,7 @@ function formUsuario(u, atuais, ccs, funcoes) {
         <label class="check"><input type="radio" name="menus_modo" value="perfil" ${!u?.menus?.length ? 'checked' : ''}> Padrão dos perfis marcados acima</label>
         <label class="check"><input type="radio" name="menus_modo" value="pers" ${u?.menus?.length ? 'checked' : ''}> Acesso personalizado: eu escolho cada tela e guia</label>
         <div id="lista-menus" ${!u?.menus?.length ? 'hidden' : ''}>
-          <p class="muted ac-nota">Aparece no menu exatamente o que estiver marcado. O perfil continua definindo o que a pessoa pode <b>alterar</b> em cada tela; sem o perfil do setor, a tela abre só com o que o banco de dados libera para ela.</p>
+          <p class="muted ac-nota">Aparece no menu exatamente o que estiver marcado, e a pessoa <b>usa</b> cada tela marcada (vê, lança e edita), mesmo sendo de outro setor. Aprovações seguem a Regra de aprovação, e as telas exclusivas do administrador só abrem para quem tem esse perfil.</p>
           <div class="ac-alerta alerta-obs" id="ac-alerta" hidden></div>
           <div class="ac-acoes"><button type="button" class="btn peq" data-ac="perfis">Marcar o que os perfis liberam</button><button type="button" class="btn peq" data-ac="tudo">Marcar tudo</button><button type="button" class="btn peq" data-ac="nada">Desmarcar tudo</button></div>
           ${(() => { const blocos = []; let g = null;
@@ -295,7 +295,8 @@ function ligarMenus(raiz) {
   const sincFalta = () => { const perfis = PERFIS.map(p => p[0]).filter(p => $(`[name=p_${p}]`, raiz)?.checked), adm = perfis.includes('administrador'), faltas = {};
     itens().forEach(c => { const k = c.name.slice(2), el = $(`[data-falta="${k}"]`, raiz), req = (c.dataset.perfis ? c.dataset.perfis.split(',') : []).filter(p => !p.startsWith('fch:'));
       const fch = (c.dataset.perfis || '').includes('fch:'), href = MENU[k]?.[1];
-      const precisa = c.checked && !adm && !SEM_PERFIL.includes(href) && (req.length ? !req.some(p => perfis.includes(p)) : false);
+      const pers = $('[name=menus_modo]:checked', raiz)?.value === 'pers', empresta = pers && (estado.telaPerfis || {})[href];
+      const precisa = c.checked && !adm && !SEM_PERFIL.includes(href) && !empresta && (req.length ? !req.some(p => perfis.includes(p)) : false);
       const ok = precisa && fch && !req.filter(p => p !== 'administrador').length;
       el.hidden = !precisa; if (!precisa) return;
       const opc = req.filter(p => p !== 'administrador'); el.textContent = ok || fch && !opc.length ? 'só o responsável pelo fechamento (Fechamentos) ou administrador' : opc.length ? 'precisa do perfil ' + opc.map(p => NOME_P[p] || p).join(' ou ') : 'só administrador';
@@ -515,6 +516,8 @@ async function conferirUsuario(u, D, abrir = true, aoAndar = null) {
   const perf = D.ps.filter(p => p.usuario_id === u.id).map(p => p.perfil);
   const fch = D.fs.filter(s => [...s.aprovadores, ...s.lancadores].includes(u.id)).map(s => s.codigo);
   const lider = !!(await api.rpc('lidera_alguem', { p_usuario: u.id }).catch(() => false));
+  if (!estado.telaPerfis) await telaPerfisCarregar(); const dT = perfisPelasTelas(u.menus);
+  dT.perfis.forEach(p => !perf.includes(p) && perf.push(p)); dT.fch.forEach(c => !fch.includes(c) && fch.push(c));
   const todos = [...perf, ...fch.map(c => 'fch:' + c), ...(lider ? ['lider'] : [])], adm = perf.includes('administrador');
   const itens = menuPara(todos, u.menus).filter(i => !['grupo', 'sub'].includes(i[0]));
   const NOME_P = Object.fromEntries(PERFIS.map(p => [p[0], p[1]])); const probs = [];
@@ -524,7 +527,7 @@ async function conferirUsuario(u, D, abrir = true, aoAndar = null) {
     if (MENU.some(x => x[0] !== 'grupo' && x[0] !== 'sub' && baseHref(x[1]) === r) && !itens.some(x => baseHref(x[1]) === r)) probs.push({ tela: i[0], tipo: 'erro', msg: 'aparece no menu, mas é barrada ao abrir' });
     const req = (i[2] || []).filter(p => p !== 'administrador');
     if (!adm && i[2] && !SEM_PERFIL_TELA.includes(i[1]) && !(i[2] || []).some(p => todos.includes(p)))
-      probs.push({ tela: i[0], tipo: 'perfil', msg: req.some(p => p.startsWith('fch:')) ? 'só abre os dados para o responsável pelo fechamento do setor (Fechamentos)' : req.length ? 'falta o perfil ' + req.map(p => NOME_P[p] || p).join(' ou ') + ' para ver os dados' : 'só administrador' });
+      probs.push({ tela: i[0], tipo: 'perfil', msg: req.length ? 'falta o perfil ' + req.map(p => NOME_P[p] || p).join(' ou ') + ' para ver os dados' : 'tela exclusiva do administrador: mesmo marcada, só abre para quem tem o perfil Administrador' });
   }
   if (Array.isArray(u.menus) && u.menus.length) { const mk = new Set(MENU.map(x => x[1]));
     u.menus.filter(x => !x.includes('::') && !mk.has(x)).forEach(x => probs.push({ tela: x, tipo: 'aviso', msg: 'está na lista de acesso, mas a tela não existe mais' }));

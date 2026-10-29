@@ -566,11 +566,19 @@ const baseHref = x => String(x || '').split('?')[0];
 const telaPermitida = h => { const r = '#' + h; return !MENU.some(i => i[0] !== 'grupo' && i[0] !== 'sub' && baseHref(i[1]) === r) || menu().some(i => baseHref(i[1]) === r); };
 // perfis e telas liberadas são relidos a cada minuto (e na hora, quando uma tela é negada): não precisa sair e entrar de novo
 let _acessoEm = 0;
+// tela marcada no acesso personalizado = a pessoa usa a tela: empresta o perfil do setor da tela (tabela tela_perfis, a mesma do banco)
+const telaPerfisCarregar = async () => (estado.telaPerfis = Object.fromEntries((await api.listar('tela_perfis', 'select=href,perfil').catch(() => [])).map(x => [x.href, x.perfil])));
+function perfisPelasTelas(menus, tp = estado.telaPerfis || {}) { const out = { perfis: [], fch: [] }; if (!Array.isArray(menus) || !menus.length) return out;
+  for (const h of new Set(menus)) { const p = tp[h]; if (!p || ['administrador', 'diretoria', 'aprovador'].includes(p)) continue; if (p.startsWith('fch:')) out.fch.push(p.slice(4)); else out.perfis.push(p); }
+  out.perfis = [...new Set(out.perfis)]; out.fch = [...new Set(out.fch)]; return out; }
+const aplicarPerfisDasTelas = () => { const d = perfisPelasTelas(estado.usuario?.menus); estado.perfis = [...new Set([...(estado.perfisReais || estado.perfis || []), ...d.perfis])];
+  estado.fch = [...new Set([...(estado.fchReais || estado.fch || []), ...d.fch])]; };
 async function atualizarAcesso(forcar = false) {
   if (!estado.usuario?.id || (!forcar && Date.now() - _acessoEm < 60000)) return; _acessoEm = Date.now();
   try { const [[u], ps, fs, lid] = await Promise.all([api.listar('usuarios', `id=eq.${estado.usuario.id}&select=*`), api.listar('usuario_perfis', `usuario_id=eq.${estado.usuario.id}&select=perfil`),
       api.listar('setores_fechamento', 'select=codigo,aprovadores,lancadores&ativo=is.true').catch(() => null), api.rpc('lidera_alguem', { p_usuario: estado.usuario.id }).catch(() => estado.lider)]);
-    if (u) estado.usuario = u; if (ps) estado.perfis = ps.map(p => p.perfil); if (fs) estado.fch = fs.filter(s => [...s.aprovadores, ...s.lancadores].includes(estado.usuario.id)).map(s => s.codigo); estado.lider = !!lid;
+    if (u) estado.usuario = u; if (ps) estado.perfisReais = ps.map(p => p.perfil); if (fs) estado.fchReais = fs.filter(s => [...s.aprovadores, ...s.lancadores].includes(estado.usuario.id)).map(s => s.codigo); estado.lider = !!lid;
+    await telaPerfisCarregar(); aplicarPerfisDasTelas();
   } catch { /* segue com o que já tinha */ } }
 
 
@@ -917,6 +925,7 @@ async function iniciar() {
     estado.fch = (await api.listar('setores_fechamento', 'select=codigo,aprovadores,lancadores&ativo=is.true').catch(() => []))
       .filter(s => [...s.aprovadores, ...s.lancadores].includes(u.id)).map(s => s.codigo);
     estado.lider = await api.rpc('lidera_alguem', { p_usuario: u.id }).catch(() => false); _acessoEm = Date.now();
+    estado.perfisReais = estado.perfis; estado.fchReais = estado.fch; await telaPerfisCarregar(); aplicarPerfisDasTelas();
     estado.cache = {};
     if (!location.hash || location.hash === '#') location.hash = '#/inicio';
     await navegar();
