@@ -1462,3 +1462,17 @@ body.tema-vx .ag-d { background: rgba(255,255,255,.05); }
 .ag-fer-i { border: 1.5px dashed #E0A53A; background: transparent !important; width: 8px !important; height: 8px !important; border-radius: 2px !important; }
 .ag-fer { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 10px; font-size: 12px; color: var(--cinza); } .ag-fer svg { width: 14px; height: 14px; color: #E0A53A; }
 body.tema-vx .fer-item { background: rgba(255,255,255,.06); color: #E9F0EC; border-color: rgba(255,255,255,.1); }
+/* v138 · paleta escolhida pela Ana: fundo #123A2A (cartões um tom acima, acento #2E6B4A, texto #D7E7D6, alerta #D36B7A) */
+body.tema-vx { background: #123A2A; }
+body.tema-vx .conteudo { --fundo: #123A2A; --cartao: #184634; --borda: rgba(215,231,214,.12); --cinza: #AFC6B3; --cinza-claro: rgba(215,231,214,.07);
+  --vermelho: #E58A96; --vermelho-claro: rgba(211,107,122,.18); color: #EAF3E9; }
+body.tema-vx .conteudo .cartao { background: linear-gradient(180deg, #1A4A37 0%, #164231 100%); border-color: rgba(215,231,214,.11); box-shadow: inset 0 1px 0 rgba(255,255,255,.05), 0 16px 32px -26px rgba(6,31,24,.9); }
+body.tema-vx .inicio-kpis .kpi, body.tema-vx .pn-kpi { background: linear-gradient(180deg, #1B4C39, #174433); border-color: rgba(215,231,214,.11); box-shadow: 0 12px 26px -22px rgba(6,31,24,.9); }
+body.tema-vx .inicio-kpis .kpi:hover { border-color: #2E6B4A; }
+body.tema-vx .inicio-kpis .kpi .r, body.tema-vx .ik-tit h2 { color: #D7E7D6; }
+body.tema-vx .conteudo input, body.tema-vx .conteudo select, body.tema-vx .conteudo textarea { background: #0F3324; border-color: rgba(215,231,214,.16); }
+body.tema-vx .conteudo .btn { border-color: rgba(215,231,214,.18); } body.tema-vx .conteudo .btn:hover { background: #2E6B4A; }
+body.tema-vx .ag-d { background: rgba(215,231,214,.06); } body.tema-vx .ag-d.sel { background: #2E6B4A; }
+body.tema-vx .ma-lista li.atr { background: linear-gradient(90deg, rgba(211,107,122,.16), transparent 60%); }
+.ag-verm { background: #D36B7A; }
+.lateral { background: linear-gradient(180deg, #0F3324 0%, #0D2E20 60%, #0B291D 100%); }
