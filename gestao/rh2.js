@@ -775,10 +775,14 @@ function orgMontar(cs, cgs, ss) {
   const raizes = [...nos.values()].filter(n => !n.pai || !nos.has(n.pai)).sort((a, b) => b.equipe - a.equipe || a.nome.localeCompare(b.nome, 'pt-BR'));
   return { nos, raizes, corSetor };
 }
+// foto (crachá ou ficha) no lugar das iniciais, quando houver
+const ORG_FOTOS = {};
+const orgAvatar = n => { const u = n.tipo === 'colab' && ORG_FOTOS[n.id];
+  return u ? `<span class="og-av og-foto"><img src="${esc(u)}" alt="" loading="lazy" onerror="this.parentNode.classList.remove('og-foto');this.parentNode.textContent='${esc(orgIniciais(n.nome))}'"></span>` : `<span class="og-av">${esc(orgIniciais(n.nome))}</span>`; };
 function orgCard(n, abertos) {
   const sub = n.filhos.length;
   return `<div class="og-card og-${n.tipo}" data-k="${esc(n.k)}" style="--c:${n.cor}" tabindex="0">
-    <div class="og-topo"><span class="og-av">${esc(orgIniciais(n.nome))}</span><div class="og-id"><b>${esc(n.nome)}</b><span>${esc(n.cargo || '—')}</span></div></div>
+    <div class="og-topo">${orgAvatar(n)}<div class="og-id"><b>${esc(n.nome)}</b><span>${esc(n.cargo || '—')}</span></div></div>
     <div class="og-pe">${n.tipo === 'colab' ? (n.setor ? `<span class="og-setor">${esc(n.setor)}</span>` : '<span class="og-setor sem">Sem setor</span>') : `<span class="og-setor ext">${n.tipo === 'prestador' ? 'Prestador' : 'Externo'}</span>`}
       ${sub ? `<button type="button" class="og-tg" data-tg="${esc(n.k)}" title="${abertos.has(n.k) ? 'Recolher' : 'Expandir'} equipe">${ico('pessoas')} ${n.equipe}<i>${abertos.has(n.k) ? '−' : '+'}</i></button>` : ''}</div></div>`;
 }
@@ -797,6 +801,7 @@ function orgFilhos(lista, abertos, vis, rotulo) {
 rota('/rh/organograma', async tela => {
   // todos veem o organograma completo (a função entrega só os dados do organograma)
   const [cs, cgs, ss] = await Promise.all([api.rpc('organograma_dados').then(r => r || []), cargosL(), setoresL()]);
+  await Promise.all(cs.filter(c => c.foto && !ORG_FOTOS[c.id]).map(async c => { ORG_FOTOS[c.id] = await api.linkArquivo(c.foto).catch(() => null); }));
   const setores = ss.filter(s => s.ativo);
   let M = orgMontar(cs, cgs, setores);
   const abertos = new Set([...M.nos.values()].filter(n => n.filhos.length).map(n => n.k));
@@ -848,7 +853,7 @@ rota('/rh/organograma', async tela => {
   // gaveta de detalhes
   const abrirGaveta = k => {
     const n = M.nos.get(k); if (!n) return; const pai = n.pai ? M.nos.get(n.pai) : null;
-    $gav.innerHTML = `<div class="og-gv-cab" style="--c:${n.cor}"><span class="og-av">${esc(orgIniciais(n.nome))}</span><div><b>${esc(n.nome)}</b><span>${esc(n.cargo || '')}</span></div><button type="button" class="btn peq" data-fg title="Fechar">✕</button></div>
+    $gav.innerHTML = `<div class="og-gv-cab" style="--c:${n.cor}">${orgAvatar(n)}<div><b>${esc(n.nome)}</b><span>${esc(n.cargo || '')}</span></div><button type="button" class="btn peq" data-fg title="Fechar">✕</button></div>
       <div class="og-gv-corpo">
         ${n.tipo === 'colab' ? `<div class="og-gv-l"><span>Setor</span><b>${esc(n.setor || '—')}</b></div><div class="og-gv-l"><span>Situação</span><b>${esc((typeof STATUS_COLAB !== 'undefined' && STATUS_COLAB[n.status]?.[0]) || n.status || '—')}</b></div>
           ${n.admissao ? `<div class="og-gv-l"><span>Admissão</span><b>${dataBR(n.admissao)}</b></div>` : ''}` : `<div class="og-gv-l"><span>Tipo</span><b>${n.tipo === 'prestador' ? 'Fornecedor / prestador de serviço' : 'Pessoa externa'}</b></div>`}
