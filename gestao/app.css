@@ -1485,3 +1485,4 @@ body.tema-vx .conteudo { --fundo: #123A2A; }
 /* Recebimento item a item */
 .rec-itens input[type=number] { width: 90px; text-align: right; } .rec-itens select, .rec-itens input[name^=o_] { min-width: 130px; }
 .rec-itens td { vertical-align: middle; } .rec-lista { margin: 4px 0 0; padding-left: 18px; font-size: 14px; } .rec-lista li { margin: 2px 0; }
+.modal:has(.rec-form) { max-width: min(1000px, 96vw); width: 100%; } .rec-itens td[data-r="Item"] { min-width: 220px; }

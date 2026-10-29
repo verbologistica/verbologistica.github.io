@@ -634,7 +634,7 @@ rota('/compras/pedidos/ver/:id', async (tela, id) => {
     const res = await modal(`<form class="rec-form"><h2>Recebimento do pedido ${esc(p.numero)}</h2>
       <p class="muted">Confira item a item o que chegou. ${fat ? `Documento já lançado: <b>${esc(fat.tipo_documento)} ${esc(fat.numero_documento)}</b>.` : 'A nota fiscal e o boleto são lançados por Compras/Financeiro — aqui é só a chegada do produto.'}</p>
       ${antigos ? '<p class="alerta-obs">Já houve um recebimento parcial registrado sem os itens. Nos itens que chegaram naquela vez, escolha <b>Já tinha chegado antes</b>.</p>' : ''}
-      <div class="acoes" style="margin:6px 0"><button type="button" class="btn peq" data-tudo>Chegou tudo o que falta</button><button type="button" class="btn peq" data-nada>Zerar quantidades</button></div>
+      <div class="acoes" style="margin:6px 0"><button type="button" class="btn peq" data-tudo>Chegou tudo o que falta</button><button type="button" class="btn peq" data-nada>Zerar quantidades</button>${antigos ? '<button type="button" class="btn peq" data-antes>Marcar todos como "já tinha chegado antes"</button>' : ''}</div>
       <div class="tabela-wrap"><table class="tabela compacta rec-itens"><thead><tr><th>Item</th><th class="num">Pedido</th><th class="num">Já recebido</th><th class="num">Chegou agora</th><th>Situação</th><th>Detalhe</th></tr></thead><tbody>
       ${its.map(i => `<tr data-it="${i.id}"><td data-r="Item"><b>${esc(i.descricao)}</b></td><td data-r="Pedido" class="num nowrap">${qf(i.pedido)} ${esc(i.unidade)}</td><td data-r="Já recebido" class="num nowrap">${qf(i.recebido)}</td>
         <td data-r="Chegou agora" class="num"><input type="number" name="q_${i.id}" min="0" max="${i.falta}" step="any" value="${i.falta}" class="rec-q" data-falta="${i.falta}"></td>
@@ -653,6 +653,7 @@ rota('/compras/pedidos/ver/:id', async (tela, id) => {
         $$('input,select', $('.rec-itens', raiz)).forEach(x => x.addEventListener('input', resumo));
         $('[data-tudo]', raiz).onclick = () => { its.forEach(i => (f['q_' + i.id].value = i.falta)); resumo(); };
         $('[data-nada]', raiz).onclick = () => { its.forEach(i => (f['q_' + i.id].value = 0)); resumo(); };
+        $('[data-antes]', raiz)?.addEventListener('click', () => { its.forEach(i => (f['s_' + i.id].value = 'anterior')); resumo(); });
         resumo(); },
       validar: d => {
         if (!d.data) return 'Informe a data.'; if (d.data > hojeISO()) return 'A data não pode ser futura.';
