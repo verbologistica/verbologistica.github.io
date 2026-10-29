@@ -61,19 +61,19 @@ rota('/rh/colaboradores', async tela => {
   const sts = pLista('status', 'todos'), st = sts[0], setores = pLista('setor').filter(s => s !== '-'), setor = setores[0] || '', q = (estado.params.get('q') || '').toLowerCase();
   const mapaF = { quadro: 'status=in.(em_admissao,ativo,ferias,afastado,aviso_previo)', candidatos: 'status=eq.candidato', desligados: 'status=eq.desligado', todos: 'status=neq.x' };
   const filtro = filtroOu(sts.map(s => mapaF[s] ?? mapaF.todos)) || mapaF.todos;
-  const [cs, ss, cgs] = await Promise.all([api.listar('colaboradores', `select=id,matricula,nome,cpf,status,setor_id,cargo_id,telefone,data_admissao,cnh_categoria,cnh_validade,usuario_id&ativo=eq.true&${filtro}${setores.length ? '&setor_id=in.(' + setores.join(',') + ')' : ''}&order=nome`), setoresL(), cargosL()]);
+  const [cs, ss, cgs] = await Promise.all([api.listar('colaboradores', `select=id,matricula,nome,cpf,status,setor_id,cargo_id,telefone,data_admissao,gestor,gestores_extra,usuario_id&ativo=eq.true&${filtro}${setores.length ? '&setor_id=in.(' + setores.join(',') + ')' : ''}&order=nome`), setoresL(), cargosL()]);
   const ls = cs.filter(c => !q || [c.nome, c.matricula, c.cpf].join(' ').toLowerCase().includes(q.replace(/[.\-]/g, '')) || c.nome.toLowerCase().includes(q));
   tela.innerHTML = `
     <div class="topo"><div><h1>Colaboradores</h1><p class="sub">${ls.length} pessoa(s)</p></div>${editaRH() ? '<a class="btn prim" href="#/rh/colaboradores/novo">+ Colaborador</a>' : ''}</div>
     <form class="filtros" id="filtros"><select name="status">${[['quadro', 'Quadro atual'], ['candidatos', 'Candidatos'], ['desligados', 'Desligados'], ['todos', 'Todos']].map(([v, t]) => `<option value="${v}" ${v === st ? 'selected' : ''}>${t}</option>`).join('')}</select>
       <select name="setor"><option value="">Todos os setores</option>${ss.map(s => `<option value="${s.id}" ${s.id === setor ? 'selected' : ''}>${esc(s.nome)}</option>`).join('')}</select>
       <input name="q" value="${esc(estado.params.get('q') || '')}" placeholder="Nome, matrícula ou CPF"><button class="btn">Filtrar</button></form>
-    <div class="cartao">${ls.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Matrícula</th><th>Nome</th><th>Cargo</th><th>Setor</th><th>Admissão</th><th>CNH</th><th>Situação</th></tr></thead><tbody>
+    <div class="cartao">${ls.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Matrícula</th><th>Nome</th><th>Cargo</th><th>Setor</th><th>Admissão</th><th>Superior imediato</th><th>Situação</th></tr></thead><tbody>
       ${ls.map(c => `<tr class="clicavel" onclick="location.hash='#/rh/colaboradores/ver/${c.id}'"><td data-r="Matrícula" class="nowrap">${c.matricula ? esc(c.matricula) : '<span class="muted">sem matrícula</span>'}</td>
         <td data-r="Nome"><b>${esc(c.nome)}</b>${c.usuario_id ? ' <span class="tag azul" title="Tem acesso ao sistema">login</span>' : ''}</td>
         <td data-r="Cargo">${esc(cgs.find(x => x.id === c.cargo_id)?.nome || '—')}</td><td data-r="Setor">${esc(ss.find(x => x.id === c.setor_id)?.nome || '—')}</td>
         <td data-r="Admissão">${dataBR(c.data_admissao) || '—'}</td>
-        <td data-r="CNH">${c.cnh_categoria ? esc(c.cnh_categoria) + (c.cnh_validade ? ' · ' + dataBR(c.cnh_validade) + (c.cnh_validade < hojeISO() ? ' <span class="tag vermelho">vencida</span>' : '') : '') : '—'}</td>
+        <td data-r="Superior imediato">${esc([c.gestor, ...(c.gestores_extra || [])].filter(g => g?.nome).map(g => g.nome).join(', ')) || '<span class="muted">não definido</span>'}</td>
         <td data-r="Situação">${tagColab(c.status)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="vazio">Nenhum colaborador encontrado.</div>'}</div>`;
   $('#filtros').onsubmit = e => { e.preventDefault(); location.hash = '#/rh/colaboradores?' + new URLSearchParams(Object.entries(formDados(e.target)).filter(([, v]) => v)); };
 });
