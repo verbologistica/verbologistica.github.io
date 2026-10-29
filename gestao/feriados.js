@@ -65,9 +65,20 @@ rota('/cadastros/feriados', async tela => {
   if (orig) rota('/inicio', async (tela, ...a) => {
     await orig(tela, ...a);
     try {
+      const ag = $('#minha-agenda', tela);
+      if (ag) {   // feriados dentro da Minha agenda: marca o dia e lista na legenda
+        const dias = $$('[data-agdia]', ag).map(b => b.dataset.agdia);
+        const fs = await api.rpc('feriados_periodo', { p_ini: dias[0], p_fim: dias[dias.length - 1] }).catch(() => []);
+        if (!document.body.contains(tela)) return;
+        fs.forEach(f => { const b = $(`[data-agdia="${f.data}"]`, ag); if (!b) return; b.classList.add('fer'); b.title = `${ferRotulo(f)}${b.title ? '\n' + b.title : ''}`; });
+        const prox = fs.filter(f => f.data >= hojeISO());
+        if (prox.length) $('.ag-leg', ag)?.insertAdjacentHTML('beforebegin', `<div class="ag-fer">${ico('calendario')} ${prox.map(f => `<span><b>${dataBR(f.data).slice(0, 5)}</b> ${esc(ferRotulo(f))}</span>`).join(' · ')} <span class="muted">· a operação segue 24 h</span></div>`);
+        $('.ag-leg', ag)?.insertAdjacentHTML('beforeend', '<span><i class="ag-fer-i"></i>Feriado</span>');
+        return;
+      }
       const fs = await api.rpc('feriados_periodo', { p_ini: hojeISO(), p_fim: somaDias(hojeISO(), 30) });
       if (!fs?.length || !document.body.contains(tela)) return;
-      const alvo = $('.topo', tela) || tela.firstElementChild;
+      const alvo = $('.inicio-hero', tela) || tela.firstElementChild;
       alvo?.insertAdjacentHTML('afterend', `<div class="cartao fer-faixa"><b>📅 Próximos feriados</b> <span class="muted">(a operação segue 24 h)</span>
         <div class="fer-lista">${fs.map(f => `<span class="fer-item${f.data === hojeISO() ? ' hoje' : ''}"><b>${dataBR(f.data)}</b> ${ferDiaSemana(f.data)} · ${esc(ferRotulo(f))}</span>`).join('')}</div>
         ${telaPermitida('/cadastros/feriados') ? '<a class="btn peq" href="#/cadastros/feriados">Calendário</a>' : ''}</div>`);

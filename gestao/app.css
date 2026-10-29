@@ -1458,3 +1458,7 @@ body.tema-vx .inicio-kpis .kpi .r { color: #BACBC3; }
 body.tema-vx .conteudo input, body.tema-vx .conteudo select, body.tema-vx .conteudo textarea { background: #172C23; }
 body.tema-vx .ag-d { background: rgba(255,255,255,.05); }
 .lateral { background: linear-gradient(180deg, #17332A 0%, #142C24 60%, #12271F 100%); }
+.ag-d.fer { border-style: dashed; border-color: #E0A53A; } .ag-d.fer b { color: #E0A53A; }
+.ag-fer-i { border: 1.5px dashed #E0A53A; background: transparent !important; width: 8px !important; height: 8px !important; border-radius: 2px !important; }
+.ag-fer { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 10px; font-size: 12px; color: var(--cinza); } .ag-fer svg { width: 14px; height: 14px; color: #E0A53A; }
+body.tema-vx .fer-item { background: rgba(255,255,255,.06); color: #E9F0EC; border-color: rgba(255,255,255,.1); }
