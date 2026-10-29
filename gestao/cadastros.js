@@ -424,6 +424,7 @@ rota('/config/usuarios', async tela => {
       delete estado.cache.usuarios; aviso('Usuário atualizado.'); navegar();
     } catch (err) { falha(err); }
   }));
+  { const ab = estado.params.get('abrir'); if (ab) $(`tr[data-id="${ab}"]`, tela)?.click(); }   // vindo da Conferência de acessos
 });
 
 // ----- Enviar o link de acesso pelo WhatsApp (sem depender do e-mail) -----
@@ -498,6 +499,82 @@ rota('/config/aprovacoes', async tela => {
   };
 });
 
+
+// ===================== Conferência de acessos =====================
+// Para cada usuário: monta o menu que ele vê e testa cada tela como ele (perfis, telas liberadas, guias, líder, fechamentos).
+// 1) a tela existe e não é barrada; 2) a pessoa tem o perfil que libera os dados; 3) a tela abre sem erro nem "Sem permissão".
+// Observação: o teste de abrir usa a conexão de quem está conferindo; o que o banco libera para cada um é medido pelo item 2.
+let _conferindo = false;
+const SEM_PERFIL_TELA = ['#/rh/organograma', '#/minha-equipe'];
+async function dadosAcesso() {
+  const [us, ps, fs] = await Promise.all([api.listar('usuarios', 'select=*&ativo=eq.true&order=nome'), api.listar('usuario_perfis', 'select=usuario_id,perfil'),
+    api.listar('setores_fechamento', 'select=codigo,aprovadores,lancadores&ativo=is.true').catch(() => [])]);
+  return { us, ps, fs };
+}
+async function conferirUsuario(u, D, abrir = true, aoAndar = null) {
+  const perf = D.ps.filter(p => p.usuario_id === u.id).map(p => p.perfil);
+  const fch = D.fs.filter(s => [...s.aprovadores, ...s.lancadores].includes(u.id)).map(s => s.codigo);
+  const lider = !!(await api.rpc('lidera_alguem', { p_usuario: u.id }).catch(() => false));
+  const todos = [...perf, ...fch.map(c => 'fch:' + c), ...(lider ? ['lider'] : [])], adm = perf.includes('administrador');
+  const itens = menuPara(todos, u.menus).filter(i => !['grupo', 'sub'].includes(i[0]));
+  const NOME_P = Object.fromEntries(PERFIS.map(p => [p[0], p[1]])); const probs = [];
+  const rotaDe = p => Object.keys(ROTAS).sort((a, b) => a.includes(':') - b.includes(':')).find(k => new RegExp('^' + k.replace(/:[^/]+/g, '([^/]+)') + '$').test(p));
+  for (const i of itens) {
+    const r = baseHref(i[1]); if (!rotaDe(r.slice(1))) probs.push({ tela: i[0], tipo: 'erro', msg: 'tela sem rota no sistema' });
+    if (MENU.some(x => x[0] !== 'grupo' && x[0] !== 'sub' && baseHref(x[1]) === r) && !itens.some(x => baseHref(x[1]) === r)) probs.push({ tela: i[0], tipo: 'erro', msg: 'aparece no menu, mas é barrada ao abrir' });
+    const req = (i[2] || []).filter(p => p !== 'administrador');
+    if (!adm && i[2] && !SEM_PERFIL_TELA.includes(i[1]) && !(i[2] || []).some(p => todos.includes(p)))
+      probs.push({ tela: i[0], tipo: 'perfil', msg: req.some(p => p.startsWith('fch:')) ? 'só abre os dados para o responsável pelo fechamento do setor (Fechamentos)' : req.length ? 'falta o perfil ' + req.map(p => NOME_P[p] || p).join(' ou ') + ' para ver os dados' : 'só administrador' });
+  }
+  if (Array.isArray(u.menus) && u.menus.length) { const mk = new Set(MENU.map(x => x[1]));
+    u.menus.filter(x => !x.includes('::') && !mk.has(x)).forEach(x => probs.push({ tela: x, tipo: 'aviso', msg: 'está na lista de acesso, mas a tela não existe mais' }));
+    if (lider && !u.menus.includes('#/minha-equipe')) probs.push({ tela: 'Minha equipe', tipo: 'aviso', msg: 'lidera pessoas, mas a tela não está liberada' }); }
+  if (abrir) {
+    const orig = { usuario: estado.usuario, perfis: estado.perfis, fch: estado.fch, lider: estado.lider, params: estado.params, cache: estado.cache }, hash0 = location.hash;
+    const box = Object.assign(document.createElement('div'), { style: 'position:fixed;left:-99999px;top:0;width:1200px' }); document.body.append(box);
+    Object.assign(estado, { usuario: u, perfis: perf, fch, lider, cache: {} }); _acessoEm = Date.now() + 3600e3;
+    try {
+      for (const [n, i] of itens.entries()) { aoAndar?.(n + 1, itens.length);
+        const [p, q] = i[1].slice(1).split('?'), k = rotaDe(p); if (!k) continue;
+        const args = p.match(new RegExp('^' + k.replace(/:[^/]+/g, '([^/]+)') + '$')).slice(1);
+        estado.params = new URLSearchParams(q || ''); const div = document.createElement('div'); box.append(div); let err = null;
+        try { await Promise.race([ROTAS[k](div, ...args), new Promise((_, rej) => setTimeout(() => rej(new Error('demorou mais de 15 s para abrir')), 15000))]); } catch (e) { err = String(e.message || e).slice(0, 140); }
+        const t = div.innerText || ''; const neg = t.match(/(Sem permissão[^\n]{0,60}|Não foi possível[^\n]{0,80}|não tem acesso[^\n]{0,60})/i)?.[0];
+        if (err || neg) probs.push({ tela: i[0], tipo: 'erro', msg: 'ao abrir: ' + (err || neg) });
+        if (location.hash !== hash0) { probs.push({ tela: i[0], tipo: 'erro', msg: 'ao abrir, mandou para outra tela (' + location.hash + ')' }); history.replaceState(null, '', hash0); }
+        div.remove(); }
+    } finally { box.remove(); Object.assign(estado, orig); _acessoEm = Date.now(); }
+  }
+  return { u, perf, lider, telas: itens.length, probs };
+}
+rota('/config/acessos', async tela => {
+  if (!tem('administrador')) { tela.innerHTML = '<div class="cartao vazio">Somente o administrador confere os acessos.</div>'; return; }
+  const D = await dadosAcesso();
+  tela.innerHTML = `<div class="topo"><div><h1>Conferência de acessos</h1><p class="sub">Testa, para cada usuário, todas as telas que aparecem no menu dele: se abrem, se não são barradas e se o perfil libera os dados.</p></div>
+      <div class="acoes"><select id="ca-u"><option value="">Todos os usuários (${D.us.length})</option>${D.us.map(u => `<option value="${u.id}">${esc(u.nome)}</option>`).join('')}</select>
+      <label class="check"><input type="checkbox" id="ca-abrir" checked> Abrir cada tela</label><button class="btn prim" id="ca-ir">Conferir agora</button></div></div>
+    <div id="ca-res"><div class="cartao vazio">Escolha um usuário (ou todos) e clique em Conferir agora. Faça isso sempre que mudar perfis ou telas de alguém.</div></div>`;
+  $('#ca-ir', tela).onclick = async () => {
+    if (_conferindo) return; _conferindo = true; const b = $('#ca-ir', tela); b.disabled = true;
+    const alvo = $('#ca-u', tela).value, abrir = $('#ca-abrir', tela).checked, lista = alvo ? D.us.filter(u => u.id === alvo) : D.us, out = [];
+    const res = $('#ca-res', tela);
+    try { for (const [n, u] of lista.entries()) {
+        res.innerHTML = `<div class="cartao">Conferindo <b>${esc(u.nome)}</b> (${n + 1} de ${lista.length})… <span id="ca-pg"></span></div>`;
+        out.push(await conferirUsuario(u, D, abrir, (k, t) => { const e = $('#ca-pg', res); if (e) e.textContent = `tela ${k} de ${t}`; })); }
+    } finally { _conferindo = false; b.disabled = false; }
+    const COR = { erro: 'vermelho', perfil: 'amarelo', aviso: 'azul' };
+    const nErr = out.reduce((s, r) => s + r.probs.filter(p => p.tipo === 'erro').length, 0), nPerf = out.reduce((s, r) => s + r.probs.filter(p => p.tipo === 'perfil').length, 0);
+    res.innerHTML = `<div class="grade" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr));margin-bottom:12px">
+        <div class="cartao kpi"><div class="n">${out.length}</div><div class="r">usuário(s) conferido(s)</div></div>
+        <div class="cartao kpi ${nErr ? 'alerta' : ''}"><div class="n">${nErr}</div><div class="r">tela(s) que não abrem</div></div>
+        <div class="cartao kpi ${nPerf ? 'alerta' : ''}"><div class="n">${nPerf}</div><div class="r">tela(s) sem o perfil dos dados</div></div>
+        <div class="cartao kpi"><div class="n">${out.filter(r => !r.probs.length).length}</div><div class="r">usuário(s) sem nenhum problema</div></div></div>
+      <div class="cartao"><div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Usuário</th><th>Telas no menu</th><th>Resultado</th><th></th></tr></thead><tbody>
+      ${out.map(r => `<tr><td data-r="Usuário"><b>${esc(r.u.nome)}</b><br><span class="muted">${esc(r.perf.map(p => PERFIS.find(x => x[0] === p)?.[1] || p).join(', ') || 'sem perfil')}${r.lider ? ' · líder' : ''}</span></td>
+        <td data-r="Telas">${r.telas}</td><td data-r="Resultado">${r.probs.length ? `<ul class="rec-lista">${r.probs.map(p => `<li><span class="tag ${COR[p.tipo]}">${p.tipo === 'erro' ? 'não abre' : p.tipo === 'perfil' ? 'sem perfil' : 'aviso'}</span> <b>${esc(p.tela)}</b> · ${esc(p.msg)}</li>`).join('')}</ul>` : '<span class="tag verde">tudo certo</span>'}</td>
+        <td><a class="btn peq" href="#/config/usuarios?abrir=${r.u.id}">Abrir cadastro</a></td></tr>`).join('')}</tbody></table></div></div>`;
+  };
+});
 rota('/config/auditoria', async tela => {
   const tab = estado.params.get('tabela') || '';
   const linhas = await api.listar('auditoria', `order=id.desc&limit=300${tab ? '&tabela=eq.' + tab : ''}`);

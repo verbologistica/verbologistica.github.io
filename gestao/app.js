@@ -507,6 +507,7 @@ const MENU = [
   ['Feriados', '#/cadastros/feriados', [...P_RH, 'ssma', 'operacao', 'manutencao', 'almoxarifado', 'financeiro', 'qualidade', 'comprador', 'aprovador'], 'calendario', null, true],
   ['Dados da empresa', '#/cadastros/empresa', ['administrador'], 'predio', null, true],
   ['Usuários e perfis', '#/config/usuarios', ['administrador'], 'escudo_usuario', null, true],
+  ['Conferência de acessos', '#/config/acessos', ['administrador'], 'escudo_usuario', null, true],
   ['Regras de aprovação', '#/config/aprovacoes', ['administrador', 'diretoria'], 'aprovar', null, true],
   ['Auditoria', '#/config/auditoria', P_FIN, 'historico', null, true],
   ['Calendário do CRLV', '#/config/calendario_crlv', ['administrador'], 'calendario', 'calendario_crlv', true],
