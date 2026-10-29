@@ -57,7 +57,7 @@ rota('/rh/vagas', async tela => {
   filtroLocal(tela, { itens: 'tbody tr[data-v]', antes: '#vg-lista', campos: [{ k: 'sit', rotulo: 'Situação' }, { k: 'setor', rotulo: 'Setor' }], periodo: true, rotuloPeriodo: 'Aberta em' });
 });
 
-async function formRequisicao(tela, v = null) {
+async function formRequisicaoVaga(tela, v = null) {
   const [cgs, ss, ccs, cols] = await Promise.all([cargosL(), setoresL(), centros(), colabsBasico()]);
   const val = k => esc(v?.[k] ?? '');
   const sel = (n, ops, at, vazio = 'Selecione…') => `<select name="${n}"><option value="">${vazio}</option>${ops.map(([k, t]) => `<option value="${esc(k)}" ${String(k) === String(at ?? '') ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>`;
@@ -102,8 +102,8 @@ async function formRequisicao(tela, v = null) {
       else { const id = await api.rpc('requisitar_vaga', { p }); await api.rpc('vaga_cursos_cnh', { p_vaga: id, ...cursos }); aviso('Requisição enviada ao RH.'); location.hash = '#/rh/vagas/ver/' + id; }
     } catch (err) { falha(err); } }); };
 }
-rota('/rh/vagas/nova', tela => podeRequisitar() ? formRequisicao(tela) : (tela.innerHTML = '<div class="cartao vazio">Somente gestores, diretoria e RH requisitam vagas.</div>'));
-rota('/rh/vagas/corrigir/:id', async (tela, id) => formRequisicao(tela, await api.um('vagas', `id=eq.${id}&select=*`)));
+rota('/rh/vagas/nova', tela => podeRequisitar() ? formRequisicaoVaga(tela) : (tela.innerHTML = '<div class="cartao vazio">Somente gestores, diretoria e RH requisitam vagas.</div>'));
+rota('/rh/vagas/corrigir/:id', async (tela, id) => formRequisicaoVaga(tela, await api.um('vagas', `id=eq.${id}&select=*`)));
 
 // linha do tempo macro (vaga → admissão)
 function adStepper(passos) {
