@@ -475,7 +475,7 @@ const AD_PERM_LINK = { ficha: () => editaRH(), docs: () => editaRH(), contrato: 
   tox: () => tem('administrador', 'ssma', 'rh'), epi: () => tem('administrador', 'almoxarifado', 'rh') };
 
 // modelos da biblioteca usados em cada etapa (gerados já preenchidos com os dados do colaborador)
-const AD_MODELOS = { ficha: [['RH-FOR-002', 'Ficha cadastral para assinatura']], docs: [['RH-LST-001', 'Lista de documentos para o colaborador']],
+const AD_MODELOS = { ficha: [['RH-FOR-002', 'Registro de empregado (assinatura)']], docs: [['RH-LST-001', 'Lista de documentos para o colaborador']],
   aso: [['RH-FOR-001', 'Encaminhamento para ASO']], tox: [['RH-FOR-003', 'Encaminhamento para toxicológico']], epi: [['SSMA-EPI-001', 'Ficha de EPI']], treinamentos: [['RH-TRE-001', 'Lista de presença']] };
 const AD_EVENTO = { avisado: 'Setor avisado', cobrado: 'Cobrança enviada ao setor', concluida: 'Concluída', nao_se_aplica: 'Marcada como não se aplica', reaberta: 'Reaberta pelo RH', conferida: 'Conferida pelo RH', devolvida: 'Devolvida ao setor' };
 // itens exigidos de cada etapa: o que o responsável precisa entregar e o que o RH confere

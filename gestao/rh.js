@@ -97,14 +97,14 @@ async function formColaborador(tela, c = null) {
     <datalist id="lista-bancos">${bancos.map(b => `<option value="${String(b.code).padStart(3, '0')} · ${esc(b.name)}">`).join('')}</datalist>
     <form id="f-col">
       <div class="cartao"><h2>Situação e contrato</h2><div class="form">
-        ${campo('Matrícula', inp('matricula', 'placeholder="Informe a matrícula" autocomplete="off" maxlength="20"'))}
+        ${campo('Matrícula', inp('matricula', 'placeholder="Informe a matrícula" autocomplete="off" maxlength="20"'))}${campo('Nº da ficha de registro', inp('numero_registro', 'placeholder="Ex.: 000001" maxlength="20"'))}
         ${campo('Situação *', sel('status', Object.entries(STATUS_COLAB).map(([k, x]) => [k, x[0]]), c?.status || 'candidato'))}
         ${campo('Cargo', sel('cargo_id', cgs.filter(x => x.ativo).map(x => [x.id, x.nome]), c?.cargo_id, 'Selecione…'))}
         ${campo('Setor', sel('setor_id', ss.filter(x => x.ativo).map(x => [x.id, x.nome]), c?.setor_id, 'Selecione…'))}
         ${campo('Centro de custo', sel('centro_custo_id', ccs.filter(x => x.ativo).map(x => [x.id, x.nome]), c?.centro_custo_id, 'Selecione…'))}
         ${campo('Tipo de contrato', sel('tipo_contrato', Object.entries(TIPOS_CONTRATO), c?.tipo_contrato || 'clt'))}
         ${campo('Data de admissão', dt('data_admissao'))}
-        ${campo('Jornada', inp('jornada', 'placeholder="Ex.: 44h semanais / 12x36"'))}
+        ${campo('Jornada', inp('jornada', 'placeholder="Ex.: 44h semanais / 12x36"'))}${campo('Horário de trabalho', inp('horario_trabalho', 'placeholder="Ex.: das 07:30 às 17:18"'))}${campo('Horário de intervalo', inp('horario_intervalo', 'placeholder="Ex.: das 12:00 às 13:00"'))}
         ${campo('Escala', inp('escala', 'placeholder="Ex.: Turno A, 2MW"'))}
         ${campo('Salário (R$)', `<input name="salario" inputmode="decimal" value="${c?.salario != null ? Number(c.salario).toFixed(2).replace('.', ',') : ''}">`)}
         <div class="campo"><span>Gestor imediato</span>${htmlSelPessoas('gestor', c?.gestor ? [c.gestor] : [], 'Buscar colaborador, usuário ou fornecedor…', 1)}</div>
@@ -131,7 +131,7 @@ async function formColaborador(tela, c = null) {
         <label class="check largo"><input type="checkbox" name="pcd" ${c?.pcd ? 'checked' : ''}> Pessoa com deficiência (PcD)</label>${campo('Tipo de deficiência', inp('pcd_tipo'))}
       </div></div>
       <div class="cartao"><h2>Documentos trabalhistas e CNH</h2><div class="form">
-        ${campo('PIS/PASEP/NIS', inp('pis', 'inputmode="numeric"'))}${campo('CTPS (número)', inp('ctps_numero'))}${campo('CTPS (série)', inp('ctps_serie'))}${campo('CTPS (UF)', sel('ctps_uf', UFS.map(u => [u, u]), c?.ctps_uf))}
+        ${campo('PIS/PASEP/NIS', inp('pis', 'inputmode="numeric"'))}${campo('CTPS (número)', inp('ctps_numero'))}${campo('CTPS (série)', inp('ctps_serie'))}${campo('CTPS (UF)', sel('ctps_uf', UFS.map(u => [u, u]), c?.ctps_uf))}${campo('Expedição da CTPS', dt('ctps_emissao'))}${campo('PIS cadastrado em', dt('pis_cadastro'))}
         ${campo('Título de eleitor', inp('titulo_eleitor'))}${campo('Zona', inp('titulo_zona'))}${campo('Seção', inp('titulo_secao'))}${campo('Reservista', inp('reservista'))}
         ${campo('CNH (número)', inp('cnh_numero', 'inputmode="numeric"'))}
         ${campo('Categoria', sel('cnh_categoria', ['A', 'B', 'AB', 'C', 'AC', 'D', 'AD', 'E', 'AE'].map(x => [x, x]), c?.cnh_categoria))}
