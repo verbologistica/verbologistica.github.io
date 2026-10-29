@@ -895,10 +895,20 @@ rota('/rh/organograma', async tela => {
   $tela.addEventListener('mousedown', e => { if (e.button || e.target.closest('button,input,a')) return; ini = { x: e.clientX, y: e.clientY, l: $tela.scrollLeft, t: $tela.scrollTop }; arrastou = false; $tela.classList.add('arrastando'); });
   addEventListener('mousemove', e => { if (!ini || !$tela.isConnected) return; const dx = e.clientX - ini.x, dy = e.clientY - ini.y; if (Math.abs(dx) + Math.abs(dy) > 4) arrastou = true; $tela.scrollLeft = ini.l - dx; $tela.scrollTop = ini.t - dy; });
   addEventListener('mouseup', () => { if (ini) { ini = null; $tela.classList.remove('arrastando'); setTimeout(() => (arrastou = false), 0); } });
-  $('[data-imp]', tela).onclick = () => { abertos.clear(); M.nos.forEach(n => n.filhos.length && abertos.add(n.k)); zoom = 1; desenhar();
-    document.head.insertAdjacentHTML('beforeend', '<style id="og-print">@page { size: A4 landscape; margin: 10mm; }</style>');
-    const w = $arv.scrollWidth; const k = Math.min(1, 1050 / w); $arv.style.transform = `scale(${k})`;
-    addEventListener('afterprint', () => { document.getElementById('og-print')?.remove(); desenhar(); }, { once: true }); setTimeout(() => window.print(), 100); };
+  // impressão: uma página A4 deitada, com cabeçalho; escolhe o nº de colunas das equipes que deixa o organograma maior na folha
+  $('[data-imp]', tela).onclick = () => {
+    const zAnt = zoom; abertos.clear(); M.nos.forEach(n => n.filhos.length && abertos.add(n.k)); zoom = 1; desenhar();
+    document.body.classList.add('og-imprimindo'); $arv.style.transform = 'none';
+    const LW = 1062, LH = 640; let melhor = { z: 0, c: 3 };
+    for (const c of [1, 2, 3, 4, 5]) { $$('.og-grade', $arv).forEach(g => g.style.setProperty('--cols', c));
+      const z = Math.min(1.15, LW / $arv.scrollWidth, LH / $arv.scrollHeight); if (z > melhor.z + 0.005) melhor = { z, c }; }
+    $$('.og-grade', $arv).forEach(g => g.style.setProperty('--cols', melhor.c)); $arv.style.zoom = melhor.z;
+    const st = Object.assign(document.createElement('style'), { id: 'og-print', textContent: '@page { size: A4 landscape; margin: 8mm; }' }); document.head.append(st);
+    const cab = document.createElement('div'); cab.className = 'og-print-cab';
+    cab.innerHTML = `<div class="og-pc-l"><img src="logo.png" alt=""><div><b>Organograma</b><span>${cs.length} pessoas · ${new Set(cs.map(c => c.setor_id).filter(Boolean)).size} setores</span></div></div><span>Atualizado em ${dataHoraBR(new Date().toISOString())}</span>`;
+    $('.og-wrap', tela).before(cab);
+    addEventListener('afterprint', () => { st.remove(); cab.remove(); document.body.classList.remove('og-imprimindo'); $arv.style.zoom = ''; zoom = zAnt; desenhar(); }, { once: true });
+    setTimeout(() => window.print(), 150); };
   desenhar(); requestAnimationFrame(ajustar);
 });
 
