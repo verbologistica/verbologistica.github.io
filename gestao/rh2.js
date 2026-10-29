@@ -795,7 +795,8 @@ function orgFilhos(lista, abertos, vis, rotulo) {
   return `<ul>${galhos.map(f => orgArvore(f, abertos, vis)).join('')}${grade}</ul>`;
 }
 rota('/rh/organograma', async tela => {
-  const [cs, cgs, ss] = await Promise.all([colabsRH('&status=in.(ativo,ferias,afastado,aviso_previo,em_admissao)'), cargosL(), setoresL()]);
+  // todos veem o organograma completo (a função entrega só os dados do organograma)
+  const [cs, cgs, ss] = await Promise.all([api.rpc('organograma_dados').then(r => r || []), cargosL(), setoresL()]);
   const setores = ss.filter(s => s.ativo);
   let M = orgMontar(cs, cgs, setores);
   const abertos = new Set([...M.nos.values()].filter(n => n.filhos.length).map(n => n.k));
