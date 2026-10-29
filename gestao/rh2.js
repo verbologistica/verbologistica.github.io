@@ -762,28 +762,49 @@ function orgMontar(cs, cgs, ss) {
   for (const n of [...nos.values()]) { if (!n.c) continue; // só colaboradores; gestores externos/prestadores entram no mapa durante o laço
     const g = n.c.gestor || (n.c.gestor_colaborador_id ? { colaborador_id: n.c.gestor_colaborador_id } : null); const k = chaveGestor(g); if (!k || k === n.k) continue;
     if (!nos.has(k)) { if (k.startsWith('c:')) continue;
-      nos.set(k, { k, tipo: k.startsWith('f:') ? 'prestador' : 'externo', nome: g.nome, cargo: k.startsWith('f:') ? 'Prestador de serviço' : k.startsWith('u:') ? 'Usuário do sistema' : (g.info || 'Externo'), setor: '', cor: '#DDA936', filhos: [] }); }
+      const us = k.startsWith('u:') ? ORG_USUARIOS.find(x => 'u:' + x.id === k) : null, stU = us && ss.find(x => x.nome === us.setor);
+      nos.set(k, { k, tipo: k.startsWith('f:') ? 'prestador' : us ? 'usuario' : 'externo', nome: us?.nome || g.nome, cargo: k.startsWith('f:') ? 'Prestador de serviço' : us ? (us.cargo || 'Usuário do sistema') : (g.info || 'Externo'),
+        setor: us?.setor || '', cor: stU ? corSetor[stU.id] : '#DDA936', filhos: [] }); }
     n.pai = k;
   }
+  // liderança compartilhada (líderes de campo): a equipe com mais de um líder fica num quadro só, com os líderes juntos
+  const grupos = new Map();
+  for (const n of [...nos.values()]) { if (n.tipo !== 'colab' || !n.pai || !(n.c.gestores_extra || []).length) continue;
+    const ls = [...new Set([n.pai, ...n.c.gestores_extra.map(chaveGestor)])].filter(k => k && k !== n.k && nos.has(k)); if (ls.length < 2) continue;
+    ls.sort((a, b) => nos.get(a).nome.localeCompare(nos.get(b).nome, 'pt-BR')); const gk = 'g:' + ls.join('|');
+    if (!nos.has(gk)) { const L = ls.map(k => nos.get(k)), cargos = [...new Set(L.map(x => x.cargo).filter(Boolean))];
+      nos.set(gk, { k: gk, tipo: 'colid', nome: L.map(x => x.nome).join(' e '), lideres: ls, cargo: cargos.length === 1 ? cargos[0] : 'Liderança compartilhada', setor: L[0].setor, setor_id: L[0].setor_id, cor: L[0].cor, filhos: [], pai: L[0].pai });
+      grupos.set(gk, ls); }
+    n.pai = gk; }
+  // líder que só tem a equipe compartilhada aparece dentro do quadro (não repete o cartão sozinho)
+  for (const [gk, ls] of grupos) for (const k of ls) { const L = nos.get(k);
+    if (L.pai === nos.get(gk).pai && ![...nos.values()].some(x => x.pai === k)) L.dentro = gk; }
   // evita ciclo (dados antigos): quem cair em ciclo vira raiz
   for (const n of nos.values()) { let p = n.pai, passos = 0; while (p && passos++ < 40) { if (p === n.k) { n.pai = null; break; } p = nos.get(p)?.pai; } }
-  for (const n of nos.values()) if (n.pai && nos.has(n.pai)) nos.get(n.pai).filhos.push(n);
+  for (const n of nos.values()) if (n.pai && nos.has(n.pai) && !n.dentro) nos.get(n.pai).filhos.push(n);
   const ord = (a, b) => (b.filhos.length > 0) - (a.filhos.length > 0) || a.nome.localeCompare(b.nome, 'pt-BR');
   for (const n of nos.values()) n.filhos.sort(ord);
   const total = n => n.filhos.reduce((a, f) => a + 1 + total(f), 0);
   for (const n of nos.values()) n.equipe = total(n);
   const raizes = [...nos.values()].filter(n => !n.pai || !nos.has(n.pai)).sort((a, b) => b.equipe - a.equipe || a.nome.localeCompare(b.nome, 'pt-BR'));
+  ORG_NOS = nos;
   return { nos, raizes, corSetor };
 }
 // foto (crachá ou ficha) no lugar das iniciais, quando houver
 const ORG_FOTOS = {};
+let ORG_USUARIOS = [], ORG_NOS = new Map();
 const orgAvatar = n => { const u = n.tipo === 'colab' && ORG_FOTOS[n.id];
   return u ? `<span class="og-av og-foto"><img src="${esc(u)}" alt="" onerror="this.parentNode.classList.remove('og-foto');this.parentNode.textContent='${esc(orgIniciais(n.nome))}'"></span>` : `<span class="og-av">${esc(orgIniciais(n.nome))}</span>`; };
 function orgCard(n, abertos) {
   const sub = n.filhos.length;
+  if (n.tipo === 'colid') { const L = n.lideres.map(k => ORG_NOS.get(k)).filter(Boolean);
+    return `<div class="og-card og-colid" data-k="${esc(n.k)}" style="--c:${n.cor}" tabindex="0"><div class="og-colid-t">Liderança compartilhada</div>
+      ${L.map(l => `<div class="og-topo og-colid-l" data-pk="${esc(l.k)}">${orgAvatar(l)}<div class="og-id"><b>${esc(l.nome)}</b><span>${esc(l.cargo || '—')}</span></div></div>`).join('')}
+      <div class="og-pe">${n.setor ? `<span class="og-setor">${esc(n.setor)}</span>` : '<span></span>'}
+      ${sub ? `<button type="button" class="og-tg" data-tg="${esc(n.k)}" title="${abertos.has(n.k) ? 'Recolher' : 'Expandir'} equipe">${ico('pessoas')} ${n.equipe}<i>${abertos.has(n.k) ? '−' : '+'}</i></button>` : ''}</div></div>`; }
   return `<div class="og-card og-${n.tipo}" data-k="${esc(n.k)}" style="--c:${n.cor}" tabindex="0">
     <div class="og-topo">${orgAvatar(n)}<div class="og-id"><b>${esc(n.nome)}</b><span>${esc(n.cargo || '—')}</span></div></div>
-    <div class="og-pe">${n.tipo === 'colab' ? (n.setor ? `<span class="og-setor">${esc(n.setor)}</span>` : '<span class="og-setor sem">Sem setor</span>') : `<span class="og-setor ext">${n.tipo === 'prestador' ? 'Prestador' : 'Externo'}</span>`}
+    <div class="og-pe">${n.tipo === 'colab' || n.tipo === 'usuario' ? (n.setor ? `<span class="og-setor">${esc(n.setor)}</span>` : '<span class="og-setor sem">Sem setor</span>') : `<span class="og-setor ext">${n.tipo === 'prestador' ? 'Prestador' : 'Externo'}</span>`}
       ${sub ? `<button type="button" class="og-tg" data-tg="${esc(n.k)}" title="${abertos.has(n.k) ? 'Recolher' : 'Expandir'} equipe">${ico('pessoas')} ${n.equipe}<i>${abertos.has(n.k) ? '−' : '+'}</i></button>` : ''}</div></div>`;
 }
 function orgArvore(n, abertos, vis) {
@@ -800,7 +821,8 @@ function orgFilhos(lista, abertos, vis, rotulo) {
 }
 rota('/rh/organograma', async tela => {
   // todos veem o organograma completo (a função entrega só os dados do organograma)
-  const [cs, cgs, ss] = await Promise.all([api.rpc('organograma_dados').then(r => r || []), cargosL(), setoresL()]);
+  const [cs, cgs, ss, usO] = await Promise.all([api.rpc('organograma_dados').then(r => r || []), cargosL(), setoresL(), api.rpc('organograma_usuarios').catch(() => [])]);
+  ORG_USUARIOS = usO || [];
   await Promise.all(cs.filter(c => c.foto && !ORG_FOTOS[c.id]).map(async c => { ORG_FOTOS[c.id] = await api.linkArquivo(c.foto).catch(() => null); }));
   const setores = ss.filter(s => s.ativo);
   let M = orgMontar(cs, cgs, setores);
@@ -856,7 +878,7 @@ rota('/rh/organograma', async tela => {
     $gav.innerHTML = `<div class="og-gv-cab" style="--c:${n.cor}">${orgAvatar(n)}<div><b>${esc(n.nome)}</b><span>${esc(n.cargo || '')}</span></div><button type="button" class="btn peq" data-fg title="Fechar">✕</button></div>
       <div class="og-gv-corpo">
         ${n.tipo === 'colab' ? `<div class="og-gv-l"><span>Setor</span><b>${esc(n.setor || '—')}</b></div><div class="og-gv-l"><span>Situação</span><b>${esc((typeof STATUS_COLAB !== 'undefined' && STATUS_COLAB[n.status]?.[0]) || n.status || '—')}</b></div>
-          ${n.admissao ? `<div class="og-gv-l"><span>Admissão</span><b>${dataBR(n.admissao)}</b></div>` : ''}` : `<div class="og-gv-l"><span>Tipo</span><b>${n.tipo === 'prestador' ? 'Fornecedor / prestador de serviço' : 'Pessoa externa'}</b></div>`}
+          ${n.admissao ? `<div class="og-gv-l"><span>Admissão</span><b>${dataBR(n.admissao)}</b></div>` : ''}` : `<div class="og-gv-l"><span>Tipo</span><b>${n.tipo === 'prestador' ? 'Fornecedor / prestador de serviço' : n.tipo === 'usuario' ? 'Usuário do sistema (sem ficha de colaborador)' : 'Pessoa externa'}</b></div>`}
         <div class="og-gv-l"><span>Gestor imediato</span><b>${pai ? `<a href="#" data-ir="${esc(pai.k)}">${esc(pai.nome)}</a>` : '—'}</b></div>
         ${n.tipo === 'colab' && editaRH() ? `<div class="og-gv-sel"><span class="muted">Trocar o gestor imediato</span>${htmlSelPessoas('og_gestor', n.c.gestor ? [n.c.gestor] : [], 'Buscar colaborador, usuário ou fornecedor…', 1)}<button type="button" class="btn peq prim" data-salvag>Salvar gestor</button></div>` : ''}
         <div class="og-gv-l"><span>Equipe direta (${n.filhos.length})${n.equipe > n.filhos.length ? ` · ${n.equipe} no total` : ''}</span>${n.filhos.length ? `<ul>${n.filhos.map(f => `<li><a href="#" data-ir="${esc(f.k)}">${esc(f.nome)}</a> <span class="muted">${esc(f.cargo)}</span></li>`).join('')}</ul>` : '<b>—</b>'}</div>
@@ -890,7 +912,7 @@ rota('/rh/organograma', async tela => {
   }
   // eventos
   $arv.addEventListener('click', e => { const t = e.target.closest('[data-tg]'); if (t) { e.stopPropagation(); const k = t.dataset.tg; abertos.has(k) ? abertos.delete(k) : abertos.add(k); desenhar(); return; }
-    const c = e.target.closest('.og-card'); if (c && !arrastou) abrirGaveta(c.dataset.k); });
+    const c = e.target.closest('[data-pk]') || e.target.closest('.og-card'); if (c && !arrastou) { const k = c.dataset.pk || c.dataset.k; abrirGaveta(M.nos.get(k)?.tipo === 'colid' ? M.nos.get(k).lideres[0] : k); } });
   $arv.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.matches('.og-card')) abrirGaveta(e.target.dataset.k); });
   $$('[data-z]', tela).forEach(b => (b.onclick = () => { const z = Number(b.dataset.z); if (!z) return ajustar(); zoom = Math.max(0.3, Math.min(1.6, zoom + z * 0.1)); desenhar(); }));
   $$('[data-tudo]', tela).forEach(b => (b.onclick = () => { abertos.clear(); if (b.dataset.tudo === '1') M.nos.forEach(n => n.filhos.length && abertos.add(n.k)); else M.raizes.forEach(n => n.filhos.length && abertos.add(n.k)); desenhar(); }));
