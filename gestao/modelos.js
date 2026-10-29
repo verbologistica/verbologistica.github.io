@@ -39,6 +39,20 @@ async function contextoDocumento(colaboradorId, empEscolhida = null, resp = null
         emergencia: [c.emergencia_nome, c.emergencia_parentesco, fmtTel(c.emergencia_telefone || '')].filter(Boolean).join(' · '),
         dados_bancarios: [c.banco && 'Banco ' + c.banco, c.agencia && 'Ag. ' + c.agencia, c.conta && 'Conta ' + c.conta, c.pix_chave && 'Pix ' + c.pix_chave].filter(Boolean).join(' · '),
       };
+      // campos do Registro de Empregado (RH-FOR-002)
+      const deps = await api.listar('colaborador_dependentes', `colaborador_id=eq.${c.id}&ativo=eq.true&order=nome&select=nome,parentesco,data_nascimento`).catch(() => []);
+      const fotoUrl = c.foto_caminho ? await api.linkArquivo(c.foto_caminho).catch(() => '') : '';
+      Object.assign(ctx.colaborador, {
+        numero_registro: c.numero_registro || '', rg_numero: c.rg || '', rg_emissao: dataBR(c.rg_emissao), rg_orgao_uf: [c.rg_orgao, c.rg_uf].filter(Boolean).join('/'),
+        ctps_emissao: dataBR(c.ctps_emissao), pis_cadastro: dataBR(c.pis_cadastro), fgts_opcao: dataBR(c.data_admissao), data_desligamento: dataBR(c.data_desligamento),
+        tipo_desligamento: c.motivo_desligamento || '', pais: /brasil/i.test(c.nacionalidade || 'Brasileira') ? 'BRASIL' : (c.nacionalidade || ''),
+        sexo_txt: ({ F: 'Feminino', M: 'Masculino' })[c.sexo] || c.sexo || '', pcd_txt: c.pcd ? 'Sim' + (c.pcd_tipo ? ' · ' + c.pcd_tipo : '') : 'Não',
+        telefone2_fmt: fmtTel(c.telefone2 || ''), cargo_maiusc: (c.cargo?.nome || '').toUpperCase(), funcao: '',
+        salario_fmt: c.salario != null ? Number(c.salario).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '', salario_por: c.salario != null ? 'Mês' : '',
+        horario_trabalho: c.horario_trabalho || '', horario_intervalo: c.horario_intervalo || '', banco_nome: typeof nomeBanco === 'function' && c.banco ? nomeBanco(c.banco) : (c.banco || ''),
+        endereco_registro: [[c.logradouro, c.numero, c.complemento, c.bairro, c.cidade, c.uf].filter(Boolean).join(', '), c.cep && 'CEP: ' + (typeof fmtCEP === 'function' ? fmtCEP(c.cep) : c.cep)].filter(Boolean).join(' - '),
+        beneficiarios_html: deps.map(d => `${esc(d.nome)}${d.parentesco ? ' (' + esc(d.parentesco) + ')' : ''}${d.data_nascimento ? ' · ' + dataBR(d.data_nascimento) : ''}`).join('<br>'),
+        foto_html: fotoUrl ? `<img src="${esc(fotoUrl)}" alt="">` : 'Foto 3x4' });
       ctx.lista_documentos_admissionais = `<ol>${exigidos.map(t => `<li>${esc(t.nome)}${t.orientacao ? ` <i>(${esc(t.orientacao)})</i>` : ''}</li>`).join('')}</ol>`
         + (opcionais.length ? `<p><b>Quando se aplicar:</b></p><ul>${opcionais.map(t => `<li>${esc(t.nome)}${t.orientacao ? ` <i>(${esc(t.orientacao)})</i>` : ''}</li>`).join('')}</ul>` : '');
     }
@@ -47,12 +61,13 @@ async function contextoDocumento(colaboradorId, empEscolhida = null, resp = null
 }
 const lacunasDoModelo = html => [...new Set([...String(html || '').matchAll(/\{\{\?([^}]+)\}\}/g)].map(m => m[1].trim()))];
 function preencherModelo(html, ctx, respostas = {}) {
+  const vazio = /<!--sem-timbrado-->/.test(html || '') ? '' : '__________';   // formulários oficiais: campo vazio fica em branco
   return String(html || '').replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_, chave) => {
     if (chave.startsWith('?')) return esc(respostas[chave.slice(1).trim()] || '__________________');
     if (chave === 'lista_documentos_admissionais') return ctx.lista_documentos_admissionais || '<p><i>(escolha um colaborador para listar os documentos do cargo)</i></p>';
     const v = chave.split('.').reduce((o, k) => (o == null ? o : o[k]), ctx);
     if ((/(^|\.)tabela_/.test(chave) || /_html$/.test(chave)) && v) return v;   // tabelas e textos montados pelo sistema (já escapados)
-    return v == null || v === '' ? '__________' : esc(v);
+    return v == null || v === '' ? vazio : esc(v);
   });
 }
 // Documentos gerados: papel timbrado oficial (cabeçalho, marca d'água e rodapé repetem em cada página)
@@ -71,6 +86,9 @@ const CSS_DOC = `@page{size:A4;margin:0}*{box-sizing:border-box}html,body{margin
   .tb-cod{font-size:8pt;color:#6b7378;margin-top:18px}
   @media screen{body{background:#e9ecee}.tb-pag{background:#fff;width:210mm;margin:0 auto}.tb-cab,.tb-rod{left:50%;transform:translateX(-105mm)}.tb-marca{display:none}}`;
 function paginaDocumento(titulo, corpoHtml, ctx, codigo) {
+  // formulários com layout próprio (ex.: Registro de Empregado): página A4 sem o papel timbrado
+  if (/<!--sem-timbrado-->/.test(corpoHtml)) return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>${esc(titulo)}</title>
+    <style>html,body{margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}</style></head><body>${corpoHtml}</body></html>`;
   const base = location.origin + location.pathname.replace(/[^/]*$/, '');
   const e = ctx.empresa || {};
   const nome = esc((e.nome_fantasia || e.razao_social || 'Verbo Logística').toUpperCase());
