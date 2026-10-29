@@ -1782,3 +1782,37 @@ function filtroLocal(tela, { itens, antes, campos = [], busca = true, periodo = 
   aplicar();
   return { aplicar, visiveis: () => els().filter(e => !e.hidden) };
 }
+
+// ===================== Atualização automática de versão =====================
+// Quando sai uma versão nova (o ?v= do index.html muda), mostra uma faixa no topo
+// e recarrega o sistema na próxima troca de tela, sem perder o que está sendo digitado.
+(() => {
+  const atual = ((document.querySelector('script[src*="app.js?v="]') || {}).src || '').match(/[?&]v=(\d+)/)?.[1];
+  if (!atual) return;
+  let nova = null, faixa = null;
+  async function checar() {
+    if (nova) return;
+    try {
+      const r = await fetch('index.html?_=' + Date.now(), { cache: 'no-store' });
+      if (!r.ok) return;
+      const v = (await r.text()).match(/app\.js\?v=(\d+)/)?.[1];
+      if (v && v !== atual) { nova = v; mostrar(); }
+    } catch { /* sem internet: tenta de novo depois */ }
+  }
+  function mostrar() {
+    if (faixa) return;
+    faixa = document.createElement('div');
+    faixa.id = 'vg-nova-versao';
+    faixa.setAttribute('role', 'status');
+    faixa.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;display:flex;gap:12px;align-items:center;justify-content:center;flex-wrap:wrap;padding:10px 16px;background:#02654D;color:#fff;font:600 14px/1.3 system-ui,sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.25)';
+    faixa.innerHTML = '<span>Nova versão do sistema disponível.</span><button type="button" style="background:#fff;color:#02654D;border:0;border-radius:6px;padding:6px 14px;font:inherit;cursor:pointer">Atualizar</button>';
+    faixa.querySelector('button').onclick = () => location.reload();
+    document.body.appendChild(faixa);
+  }
+  // ao trocar de tela com versão nova pendente, recarrega já na tela escolhida
+  window.addEventListener('hashchange', () => { if (nova) location.reload(); });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checar(); });
+  window.addEventListener('focus', checar);
+  setInterval(checar, 5 * 60 * 1000);
+  setTimeout(checar, 30 * 1000);
+})();
