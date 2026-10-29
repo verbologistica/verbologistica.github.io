@@ -948,3 +948,40 @@ rota('/rh/desenvolvimento', async tela => {
   $('#novo-d')?.addEventListener('click', () => editar(null));
   if (editaRH()) $$('[data-i]', tela).forEach(tr => tr.onclick = () => editar(its.find(i => i.id === tr.dataset.i)));
 });
+
+// ===================== Minha equipe (líderes: só a própria equipe, sem dados sigilosos) =====================
+rota('/minha-equipe', async tela => {
+  const ls = (await api.rpc('minha_equipe').catch(err => { falha(err); return []; })) || [];
+  const hoje = hojeISO(), em15 = somaDias(hoje, 15);
+  const expV = c => ['clt', 'experiencia'].includes(c.tipo_contrato) && [c.experiencia_fim1, c.experiencia_fim2].find(d => d && d >= hoje && d <= em15);
+  const cnhV = c => c.cnh_validade && c.cnh_validade < somaDias(hoje, 30);
+  const pend = c => [...(c.docs || []).map(d => `<span class="tag ${d.faixa === 'vencido' ? 'vermelho' : 'amarelo'}">${esc(d.tipo)} ${d.faixa === 'vencido' ? 'vencido' : 'vence ' + dataBR(d.vencimento)}</span>`),
+    ...(c.treinamentos || []).map(t => `<span class="tag ${t.situacao === 'vencido' ? 'vermelho' : 'amarelo'}">${esc(t.nome)} ${t.situacao === 'vencido' ? 'vencido' : 'pendente'}</span>`),
+    c.ferias ? `<span class="tag ${c.ferias.situacao === 'vencido' ? 'vermelho' : 'amarelo'}">férias ${c.ferias.situacao === 'vencido' ? 'vencidas' : 'a programar até ' + dataBR(c.ferias.limite)}</span>` : '',
+    expV(c) ? `<span class="tag azul">experiência termina ${dataBR(expV(c))}</span>` : '',
+    cnhV(c) ? `<span class="tag ${c.cnh_validade < hoje ? 'vermelho' : 'amarelo'}">CNH ${c.cnh_validade < hoje ? 'vencida' : 'vence ' + dataBR(c.cnh_validade)}</span>` : ''].filter(Boolean);
+  const n = f => ls.filter(f).length;
+  tela.innerHTML = `<div class="topo"><div><h1>Minha equipe</h1><p class="sub">${ls.length} pessoa(s) sob a sua liderança, direta e indireta. Salário, CPF, endereço e documentos ficam só com o RH.</p></div></div>
+    ${ls.length ? `<div class="grade kpis-eq">
+      <div class="cartao kpi"><div class="n">${n(c => c.direto)}</div><div class="r">diretos</div></div>
+      <div class="cartao kpi ${n(c => (c.docs || []).length) ? 'alerta' : ''}"><div class="n">${n(c => (c.docs || []).length)}</div><div class="r">com documento vencido ou vencendo</div></div>
+      <div class="cartao kpi ${n(c => (c.treinamentos || []).length) ? 'alerta' : ''}"><div class="n">${n(c => (c.treinamentos || []).length)}</div><div class="r">com treinamento pendente</div></div>
+      <div class="cartao kpi"><div class="n">${n(c => c.ferias)}</div><div class="r">férias a programar</div></div>
+      <div class="cartao kpi"><div class="n">${n(c => expV(c))}</div><div class="r">experiência terminando (15 dias)</div></div></div>
+    <div class="cartao"><div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Nome</th><th>Cargo</th><th>Setor</th><th>Líder imediato</th><th>Situação</th><th>Admissão</th><th>Pontos de atenção</th></tr></thead><tbody>
+      ${ls.map(c => `<tr class="clicavel eq-linha" data-id="${c.id}" data-f-busca="${esc([c.nome, c.cargo, c.setor, c.matricula].filter(Boolean).join(' '))}"${fAttr('setor', c.setor)}${fAttr('cargo', c.cargo)}>
+        <td data-r="Nome"><b>${esc(c.nome)}</b>${c.matricula ? ` <span class="muted">· ${esc(c.matricula)}</span>` : ''}${c.direto ? '' : ' <span class="tag">indireto</span>'}</td>
+        <td data-r="Cargo">${esc(c.cargo || '—')}</td><td data-r="Setor">${esc(c.setor || '—')}</td><td data-r="Líder">${esc(c.lider || '—')}</td>
+        <td data-r="Situação">${typeof tagColab === 'function' ? tagColab(c.status) : esc(c.status)}</td><td data-r="Admissão">${dataBR(c.admissao) || '—'}</td>
+        <td data-r="Atenção">${pend(c).join(' ') || '<span class="muted">—</span>'}</td></tr>`).join('')}
+    </tbody></table></div></div>` : '<div class="cartao vazio">Ninguém está cadastrado com você como líder imediato. O RH define isso na ficha de cada colaborador (Gestor imediato / líderes de campo).</div>'}`;
+  if (ls.length) filtroLocal(tela, { itens: 'tr.eq-linha', antes: $('.cartao .tabela-wrap', tela)?.parentElement, campos: [{ k: 'setor', rotulo: 'Setor' }, { k: 'cargo', rotulo: 'Cargo' }] });
+  $$('tr.eq-linha', tela).forEach(tr => (tr.onclick = () => { const c = ls.find(x => x.id === tr.dataset.id); if (!c) return;
+    const lin = (r, v) => v ? `<div><div class="muted">${r}</div><b>${v}</b></div>` : '';
+    modal(`<form><h2>${esc(c.nome)}</h2><p class="muted">${esc([c.cargo, c.setor].filter(Boolean).join(' · '))}</p><div class="form">
+      ${lin('Situação', typeof STATUS_COLAB !== 'undefined' ? esc(STATUS_COLAB[c.status]?.[0] || c.status) : esc(c.status))}${lin('Líder imediato', esc(c.lider || ''))}${lin('Admissão', dataBR(c.admissao))}
+      ${lin('Telefone', c.telefone ? esc(fmtTel(c.telefone)) : '')}${c.motorista || c.cnh_categoria ? lin('CNH', esc([c.cnh_categoria, c.cnh_validade ? 'validade ' + dataBR(c.cnh_validade) : ''].filter(Boolean).join(' · '))) : ''}
+      ${['clt', 'experiencia'].includes(c.tipo_contrato) && c.experiencia_fim2 >= hoje ? lin('Experiência', `${dataBR(c.experiencia_fim1)} e ${dataBR(c.experiencia_fim2)}`) : ''}
+      <div class="largo"><div class="muted">Pontos de atenção</div>${pend(c).join(' ') || '<b>Nada pendente</b>'}</div></div>
+      <div class="rodape"><button type="button" class="btn" data-fechar>Fechar</button>${typeof editaRH === 'function' && editaRH() ? `<a class="btn prim" href="#/rh/colaboradores/ver/${c.id}">Abrir ficha completa (RH)</a>` : ''}</div></form>`); }));
+});

@@ -291,7 +291,7 @@ function ligarMenus(raiz) {
     c.checked = xs.length && xs.every(x => x.checked); c.indeterminate = !c.checked && xs.some(x => x.checked); });
   const sincGuias = () => $$('[data-mk]', raiz).forEach(c => { const m = $(`[name="m_${c.dataset.mk}"]`, raiz); c.disabled = !m.checked; c.closest('label').style.opacity = m.checked ? 1 : .5; });
   // tela marcada sem o perfil que libera os dados dela: avisa (o menu aparece, mas a tela abre vazia ou bloqueada)
-  const NOME_P = Object.fromEntries(PERFIS.map(p => [p[0], p[1]])), SEM_PERFIL = ['#/rh/organograma'];
+  const NOME_P = Object.fromEntries(PERFIS.map(p => [p[0], p[1]])), SEM_PERFIL = ['#/rh/organograma', '#/minha-equipe'];
   const sincFalta = () => { const perfis = PERFIS.map(p => p[0]).filter(p => $(`[name=p_${p}]`, raiz)?.checked), adm = perfis.includes('administrador'), faltas = {};
     itens().forEach(c => { const k = c.name.slice(2), el = $(`[data-falta="${k}"]`, raiz), req = (c.dataset.perfis ? c.dataset.perfis.split(',') : []).filter(p => !p.startsWith('fch:'));
       const fch = (c.dataset.perfis || '').includes('fch:'), href = MENU[k]?.[1];

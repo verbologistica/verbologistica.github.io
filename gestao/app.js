@@ -386,6 +386,7 @@ const MENU = [
   ['Meus reembolsos', '#/reembolsos', null, 'recibo', 'devolvidos', true],
   ['Meus adiantamentos', '#/adiantamentos', null, 'dinheiro', null, true],
   ['Meus itens', '#/meus-itens', null, 'mochila', null, true],
+  ['Minha equipe', '#/minha-equipe', ['lider'], 'pessoas', null, true],
   ['Minha jornada', '#/operacao/jornada', [...P_OP, 'motorista'], 'relogio', null, true],
   ['Pesquisa de clima', '#/clima', null, 'conversa', 'pesquisa_aberta', true],
   ['Registrar não conformidade', '#/qualidade/nc/nova', null, 'documento', null, true],
@@ -523,7 +524,7 @@ function menuPara(perfis, menus) {
   return semSub.filter((i, k) => i[0] !== 'grupo' || (semSub[k + 1] && semSub[k + 1][0] !== 'grupo'));
 }
 function menu() {
-  return menuPara([...estado.perfis, ...(estado.fch || []).map(c => 'fch:' + c)], estado.usuario?.menus).map(i => i[0] === 'grupo' ? ['grupo', i[1], true, i[2]] : i[0] === 'sub' ? ['sub', i[1]] : [i[0], i[1], true, i[3], i[4], i[5]]);
+  return menuPara([...estado.perfis, ...(estado.fch || []).map(c => 'fch:' + c), ...(estado.lider ? ['lider'] : [])], estado.usuario?.menus).map(i => i[0] === 'grupo' ? ['grupo', i[1], true, i[2]] : i[0] === 'sub' ? ['sub', i[1]] : [i[0], i[1], true, i[3], i[4], i[5]]);
 }
 // Guias (abas) das telas: no acesso personalizado, o cadastro pode liberar só algumas ("#/tela::guia")
 const GUIAS = {
@@ -559,7 +560,18 @@ function aplicarGuias(tela, telaAtual) {
   }
   return false;
 }
-const telaPermitida = h => { const r = '#' + h; return !MENU.some(i => i[0] !== 'grupo' && i[0] !== 'sub' && i[1] === r) || menu().some(i => i[1] === r); };
+// compara pelo caminho, sem os filtros (?status=…): "Compras a receber" (#/compras/pedidos?status=a_receber) libera #/compras/pedidos
+const baseHref = x => String(x || '').split('?')[0];
+const telaPermitida = h => { const r = '#' + h; return !MENU.some(i => i[0] !== 'grupo' && i[0] !== 'sub' && baseHref(i[1]) === r) || menu().some(i => baseHref(i[1]) === r); };
+// perfis e telas liberadas são relidos a cada minuto (e na hora, quando uma tela é negada): não precisa sair e entrar de novo
+let _acessoEm = 0;
+async function atualizarAcesso(forcar = false) {
+  if (!estado.usuario?.id || (!forcar && Date.now() - _acessoEm < 60000)) return; _acessoEm = Date.now();
+  try { const [[u], ps, fs, lid] = await Promise.all([api.listar('usuarios', `id=eq.${estado.usuario.id}&select=*`), api.listar('usuario_perfis', `usuario_id=eq.${estado.usuario.id}&select=perfil`),
+      api.listar('setores_fechamento', 'select=codigo,aprovadores,lancadores&ativo=is.true').catch(() => null), api.rpc('lidera_alguem', { p_usuario: estado.usuario.id }).catch(() => estado.lider)]);
+    if (u) estado.usuario = u; if (ps) estado.perfis = ps.map(p => p.perfil); if (fs) estado.fch = fs.filter(s => [...s.aprovadores, ...s.lancadores].includes(estado.usuario.id)).map(s => s.codigo); estado.lider = !!lid;
+  } catch { /* segue com o que já tinha */ } }
+
 
 // Menu lateral: grupos recolhíveis (abre um por vez), lembra o que estava aberto e
 // não é redesenhado a cada clique — assim a rolagem do menu fica onde estava.
@@ -742,7 +754,8 @@ async function navegar() {
   atualizarPilha(telaAtual);
   const [h, qs] = (location.hash || '#/inicio').slice(1).split('?');
   estado.params = new URLSearchParams(qs || '');
-  if (!telaPermitida(h)) { aviso('Você não tem acesso a esta tela.', true); location.hash = '#/inicio'; return; }
+  await atualizarAcesso();
+  if (!telaPermitida(h)) { await atualizarAcesso(true); if (!telaPermitida(h)) { aviso('Você não tem acesso a esta tela.', true); location.hash = '#/inicio'; return; } }
   await desenharCasca();
   const tela = $('#tela');
   for (const padrao of Object.keys(ROTAS).sort((a, b) => a.includes(':') - b.includes(':'))) {   // rotas fixas antes das genéricas
@@ -902,6 +915,7 @@ async function iniciar() {
     // setores em que a pessoa faz ou aprova fechamento de contratos
     estado.fch = (await api.listar('setores_fechamento', 'select=codigo,aprovadores,lancadores&ativo=is.true').catch(() => []))
       .filter(s => [...s.aprovadores, ...s.lancadores].includes(u.id)).map(s => s.codigo);
+    estado.lider = await api.rpc('lidera_alguem', { p_usuario: u.id }).catch(() => false); _acessoEm = Date.now();
     estado.cache = {};
     if (!location.hash || location.hash === '#') location.hash = '#/inicio';
     await navegar();
