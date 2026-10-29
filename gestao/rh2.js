@@ -759,7 +759,7 @@ function orgMontar(cs, cgs, ss) {
     nos.set('c:' + c.id, { k: 'c:' + c.id, tipo: 'colab', id: c.id, nome: c.nome, cargo: cgs.find(x => x.id === c.cargo_id)?.nome || '', setor: st?.nome || '', setor_id: c.setor_id, cor: corSetor[c.setor_id] || '#5d6f68', status: c.status, admissao: c.data_admissao, c, filhos: [] }); }
   const porUsuario = new Map(cs.filter(c => c.usuario_id).map(c => [c.usuario_id, 'c:' + c.id]));
   const chaveGestor = g => !g ? null : g.colaborador_id ? 'c:' + g.colaborador_id : g.usuario_id ? (porUsuario.get(g.usuario_id) || 'u:' + g.usuario_id) : g.fornecedor_id ? 'f:' + g.fornecedor_id : 'x:' + semAcento(String(g.nome || '').toLowerCase());
-  for (const n of nos.values()) {
+  for (const n of [...nos.values()]) { if (!n.c) continue; // só colaboradores; gestores externos/prestadores entram no mapa durante o laço
     const g = n.c.gestor || (n.c.gestor_colaborador_id ? { colaborador_id: n.c.gestor_colaborador_id } : null); const k = chaveGestor(g); if (!k || k === n.k) continue;
     if (!nos.has(k)) { if (k.startsWith('c:')) continue;
       nos.set(k, { k, tipo: k.startsWith('f:') ? 'prestador' : 'externo', nome: g.nome, cargo: k.startsWith('f:') ? 'Prestador de serviço' : k.startsWith('u:') ? 'Usuário do sistema' : (g.info || 'Externo'), setor: '', cor: '#DDA936', filhos: [] }); }
