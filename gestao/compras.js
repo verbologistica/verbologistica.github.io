@@ -450,6 +450,7 @@ rota('/compras/pedidos/ver/:id', async (tela, id) => {
   const podeFaturar = ativo && !fat && lancaDocFiscal();
   const podeReceber = ativo && !entregue && recebeProduto();
   const anxF = fat ? await htmlAnexos('faturamento', fat.id) : '';
+  const fatIt = fat ? await api.listar('faturamento_itens', `faturamento_id=eq.${fat.id}&cancelado_em=is.null&order=criado_em`).catch(() => []) : [];
   const anxR = {}; await Promise.all(recsV.map(async x => (anxR[x.id] = await htmlAnexos('recebimento', x.id))));
   const recIt = recsV.length ? await api.listar('recebimento_itens', `recebimento_id=in.(${recsV.map(x => x.id).join(',')})&order=criado_em`).catch(() => []) : [];
   const SIT_REC = { conferido: '', avaria: ' <span class="tag vermelho">avaria</span>', diferente: ' <span class="tag amarelo">diferente</span>', anterior: ' <span class="muted">(registrado antes)</span>' };
@@ -488,6 +489,8 @@ rota('/compras/pedidos/ver/:id', async (tela, id) => {
         ${parcelas.length ? `<div class="largo"><div class="muted">Vencimento(s)</div>${parcelas.map(x => `${x.parcela}ª ${dataBR(x.vencimento)} · ${brl(x.valor)}${x.status === 'paga' ? ' <span class="tag verde">paga</span>' : ''}`).join(' &nbsp;|&nbsp; ')}</div>` : ''}
         ${fat.divergencia ? `<div class="largo alerta-obs">Divergência: ${esc(fat.divergencia)}</div>` : ''}
         ${fat.observacao ? `<div class="largo"><div class="muted">Observação</div>${esc(fat.observacao)}</div>` : ''}
+        <div class="largo"><div class="muted">Itens do documento${fatIt.length ? '' : ' <span class="tag amarelo">não informados — o Almoxarifado confere pelo pedido</span>'}</div>${fatIt.length ? `<ul class="rec-lista">${fatIt.map(x => `<li>${esc(x.descricao)} · <b>${x.situacao === 'retirado' ? 'não veio' : qfmt(x.quantidade) + ' ' + esc(x.unidade || '')}</b>${{ alterado: ' <span class="tag amarelo">alterado</span>', novo: ' <span class="tag azul">novo</span>', retirado: ' <span class="tag vermelho">não veio</span>' }[x.situacao] || ''}</li>`).join('')}</ul>` : ''}
+          ${lancaDocFiscal() && !entregue ? `<button class="btn peq" id="itens-doc">${fatIt.length ? 'Corrigir itens do documento' : 'Informar itens do documento'}</button>` : ''}</div>
         <div class="largo"><div class="muted">Arquivos</div>${anxF}</div>
         ${lancaDocFiscal() ? `<div class="largo"><button class="btn peq perigo" id="cancelar-fat">Cancelar este lançamento (corrigir)</button></div>` : ''}</div>`
       : `<div class="vazio" style="padding:10px 0">${entregue ? '⚠️ O produto já chegou e <b>ainda faltam a nota fiscal e o boleto</b>.' : 'Aguardando a nota fiscal / boleto do fornecedor.'}</div>`}</div>` : ''}
@@ -578,6 +581,7 @@ rota('/compras/pedidos/ver/:id', async (tela, id) => {
       <div class="largo" id="parcelas"></div>
       <label class="campo largo" id="campo-linha">Linha digitável do boleto (opcional)<input name="linha" inputmode="numeric" placeholder="Só os números"></label>
       <label class="campo largo">Observação<input name="obs"></label>
+      ${htmlItensDoc(itens)}
       <label class="campo largo">Nota fiscal / recibo / cupom — obrigatório (qualquer arquivo)<input type="file" name="arquivos" multiple></label>
       <label class="campo largo" id="campo-boleto">Boleto (obrigatório quando a forma é boleto)<input type="file" name="boletos" multiple></label></div>
       <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn ok">Lançar documentos</button></div></form>`, {
@@ -599,7 +603,7 @@ rota('/compras/pedidos/ver/:id', async (tela, id) => {
         f.forma.addEventListener('change', forma); forma();
         f.avista.addEventListener('change', () => { f.venc.value = f.avista.checked ? f.data.value : somaDias(f.data.value, prazo || 30); if (f.avista.checked) f.n.value = 1; sinc(); });
         f.data.addEventListener('change', () => { f.venc.value = somaDias(f.data.value, f.avista.checked ? 0 : prazo); sinc(); });
-        sinc();
+        sinc(); ligarItensDoc(raiz, itens); receber._raizFat = raiz;
       },
       validar: d => {
         const v = num(d.valor);
@@ -613,7 +617,7 @@ rota('/compras/pedidos/ver/:id', async (tela, id) => {
         const ps = $$('#parcelas .pv').map((el, k) => ({ vencimento: el.value, valor: num($$('#parcelas .pval')[k].value) || 0 }));
         if (ps.some(x => !x.vencimento || !(x.valor > 0))) return 'Confira as datas e os valores das parcelas.';
         if (Math.abs(ps.reduce((s, x) => s + x.valor, 0) - v) > 0.009) return `A soma das parcelas precisa dar ${brl(v)}.`;
-        receber._parcelas = ps; return null;
+        receber._parcelas = ps; const eIt = validarItensDoc(receber._raizFat, d); if (eIt) return eIt; receber._itensDoc = receber._raizFat._itensDoc(); return null;
       } });
     if (!res) return;
     try {
@@ -621,8 +625,18 @@ rota('/compras/pedidos/ver/:id', async (tela, id) => {
         p_parcelas: receber._parcelas, p_forma: res.forma, p_linha_digitavel: res.forma === 'Boleto' ? res.linha || null : null, p_divergencia: res.div || null, p_obs: res.obs || null });
       await anexarEm([['faturamento', out.faturamento], ['titulo', out.titulo]], res.arquivos, res.tipo);
       if (res.forma === 'Boleto') await anexarEm([['faturamento', out.faturamento], ['titulo', out.titulo]], res.boletos, 'Boleto');
+      try { await api.rpc('salvar_itens_documento', { p_fat: out.faturamento, p_itens: receber._itensDoc.itens, p_justificativa: res.di_just || null }); }
+      catch (err) { aviso('Documentos lançados, mas os itens da nota não foram gravados: ' + (err.message || err) + ' Use "Informar itens do documento".', true); navegar(); return; }
       aviso(entregue ? 'Documentos lançados. Pedido concluído: faturado e recebido.' : 'Documentos lançados e conta a pagar criada. Falta o Almoxarifado confirmar a chegada do produto.'); navegar();
     } catch (err) { falha(err); }
+  });
+
+  $('#itens-doc')?.addEventListener('click', async () => {
+    const res = await modal(`<form class="rec-form"><h2>Itens do documento · ${esc(fat.tipo_documento)} ${esc(fat.numero_documento)}</h2><div class="form">${htmlItensDoc(itens, fatIt)}</div>
+      <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn ok">Salvar itens</button></div></form>`,
+      { aoAbrir: raiz => { ligarItensDoc(raiz, itens); receber._raizIt = raiz; }, validar: d => validarItensDoc(receber._raizIt, d) });
+    if (!res) return;
+    try { await api.rpc('salvar_itens_documento', { p_fat: fat.id, p_itens: receber._raizIt._itensDoc().itens, p_justificativa: res.di_just || null }); aviso('Itens do documento salvos. O Almoxarifado vai conferir contra eles.'); navegar(); } catch (err) { falha(err); }
   });
 
   // ----- 2) Recebimento do produto (Almoxarifado / Patrimônio) -----
@@ -632,19 +646,21 @@ rota('/compras/pedidos/ver/:id', async (tela, id) => {
     const antigos = !!st.antigos_sem_itens;
     const qf = n => Number(n || 0).toLocaleString('pt-BR', { maximumFractionDigits: 3 });
     const res = await modal(`<form class="rec-form"><h2>Recebimento do pedido ${esc(p.numero)}</h2>
-      <p class="muted">Confira item a item o que chegou. ${fat ? `Documento já lançado: <b>${esc(fat.tipo_documento)} ${esc(fat.numero_documento)}</b>.` : 'A nota fiscal e o boleto são lançados por Compras/Financeiro — aqui é só a chegada do produto.'}</p>
+      <p class="muted">Confira item a item o que chegou.</p>
+      <div class="cartao rec-doc">${st.origem === 'nota' ? `Conferindo contra os <b>itens da ${esc(fat?.tipo_documento || 'nota')} ${esc(fat?.numero_documento || '')}</b> lançados por Compras.` : fat ? `Documento ${esc(fat.tipo_documento)} ${esc(fat.numero_documento)} lançado sem os itens: conferindo contra o <b>pedido</b>. Se vier diferente, marque "Diferente" e descreva.` : 'A nota ainda não foi lançada: conferindo contra o <b>pedido</b>. Anexe o romaneio ou a nota que veio com o produto.'}
+        ${fat ? `<div style="margin-top:6px"><span class="muted">Documentos anexados por Compras:</span> ${anxF}</div>` : ''}</div>
       ${antigos ? '<p class="alerta-obs">Já houve um recebimento parcial registrado sem os itens. Nos itens que chegaram naquela vez, escolha <b>Já tinha chegado antes</b>.</p>' : ''}
       <div class="acoes" style="margin:6px 0"><button type="button" class="btn peq" data-tudo>Chegou tudo o que falta</button><button type="button" class="btn peq" data-nada>Zerar quantidades</button>${antigos ? '<button type="button" class="btn peq" data-antes>Marcar todos como "já tinha chegado antes"</button>' : ''}</div>
       <div class="tabela-wrap"><table class="tabela compacta rec-itens"><thead><tr><th>Item</th><th class="num">Pedido</th><th class="num">Já recebido</th><th class="num">Chegou agora</th><th>Situação</th><th>Detalhe</th></tr></thead><tbody>
       ${its.map(i => `<tr data-it="${i.id}"><td data-r="Item"><b>${esc(i.descricao)}</b></td><td data-r="Pedido" class="num nowrap">${qf(i.pedido)} ${esc(i.unidade)}</td><td data-r="Já recebido" class="num nowrap">${qf(i.recebido)}</td>
         <td data-r="Chegou agora" class="num"><input type="number" name="q_${i.id}" min="0" max="${i.falta}" step="any" value="${i.falta}" class="rec-q" data-falta="${i.falta}"></td>
-        <td data-r="Situação"><select name="s_${i.id}"><option value="conferido">Conferido</option><option value="avaria">Com avaria</option><option value="diferente">Diferente do pedido</option>${antigos ? '<option value="anterior">Já tinha chegado antes</option>' : ''}</select></td>
+        <td data-r="Situação"><select name="s_${i.id}"><option value="conferido">Conferido</option><option value="avaria">Com avaria</option><option value="diferente">${st.origem === 'nota' ? 'Diferente da nota' : 'Diferente do pedido'}</option>${antigos ? '<option value="anterior">Já tinha chegado antes</option>' : ''}</select></td>
         <td data-r="Detalhe"><input name="o_${i.id}" placeholder="Ex.: 1 trincado"></td></tr>`).join('')}</tbody></table></div>
       <p id="rec-resumo" class="muted" style="margin:8px 0"></p>
       <div class="form">
       <label class="campo">Data em que chegou<input type="date" name="data" value="${hojeISO()}" max="${hojeISO()}" required></label>
       <label class="campo largo">Observação (opcional)<input name="obs" placeholder="Ex.: guardado na prateleira B, entregue ao setor de SSMA"></label>
-      <label class="campo largo">Fotos / canhoto assinado (opcional)<input type="file" name="fotos" multiple accept="image/*,application/pdf"></label></div>
+      <label class="campo largo">Fotos, canhoto assinado ou romaneio (opcional)<input type="file" name="fotos" multiple accept="image/*,application/pdf"></label></div>
       <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn ok">Confirmar recebimento</button></div></form>`, {
       aoAbrir: raiz => { const f = $('form', raiz);
         const resumo = () => { const falt = its.map(i => { const s = f['s_' + i.id].value, q = s === 'anterior' ? i.falta : Number(f['q_' + i.id].value || 0); f['q_' + i.id].disabled = s === 'anterior';
@@ -673,6 +689,41 @@ rota('/compras/pedidos/ver/:id', async (tela, id) => {
   });
 });
 const receber = {};
+
+
+// ---------- Itens do documento fiscal (como vieram na NF / romaneio) ----------
+const qfmt = n => Number(n || 0).toLocaleString('pt-BR', { maximumFractionDigits: 3 });
+function htmlItensDoc(itensPed, atuais = null) {
+  const base = atuais?.length ? atuais.map(x => ({ pid: x.pedido_item_id || '', d: x.descricao, q: x.quantidade, u: x.unidade, v: x.valor_unitario, ret: x.situacao === 'retirado' }))
+    : itensPed.map(i => ({ pid: i.id, d: i.descricao, q: i.quantidade, u: i.unidade, v: Number(i.valor_unitario) || '', ret: false }));
+  const linha = (x, k) => `<tr data-di="${k}" data-pid="${x.pid}"><td data-r="Item"><input class="di-d" value="${esc(x.d)}" ${x.ret ? 'disabled' : ''}>${x.pid ? `<div class="muted di-ped">no pedido: ${esc(itensPed.find(i => i.id === x.pid)?.descricao || '')} · ${qfmt(itensPed.find(i => i.id === x.pid)?.quantidade)} ${esc(itensPed.find(i => i.id === x.pid)?.unidade || '')}</div>` : '<div class="muted di-ped">item que não estava no pedido</div>'}</td>
+    <td data-r="Qtd"><input class="di-q" type="number" step="any" min="0" value="${x.ret ? '' : x.q}" ${x.ret ? 'disabled' : ''}></td><td data-r="Un."><input class="di-u" value="${esc(x.u || '')}" ${x.ret ? 'disabled' : ''}></td>
+    <td data-r="Valor unit."><input class="di-v" inputmode="decimal" value="${x.v ? String(x.v).replace('.', ',') : ''}" placeholder="opcional" ${x.ret ? 'disabled' : ''}></td>
+    <td data-r="">${x.pid ? `<label class="check"><input type="checkbox" class="di-ret" ${x.ret ? 'checked' : ''}> não veio</label>` : '<button type="button" class="btn peq" data-dirm>Tirar</button>'}</td><td class="di-tag"></td></tr>`;
+  return `<div class="largo di-bloco"><div class="muted" style="margin-bottom:4px"><b>Itens do documento</b> — confira com a nota/romaneio e ajuste o que veio diferente do pedido (tipo, quantidade, unidade). É contra esta lista que o Almoxarifado confere a chegada.</div>
+    <div class="tabela-wrap"><table class="tabela compacta di-tab"><thead><tr><th>Item como está na nota</th><th>Qtd</th><th>Un.</th><th>Valor unit.</th><th></th><th></th></tr></thead><tbody>${base.map(linha).join('')}</tbody></table></div>
+    <button type="button" class="btn peq" data-diadd>+ Item que não estava no pedido</button>
+    <label class="campo largo" id="di-just-campo" hidden>Por que a nota veio diferente do pedido? (obrigatório — quem pediu será avisado)<textarea name="di_just" rows="2"></textarea></label></div>`;
+}
+function ligarItensDoc(raiz, itensPed) {
+  const tb = $('.di-tab tbody', raiz); if (!tb) return;
+  const sinc = () => { let dif = false;
+    $$('tr[data-di]', tb).forEach(tr => { const pid = tr.dataset.pid, i = itensPed.find(x => x.id === pid), ret = $('.di-ret', tr)?.checked;
+      $$('input:not(.di-ret)', tr).forEach(x => (x.disabled = !!ret));
+      let t = ''; if (!pid) t = '<span class="tag azul">novo</span>'; else if (ret) t = '<span class="tag vermelho">não veio</span>';
+      else if (i && ($('.di-d', tr).value.trim().toLowerCase() !== i.descricao.toLowerCase() || Number($('.di-q', tr).value) !== Number(i.quantidade) || ($('.di-u', tr).value.trim() || i.unidade) !== i.unidade)) t = '<span class="tag amarelo">alterado</span>';
+      $('.di-tag', tr).innerHTML = t; if (t) dif = true; });
+    $('#di-just-campo', raiz).hidden = !dif; return dif; };
+  tb.addEventListener('input', sinc); tb.addEventListener('change', sinc);
+  tb.addEventListener('click', e => { if (e.target.matches('[data-dirm]')) { e.target.closest('tr').remove(); sinc(); } });
+  $('[data-diadd]', raiz).onclick = () => { tb.insertAdjacentHTML('beforeend', `<tr data-di="n" data-pid=""><td data-r="Item"><input class="di-d" placeholder="Descrição como está na nota"><div class="muted di-ped">item que não estava no pedido</div></td>
+      <td data-r="Qtd"><input class="di-q" type="number" step="any" min="0"></td><td data-r="Un."><input class="di-u" placeholder="un"></td><td data-r="Valor unit."><input class="di-v" inputmode="decimal" placeholder="opcional"></td><td><button type="button" class="btn peq" data-dirm>Tirar</button></td><td class="di-tag"></td></tr>`); sinc(); $('tr:last-child .di-d', tb).focus(); };
+  sinc(); raiz._itensDoc = () => ({ dif: sinc(), itens: $$('tr[data-di]', tb).map(tr => ({ pedido_item_id: tr.dataset.pid || null, descricao: $('.di-d', tr).value.trim(), quantidade: Number($('.di-q', tr).value || 0),
+    unidade: $('.di-u', tr).value.trim() || null, valor_unitario: num($('.di-v', tr).value) ?? null, retirado: !!$('.di-ret', tr)?.checked })) });
+}
+const validarItensDoc = (raiz, d) => { const r = raiz._itensDoc?.(); if (!r) return null;
+  for (const x of r.itens) { if (x.retirado) continue; if (!x.descricao) return 'Informe a descrição de todos os itens do documento.'; if (!(x.quantidade > 0)) return `${x.descricao}: informe a quantidade.`; }
+  if (r.dif && !String(d.di_just || '').trim()) return 'A nota veio diferente do pedido: explique o motivo.'; return null; };
 
 // Um arquivo, vários vínculos (ex.: a NF fica no recebimento e na conta a pagar)
 async function anexarEm(destinos, arquivos, descricao = null) {

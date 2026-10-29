@@ -1506,3 +1506,8 @@ body.og-imprimindo .og-arvore { min-width: 0; margin: 0 auto; }
 }
 
 .ac-falta { display: inline-block; margin-left: 26px; font-size: 12px; color: var(--vermelho, #b42318); } .ac-alerta { margin: 6px 0 8px; } .ac-alerta .btn { margin-left: 6px; }
+
+/* Itens do documento fiscal */
+.di-tab input { width: 100%; min-width: 0; } .di-tab .di-d { min-width: 220px; } .di-tab .di-q { width: 80px; } .di-tab .di-u { width: 60px; } .di-tab .di-v { width: 100px; }
+.di-ped { font-size: 12px; margin-top: 2px; } .di-tab td { vertical-align: top; } .di-bloco { margin: 6px 0; } .rec-doc { margin: 6px 0 10px; padding: 10px 12px; }
+.modal:has(.di-tab) { max-width: min(1000px, 96vw); width: 100%; }
