@@ -1402,3 +1402,7 @@ body.tema-vx .ss-vg-l:hover { background: rgba(255,255,255,.05); } body.tema-vx 
 .fer-dia-fds { opacity: .6; }
 .tabela-rol { overflow-x: auto; } .tabela.compacta td, .tabela.compacta th { padding: 6px 8px; vertical-align: top; }
 .ad-resp-set { border: 1px solid var(--borda); border-radius: 8px; padding: 6px 10px; display: flex; flex-wrap: wrap; gap: 4px 14px; } .ad-resp-set legend { padding: 0 4px; }
+.ad-mais { position: relative; display: inline-block; } .ad-mais > summary { list-style: none; cursor: pointer; } .ad-mais > summary::-webkit-details-marker { display: none; }
+.ad-mais-m { position: absolute; z-index: 20; top: calc(100% + 4px); left: 0; min-width: 240px; background: var(--cartao); border: 1px solid var(--borda); border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.12); padding: 6px; display: flex; flex-direction: column; gap: 4px; }
+.ad-mais-m .btn { justify-content: flex-start; text-align: left; border: 0; }
+.ad-doc-l { border-top: 1px solid var(--borda); padding-top: 8px; } .ad-doc-c { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: end; margin-top: 4px; }

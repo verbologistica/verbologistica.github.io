@@ -546,6 +546,30 @@ rota('/rh/admissoes/ver/:id', async (tela, id) => {
   const respTxt = s => { const x = R[s]; if (!x) return ''; return x.nomeados?.length ? x.nomeados.map(n => `<b>${esc(n.nome)}</b>${n.cargo ? ` <span class="muted">(${esc(n.cargo)})</span>` : ''}`).join(', ') : x.perfil?.length ? `sem responsável definido · aviso vai para ${x.perfil.length} pessoa(s) com perfil ${esc(s)}` : `<span class="txt-vermelho">ninguém com perfil ${esc(s)}</span>`; };
   const respCurto = s => { const x = R[s]; if (!x) return '—'; return x.nomeados?.length ? x.nomeados.map(n => esc(n.nome.split(' ').slice(0, 2).join(' '))).join('<br>') : x.perfil?.length ? `<span class="muted" title="${esc(x.perfil.join(', '))}">não definido · ${x.perfil.length} com o perfil</span>` : '<span class="txt-vermelho">ninguém</span>'; };
   const ultAviso = e => [...(e.eventos || [])].reverse().find(v => v.evento === 'avisado' || v.evento === 'cobrado');
+  // ações da etapa: uma ação principal que resolve a pendência aqui mesmo, o modelo da etapa e "Mais" para o resto
+  const docsFalta = k => (D.docs_exigidos || []).filter(d => (d.etapa || 'docs') === k && !d.ok);
+  const adAcoes = (e, { meu, bl, devolvida, lk, plk }) => {
+    const pend = e.status === 'pendente', P = [], M = [];
+    if (pend && meu && !bl.length) {
+      const fd = docsFalta(e.codigo);
+      if (devolvida) P.push(`<button class="btn peq ok" data-concl="${e.id}">Corrigido: concluir</button>`);
+      else if (e.codigo === 'ficha' && rh) P.push(`<button class="btn peq prim" data-fichaok>Completar ficha aqui</button>`);
+      else if (['docs', 'aso', 'tox', 'contrato'].includes(e.codigo) && fd.length && rh) P.push(`<button class="btn peq prim" data-docs="${e.codigo}">${e.codigo === 'docs' ? `Receber documentos (${fd.length})` : e.codigo === 'contrato' ? 'Anexar contrato assinado' : e.codigo === 'aso' ? 'Anexar ASO à ficha' : 'Anexar resultado à ficha'}</button>`);
+      if (['aso', 'tox'].includes(e.codigo) && !(e.codigo === 'aso' ? D.aso : false) && lk && plk) P.push(`<a class="btn peq ${P.length ? '' : 'prim'}" href="${lk[0]}">${e.codigo === 'aso' ? 'Lançar ASO no SSMA' : 'Lançar exame no SSMA'}</a>`);
+      if (['epi', 'acessos', 'cnh'].includes(e.codigo) && lk && plk) P.push(`<a class="btn peq" href="${lk[0]}">${esc(lk[1])}</a>`);
+      if (!devolvida && e.codigo !== 'cliente' && !e.auto) P.push(`<button class="btn peq ${P.length ? 'ok' : 'prim'}" data-concl="${e.id}">${e.exige_anexo ? 'Registrar comprovante e concluir' : 'Concluir'}</button>`);
+      (AD_MODELOS[e.codigo] || []).forEach(([cod, t]) => P.push(`<button class="btn peq" data-mod="${cod}" title="Gera o documento preenchido para baixar e enviar">📄 ${esc(t)}</button>`));
+      M.push(`<button class="btn peq" data-na="${e.id}">Não se aplica a este colaborador</button>`);
+    }
+    if (e.codigo === 'cliente' && (meu || rh) && (pend || (e.status === 'nao_se_aplica' && rh))) P.push(`<button class="btn peq" data-cli="definir">${a.cliente ? 'Trocar cliente' : 'Informar cliente'}</button>`);
+    if (e.codigo === 'cliente' && pend && meu && a.cliente) P.push(!a.cli_enviado_em ? '<button class="btn peq prim" data-cli="enviar">Docs enviados ao cliente</button>' : '<button class="btn peq ok" data-cli="aprovar">Cliente aprovou</button><button class="btn peq" data-cli="recusar">Cliente pediu ajuste</button>');
+    if (e.precisa_conferencia && rh) P.push(`<button class="btn peq prim" data-conferir="${e.id}">Conferir</button><button class="btn peq" data-devolver="${e.id}">Devolver ao setor</button>`);
+    if (rh) M.push(`<button class="btn peq" data-outro="${e.id}">Anexar outro documento à ficha</button>`, `<a class="btn peq" href="#/rh/colaboradores/ver/${c.id}">Abrir ficha completa</a>`);
+    if (pend && rh && !bl.length && e.setor !== 'Cliente') M.push(`<button class="btn peq" data-cobrar="${e.id}">Cobrar o setor agora</button>`);
+    if (!pend && rh && !e.precisa_conferencia) M.push(`<button class="btn peq" data-reabrir="${e.id}">Reabrir etapa</button>`);
+    if (!P.length && !M.length) return '';
+    return `<div class="ad-et-a">${P.join('')}${M.length ? `<details class="ad-mais"><summary class="btn peq">Mais ▾</summary><div class="ad-mais-m">${M.join('')}</div></details>` : ''}</div>`;
+  };
   const itemEtapa = e => { const [stT, stC, ic] = ST_ETAPA[e.status], bl = bloqueio(e), meu = meus.includes(e.setor) || rh;
     const lk = AD_LINK[e.codigo]?.(c.id), plk = AD_PERM_LINK[e.codigo]?.();
     const reqs = adRequisitos(e, D), okN = reqs.filter(x => x.ok).length, devolvida = e.status === 'pendente' && e.devolvido_em;
@@ -564,15 +588,7 @@ rota('/rh/admissoes/ver/:id', async (tela, id) => {
       ${como ? `<div class="muted ad-como">${esc(como)}</div>` : ''}
       ${adAnexosHtml(e.anexos)}
       ${e.codigo === 'cliente' && e.status === 'feito' && D.cli_sugestao && !trs.some(t => t.setor === 'Cliente' && t.status !== 'cancelado') && andamento ? `<div class="alerta-obs" style="margin-top:6px">Próxima integração possível no cliente: <b>${dataBR(D.cli_sugestao)}</b>${rh ? ' <button class="btn peq prim" data-cli="agendar">Agendar integração</button>' : ' (o RH agenda)'}</div>` : ''}
-      ${andamento ? `<div class="ad-et-a">${lk && plk ? `<a class="btn peq" href="${lk[0]}">${esc(lk[1])}</a>` : ''}
-        ${e.status === 'pendente' && meu ? (AD_MODELOS[e.codigo] || []).map(([cod, t]) => `<button class="btn peq" data-mod="${cod}" title="Gera o documento preenchido para baixar e enviar">📄 ${esc(t)}</button>`).join('') : ''}
-        ${e.codigo === 'cliente' && (meu || rh) && (e.status === 'pendente' || (e.status === 'nao_se_aplica' && rh)) ? `<button class="btn peq" data-cli="definir">${a.cliente ? 'Trocar cliente' : 'Informar cliente'}</button>` : ''}
-        ${e.codigo === 'cliente' && e.status === 'pendente' && meu && a.cliente ? `${!a.cli_enviado_em ? '<button class="btn peq prim" data-cli="enviar">Docs enviados ao cliente</button>' : '<button class="btn peq ok" data-cli="aprovar">Cliente aprovou</button><button class="btn peq" data-cli="recusar">Cliente pediu ajuste</button>'}` : ''}
-        ${e.status === 'pendente' && meu ? `${e.codigo === 'cliente' ? '' : !e.auto || devolvida ? `<button class="btn peq ok" data-concl="${e.id}">${devolvida ? 'Corrigido: concluir' : 'Concluir'}${e.exige_anexo ? ' (com anexo)' : ''}</button>` : `<button class="btn peq" data-verif>Verificar agora</button>`}
-          <button class="btn peq" data-anx="${e.id}">📎 Anexar</button><button class="btn peq" data-na="${e.id}">Não se aplica</button>` : ''}
-        ${e.status === 'pendente' && rh && !bl.length && e.setor !== 'Cliente' ? `<button class="btn peq" data-cobrar="${e.id}" title="Envia um aviso ao responsável do setor">Cobrar setor</button>` : ''}
-        ${e.precisa_conferencia && rh ? `<button class="btn peq prim" data-conferir="${e.id}">Conferir</button><button class="btn peq" data-devolver="${e.id}">Devolver ao setor</button>` : ''}
-        ${e.status !== 'pendente' && rh && !e.precisa_conferencia ? `<button class="btn peq" data-reabrir="${e.id}">Reabrir</button>` : ''}</div>` : ''}
+      ${andamento ? adAcoes(e, { meu, bl, devolvida, lk, plk }) : ''}
       ${(e.eventos || []).length ? `<details class="ad-ethist"><summary>Histórico da etapa (${e.eventos.length})</summary><ul>${e.eventos.map(v => `<li><span class="muted">${dtHora(v.em)}</span> · ${esc(AD_EVENTO[v.evento] || v.evento)}${v.por ? ' · ' + esc(v.por) : ''}${v.obs ? `<div class="muted">${esc(v.obs)}</div>` : ''}</li>`).join('')}</ul></details>` : ''}</div></li>`; };
   // quadro: quem está com cada parte
   const setoresProc = [...new Set(ets.map(e => e.setor))].filter(s => s !== 'Cliente');
@@ -627,6 +643,72 @@ rota('/rh/admissoes/ver/:id', async (tela, id) => {
     try { await api.rpc('concluir_etapa_admissao', { p_etapa: b.dataset.na, p_status: 'nao_se_aplica', p_obs: m }); navegar(); } catch (err) { falha(err); } }));
   $$('[data-mod]', tela).forEach(b => (b.onclick = async () => { const m = await modeloPorCodigo(b.dataset.mod); if (!m) return aviso('Modelo não encontrado na biblioteca (Modelos de documentos).', true);
     try { await gerarDocumento(m, c.id); } catch (err) { falha(err); } }));
+  // completar a ficha sem sair da admissão: só o que falta, com as fotos
+  $('[data-fichaok]', tela)?.addEventListener('click', async () => {
+    const [col, ss] = await Promise.all([api.um('colaboradores', `id=eq.${c.id}&select=*`), setoresL()]);
+    const v = k => esc(col?.[k] ?? ''), falta = {
+      cpf: !col.cpf, nasc: !col.data_nascimento, tel: !col.telefone, end: !(col.logradouro && col.cidade), emer: !(col.emergencia_nome && col.emergencia_telefone),
+      banco: !((col.pix_chave || '').trim() || (col.conta || '').trim()), setor: !col.setor_id, fotos: !(col.foto_caminho && col.foto_cracha_caminho) };
+    const fotos = typeof htmlFotosColaborador === 'function' ? await htmlFotosColaborador(col, true) : '';
+    const r = await modal(`<form><h2>Completar ficha · ${esc(col.nome)}</h2><div class="form">
+      <p class="muted largo">Só aparecem os dados que faltam para a etapa. Os demais ficam na ficha completa.</p>
+      ${falta.cpf ? `<label class="campo">CPF *<input name="cpf" required value="${v('cpf')}"></label>` : ''}
+      ${falta.nasc ? `<label class="campo">Data de nascimento *<input type="date" name="data_nascimento" required value="${v('data_nascimento')}"></label>` : ''}
+      ${falta.tel ? `<label class="campo">Celular *<input name="telefone" required inputmode="tel" value="${esc(fmtTel(col.telefone || ''))}"></label>` : ''}
+      ${falta.setor ? `<label class="campo">Setor *<select name="setor_id" required><option value=""></option>${ss.filter(x => x.ativo !== false).map(x => `<option value="${x.id}">${esc(x.nome)}</option>`).join('')}</select></label>` : ''}
+      ${falta.end ? `<h3 class="largo">Endereço</h3><label class="campo">CEP<input name="cep" inputmode="numeric" value="${esc(fmtCEP(col.cep || ''))}"></label>
+        <label class="campo largo">Logradouro *<input name="logradouro" required value="${v('logradouro')}"></label><label class="campo">Número<input name="numero" value="${v('numero')}"></label>
+        <label class="campo">Bairro<input name="bairro" value="${v('bairro')}"></label><label class="campo">Cidade *<input name="cidade" required value="${v('cidade')}"></label>
+        <label class="campo">UF<select name="uf"><option value=""></option>${UFS.map(u => `<option ${u === col.uf ? 'selected' : ''}>${u}</option>`).join('')}</select></label>` : ''}
+      ${falta.emer ? `<h3 class="largo">Contato de emergência</h3><label class="campo">Nome *<input name="emergencia_nome" required value="${v('emergencia_nome')}"></label>
+        <label class="campo">Telefone *<input name="emergencia_telefone" required inputmode="tel" value="${esc(fmtTel(col.emergencia_telefone || ''))}"></label>
+        <label class="campo">Parentesco<input name="emergencia_parentesco" value="${v('emergencia_parentesco')}"></label>` : ''}
+      ${falta.banco ? `<h3 class="largo">Pagamento (conta ou Pix)</h3><label class="campo">Banco<input name="banco" value="${v('banco')}"></label>
+        <label class="campo">Agência<input name="agencia" value="${v('agencia')}"></label><label class="campo">Conta<input name="conta" value="${v('conta')}"></label>
+        <label class="campo">Tipo de chave Pix<select name="pix_tipo"><option value=""></option>${(typeof TIPOS_PIX !== 'undefined' ? TIPOS_PIX : ['CPF', 'Celular', 'E-mail', 'Aleatória']).map(x => `<option ${x === col.pix_tipo ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
+        <label class="campo">Chave Pix<input name="pix_chave" value="${v('pix_chave')}"></label>` : ''}
+      ${falta.fotos ? `<h3 class="largo">Fotos</h3><div class="largo">${fotos}</div>` : ''}</div>
+      <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Salvar na ficha</button></div></form>`,
+      { validar: d => falta.cpf && !cpfValido(d.cpf) ? 'CPF inválido.' : falta.banco && !(d.pix_chave || d.conta) ? 'Informe a conta ou a chave Pix.' : null });
+    if (!r) return;
+    const dados = {};
+    for (const [k, val] of Object.entries(r)) { if (k.startsWith('_')) continue; dados[k] = val === '' ? null : val; }
+    ['cpf', 'telefone', 'emergencia_telefone', 'cep'].forEach(k => { if (k in dados) dados[k] = soDigitos(dados[k] || '') || null; });
+    if (dados.banco) dados.banco = dados.banco.match(/^\d{1,3}/)?.[0] || dados.banco;
+    try { if (Object.keys(dados).length) await api.alterar('colaboradores', `id=eq.${c.id}`, dados);
+      if (r._foto_ficha?.length) await salvarFotoColaborador(c.id, r._foto_ficha[0], 'ficha');
+      if (r._foto_cracha?.length) await salvarFotoColaborador(c.id, r._foto_cracha[0], 'cracha');
+      aviso('Ficha atualizada.'); navegar(); } catch (err) { falha(err); }
+  });
+  // receber os documentos que faltam (vão direto para Documentos da ficha, com o tipo certo)
+  const tiposDoc = () => api.listar('rh_tipos_documento', 'ativo=eq.true&select=*&order=ordem');
+  const salvarDoc = async (tipo, arquivos, extra = {}) => { const [doc] = await api.inserir('colaborador_documentos', { colaborador_id: c.id, tipo_id: tipo, ...extra });
+    if (arquivos?.length) await window.anexar('documento_colaborador', doc.id, arquivos); };
+  $$('[data-docs]', tela).forEach(b => (b.onclick = async () => {
+    const k = b.dataset.docs, nomes = new Set(docsFalta(k).map(d => d.nome)), ts = (await tiposDoc()).filter(t => nomes.has(t.nome));
+    const r = await modal(`<form><h2>${k === 'docs' ? 'Receber documentos admissionais' : 'Anexar à ficha'} · ${esc(c.nome)}</h2><div class="form">
+      <p class="muted largo">Cada arquivo vai para Documentos da ficha com o tipo certo. Envie os que tiver agora; os outros continuam pendentes.</p>
+      ${ts.map(t => `<div class="largo ad-doc-l"><b>${esc(t.nome)}</b>${t.orientacao ? `<div class="muted">${esc(t.orientacao)}</div>` : ''}
+        <div class="ad-doc-c"><label class="campo">Arquivo (PDF ou foto)<input type="file" name="f_${t.id}" multiple accept="image/*,application/pdf"></label>
+        <label class="campo">Emissão<input type="date" name="e_${t.id}"></label>${t.tem_validade ? `<label class="campo">Vencimento<input type="date" name="v_${t.id}"></label>` : ''}
+        ${k === 'docs' ? `<label class="check"><input type="checkbox" name="n_${t.id}"> Não se aplica</label>` : ''}</div></div>`).join('') || '<p class="largo">Nada pendente.</p>'}</div>
+      <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Salvar</button></div></form>`,
+      { validar: d => ts.some(t => d['f_' + t.id]?.length || d['n_' + t.id]) ? null : 'Anexe pelo menos um documento.' });
+    if (!r) return;
+    try { let n = 0;
+      for (const t of ts) { const arq = r['f_' + t.id] || [], na = !!r['n_' + t.id]; if (!arq.length && !na) continue;
+        const emi = r['e_' + t.id] || null; let venc = r['v_' + t.id] || null; if (!venc && emi && t.validade_meses) venc = somaMeses(emi, t.validade_meses);
+        await salvarDoc(t.id, arq, { emissao: emi, vencimento: venc, dispensado: na, observacao: na ? 'Não se aplica (registrado na admissão)' : null }); n++; }
+      aviso(`${n} documento(s) registrado(s) na ficha.`); navegar(); } catch (err) { falha(err); } }));
+  $$('[data-outro]', tela).forEach(b => (b.onclick = async () => { const ts = await tiposDoc();
+    const r = await modal(`<form><h2>Anexar documento à ficha · ${esc(c.nome)}</h2><div class="form">
+      <label class="campo largo">Tipo de documento *<select name="tipo" required><option value=""></option>${ts.map(t => `<option value="${t.id}">${esc(t.nome)}</option>`).join('')}</select></label>
+      <label class="campo">Número<input name="numero"></label><label class="campo">Emissão<input type="date" name="emissao"></label><label class="campo">Vencimento<input type="date" name="vencimento"></label>
+      <label class="campo largo">Observação${'<input name="observacao" placeholder="Obrigatória quando o tipo for &quot;Outro documento&quot;">'}</label>
+      <label class="campo largo">Arquivo *<input type="file" name="arquivos" multiple required accept="image/*,application/pdf"></label></div>
+      <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Salvar</button></div></form>`,
+      { validar: d => !d.arquivos.length ? 'Anexe o arquivo.' : ts.find(t => t.id === d.tipo)?.nome === 'Outro documento' && !d.observacao ? 'Descreva o documento na observação.' : null });
+    if (!r) return; try { await salvarDoc(r.tipo, r.arquivos, { numero: r.numero || null, emissao: r.emissao || null, vencimento: r.vencimento || null, observacao: r.observacao || null }); aviso('Documento anexado à ficha.'); navegar(); } catch (err) { falha(err); } }));
   $$('[data-cobrar]', tela).forEach(b => (b.onclick = async () => { try { const n = await api.rpc('cobrar_etapa_admissao', { p_etapa: b.dataset.cobrar });
     aviso(n ? `Cobrança enviada a ${n} pessoa(s).` : 'Ninguém recebeu: defina o responsável do setor.', !n); navegar(); } catch (err) { falha(err); } }));
   $$('[data-conferir]', tela).forEach(b => (b.onclick = async () => { const e = ets.find(x => x.id === b.dataset.conferir), reqs = adRequisitos(e, D), falta = reqs.filter(x => !x.ok);
