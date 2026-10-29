@@ -897,11 +897,14 @@ rota('/inicio', async tela => {
     <ul class="mr-lista">${minhasReq.map(r => { const [n, txt] = ETAPA_REQ[r.status] || [0, r.status];
       return `<li><a href="#/compras/requisicoes/ver/${r.id}"><span class="mr-num">${esc(r.numero || '')}</span><span class="mr-txt">${esc((r.justificativa || '').slice(0, 90))}${(r.justificativa || '').length > 90 ? '…' : ''}</span>
         <span class="mr-etapa ${r.status === 'devolvida' ? 'alerta' : ''}"><span class="mr-pontos">${[0, 1, 2, 3, 4, 5, 6, 7].map(i => `<i class="${i < n ? 'f' : i === n ? 'a' : ''}"></i>`).join('')}</span>${txt}</span></a></li>`; }).join('')}</ul></div>` : '';
-  const [resGestao, minhasAcoes, diariasFechar, chamadosAb] = await Promise.all([api.rpc('resumo_gestao').catch(() => null), api.rpc('minhas_acoes').catch(() => []), api.rpc('diarias_a_fechar').catch(() => []), api.rpc('chamados_abertos').catch(() => [])]);
+  const agIni = (() => { const d = new Date(hojeISO() + 'T12:00'); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d.toISOString().slice(0, 10); })();
+  const [resGestao, minhasAcoes, diariasFechar, chamadosAb, minhaAgenda] = await Promise.all([api.rpc('resumo_gestao').catch(() => null), api.rpc('minhas_acoes').catch(() => []), api.rpc('diarias_a_fechar').catch(() => []), api.rpc('chamados_abertos').catch(() => []),
+    api.rpc('minha_agenda', { p_ini: agIni, p_fim: somaDias(agIni, 13) }).catch(() => [])]);
   const hojeD = hojeISO(), fimMes = d => somaDias(somaMeses(d.slice(0, 7) + '-01', 1), -1);
   const dfPend = (diariasFechar || []).filter(x => fimMes(x.competencia) <= hojeD || Number(hojeD.slice(8)) >= 25);
   const blocoDiarias = dfPend.length ? `<div class="cartao" style="border-left:4px solid var(--ouro)"><h2>Diárias para fechar</h2><ul class="lista-simples">${dfPend.map(x => `<li class="clicavel" onclick="location.hash='#/financeiro/pagar/ver/${x.titulo_id}'"><span><b>${esc(x.fornecedor || '')}</b> · ${esc(x.descricao || '')}</span><span class="muted">previsto ${brl(x.valor)}</span></li>`).join('')}</ul></div>` : '';
   const blocoAcoes = htmlMinhasAcoes(minhasAcoes || []);
+  const blocoAgenda = htmlMinhaAgenda(minhaAgenda || [], agIni);
   const blocoGestao = htmlResumoGestao(resGestao);
   const verAnt = estado.params?.get('avisos') === 'todos';
   const notifs = await api.listar('notificacoes', `usuario_id=eq.${estado.usuario.id}${verAnt ? '' : '&lida=eq.false'}&order=criado_em.desc&limit=${verAnt ? 40 : 30}`);
@@ -918,7 +921,7 @@ rota('/inicio', async tela => {
       </div>
     </section>
     <div class="inicio-kpis ik-pend-w" hidden><section class="ik-sec ik-pend" id="ik-pend"></section></div>
-    ${blocoAcoes}${blocoDiarias}${typeof htmlChamadosInicio === 'function' ? htmlChamadosInicio(chamadosAb) : ''}
+    ${blocoAgenda || blocoAcoes ? `<div class="ini-duo">${blocoAgenda}${blocoAcoes}</div>` : ''}${blocoDiarias}${typeof htmlChamadosInicio === 'function' ? htmlChamadosInicio(chamadosAb) : ''}
     ${veTudo() || tem('administrador', 'comprador') ? '<section class="vx-ini" id="vx-ini"><div class="vx-ini-cab"><h2>Visão executiva</h2></div><div class="pn-vazio">Carregando indicadores…</div></section>' : ''}
     ${blocoGestao}
     <div class="inicio-kpis">
@@ -1020,6 +1023,7 @@ rota('/inicio', async tela => {
     const partes = [ap ? `<b>${ap}</b> item(ns) para aprovar` : '', nAc ? `<b>${nAc}</b> ação(ões) no seu nome` : '', al ? `<b>${al}</b> ponto(s) de atenção` : ''].filter(Boolean);
     $('#ih-resumo', tela).innerHTML = partes.length ? `Hoje você tem ${partes.join(' e ')}.` : 'Tudo em dia por aqui.'; }
   ligarMinhasAcoes(tela, minhasAcoes || []);
+  ligarMinhaAgenda(tela, minhaAgenda || []);
   $$('[data-lida]', tela).forEach(b => b.onclick = async e => { e.preventDefault(); await api.alterar('notificacoes', `id=eq.${b.dataset.lida}`, { lida: true }); navegar(); });
   $('#lidas')?.addEventListener('click', async () => {
     await api.alterar('notificacoes', `usuario_id=eq.${estado.usuario.id}&lida=eq.false`, { lida: true }); navegar();
@@ -1041,7 +1045,39 @@ function htmlMinhasAcoes(acs) {
     <ul class="ma-lista">${acs.map(a => { const [pt, pc] = prazoTxt(a.prazo); const [st, sc] = ST_ACAO_TXT[a.status] || [a.status, ''];
       return `<li class="${pc}"><div class="ma-txt"><b>${esc(a.descricao)}</b><span class="muted">${esc(a.origem)}${a.criado_por ? ' · por ' + esc(a.criado_por) : ''}</span></div>
         <div class="ma-prazo"><span>${a.prazo ? 'Prazo ' + dataBR(a.prazo) : 'Sem prazo'}</span><span class="ma-pt ${pc}">${pt}</span></div>
-        <span class="tag ${sc}">${st}</span>${(pg => pg ? `<span class="ac-prog">${pg.enviaram} de ${pg.total} enviaram</span>` : '')(progEntregas(a))}<button class="btn prim peq" data-acao="${a.modulo}:${a.id}">Abrir ação</button></li>`; }).join('')}</ul></div>`;
+        <div class="ma-dir"><span class="tag ${sc}">${st}</span>${(pg => pg ? `<span class="ac-prog">${pg.enviaram}/${pg.total} enviaram</span>` : '')(progEntregas(a))}<button class="btn prim peq" data-acao="${a.modulo}:${a.id}">Abrir</button></div></li>`; }).join('')}</ul></div>`;
+}
+// ===================== Início: minha agenda (2 semanas) =====================
+const AG_TIPO = { integracao_cliente: ['Integração no cliente', 'ag-ouro'], treinamento: ['Treinamento', 'ag-azul'], entrevista: ['Entrevista', 'ag-info'],
+  reuniao: ['Reunião', 'ag-verde'], prazo_acao: ['Prazo de ação', 'ag-verm'], prazo_admissao: ['Prazo de admissão', 'ag-amar'] };
+const agHora = iso => iso ? new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
+const agDiaLocal = iso => { const d = new Date(iso); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+const agDia = e => String(e.inicio || '').length > 10 ? agDiaLocal(e.inicio) : String(e.inicio || '').slice(0, 10);
+function htmlMinhaAgenda(evs, ini) {
+  const hj = hojeISO(), dias = Array.from({ length: 14 }, (_, i) => somaDias(ini, i)), porDia = {};
+  evs.forEach(e => (porDia[agDia(e)] ||= []).push(e));
+  Object.values(porDia).forEach(l => l.sort((a, b) => (a.dia_todo - b.dia_todo) || String(a.inicio).localeCompare(String(b.inicio))));
+  const prox = dias.filter(d => d >= hj && porDia[d]?.length);
+  const nSem = ['seg', 'ter', 'qua', 'qui', 'sex', 'sáb', 'dom'];
+  return `<div class="cartao ag-cartao" id="minha-agenda"><div class="topo" style="margin:0 0 8px"><div><h2 style="margin:0">${ico('calendario')} Minha agenda</h2>
+      <p class="muted" style="margin:2px 0 0">Integrações, treinamentos, entrevistas, reuniões e prazos sob sua responsabilidade · 2 semanas</p></div></div>
+    <div class="ag-grade">${nSem.map(n => `<span class="ag-sem">${n}</span>`).join('')}${dias.map(d => { const l = porDia[d] || [];
+      return `<button type="button" class="ag-d${d === hj ? ' hoje' : ''}${d < hj ? ' passado' : ''}${l.length ? ' tem' : ''}" data-agdia="${d}" title="${l.map(e => esc(e.titulo)).join('\n')}">
+        <b>${Number(d.slice(8))}</b><span class="ag-pts">${l.slice(0, 4).map(e => `<i class="${(AG_TIPO[e.tipo] || [])[1] || ''}"></i>`).join('')}</span></button>`; }).join('')}</div>
+    <div class="ag-lista" id="ag-lista">${htmlListaAgenda(prox.length ? prox : [], porDia, hj)}</div>
+    <div class="ag-leg">${Object.values(AG_TIPO).map(([t, c]) => `<span><i class="${c}"></i>${t}</span>`).join('')}</div></div>`;
+}
+function htmlListaAgenda(dias, porDia, hj) {
+  if (!dias.length) return '<p class="muted ag-vazio">Nenhum compromisso nas próximas duas semanas.</p>';
+  const rot = d => d === hj ? 'Hoje' : d === somaDias(hj, 1) ? 'Amanhã' : `${ferDiaSemanaCurto(d)} ${dataBR(d).slice(0, 5)}`;
+  return dias.slice(0, 6).map(d => `<div class="ag-dia"><div class="ag-dia-t">${rot(d)}</div>${porDia[d].map(e => { const [t, c] = AG_TIPO[e.tipo] || [e.tipo, ''];
+    return `<a class="ag-ev" href="${esc(e.link || '#/inicio')}"><span class="ag-h ${c}">${e.dia_todo ? '<small>dia</small>' : agHora(e.inicio)}</span><span class="ag-t"><b>${esc(e.titulo)}</b><span class="muted">${esc([t, e.papel, e.sub].filter(Boolean).join(' · '))}</span></span></a>`; }).join('')}</div>`).join('');
+}
+const ferDiaSemanaCurto = d => ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'][new Date(d + 'T12:00').getDay()];
+function ligarMinhaAgenda(tela, evs) {
+  const porDia = {}; evs.forEach(e => (porDia[agDia(e)] ||= []).push(e));
+  $$('[data-agdia]', tela).forEach(b => (b.onclick = () => { const d = b.dataset.agdia; $$('[data-agdia]', tela).forEach(x => x.classList.toggle('sel', x === b));
+    $('#ag-lista', tela).innerHTML = porDia[d]?.length ? htmlListaAgenda([d], porDia, hojeISO()) : `<p class="muted ag-vazio">${dataBR(d)}: nenhum compromisso.</p>`; }));
 }
 const TAB_ACAO = { ssma: 'ssma_acoes', qual: 'qual_acoes', geral: 'acoes_gerais' };
 
