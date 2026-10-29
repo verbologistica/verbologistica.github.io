@@ -38,7 +38,7 @@ const CADASTROS = {
     campos: [['nome', 'Nome do cargo', 'texto', true], ['cbo', 'CBO (ex.: 7825-10)'], ['setor_id', 'Setor', 'setor'],
              ['salario_base', 'Salário base (R$)', 'valor'], ['experiencia_dias', 'Contrato de experiência (dias)', 'numero', true],
              ['motorista', 'É motorista profissional (exige CNH, EAR e exame toxicológico)', 'bool', false, false],
-             ['cnh_minima', 'Categoria mínima de CNH', 'lista', false, ['A', 'B', 'C', 'D', 'E']],
+             ['cnh_minima', 'Categorias de CNH exigidas', 'cnh', false],
              ['exige_indivisiveis', 'Exige curso de transporte de cargas indivisíveis na CNH (ex.: tritrem / madeira)', 'bool', false, false], ['exige_mopp', 'Exige MOPP (produtos perigosos)', 'bool', false, false],
              ['descricao', 'Descrição das atividades', 'textoLongo'], ['requisitos', 'Requisitos (escolaridade, cursos, experiência)', 'textoLongo'],
              ['nivel', 'Nível na carreira (1, 2, 3…)', 'numero'], ['proximo_cargo_id', 'Próximo cargo na carreira (promoção)', 'cargo'], ['requisitos_promocao', 'Requisitos para promoção', 'textoLongo']],
@@ -70,6 +70,10 @@ const setoresCad = async () => (estado.cache.setores ||= await api.listar('setor
 async function campoHTML([nome, rotulo, tipo = 'texto', obrig, ops], v) {
   const req = obrig ? 'required' : '';
   if (tipo === 'bool') return `<label class="check largo"><input type="checkbox" name="${nome}" ${v ?? (ops ?? true) ? 'checked' : ''}> ${esc(rotulo)}</label>`;
+  if (tipo === 'cnh') { const atual = String(v || '');
+    return `<div class="campo largo"><span>${esc(rotulo)}</span><div class="cnh-cats">${[['A', 'A · moto'], ['B', 'B · carro'], ['C', 'C · caminhão'], ['D', 'D · ônibus / passageiros'], ['E', 'E · carreta, bitrem, tritrem']]
+      .map(([c, t]) => `<label class="check"><input type="checkbox" name="${nome}__${c}" ${atual.includes(c) ? 'checked' : ''}> ${t}</label>`).join('')}</div>
+      <span class="muted">Marque a moto (A), se exigir, e a categoria mais alta de 4 rodas: C já habilita B, D habilita B e C, E habilita todas de 4 rodas (CTB art. 143).</span></div>`; }
   let input;
   if (tipo === 'lista') input = `<select name="${nome}" data-valor="${esc(v ?? '')}" ${req}><option value=""></option>${ops.map(o => `<option ${o === v ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
   else if (tipo === 'conta') input = `<select name="${nome}">${await opcoesContas(v)}</select>`;
@@ -108,7 +112,9 @@ rota('/cadastros/:tabela', async (tela, tabela) => {
     const dados = {};
     for (const [nome, , tipo] of def.campos) {
       let v = r[nome];
-      if (tipo === 'valor') v = num(v) ?? 0; else if (tipo === 'numero') v = v === '' ? null : Number(v);
+      if (tipo === 'cnh') { const cs = ['A', 'B', 'C', 'D', 'E'].filter(c => r[`${nome}__${c}`]); const alta = cs.filter(c => c !== 'A').pop();
+        v = (cs.includes('A') ? 'A' : '') + (alta || '') || null; }
+      else if (tipo === 'valor') v = num(v) ?? 0; else if (tipo === 'numero') v = v === '' ? null : Number(v);
       else if (tipo !== 'bool' && v === '') v = null;
       dados[nome] = v;
     }
@@ -252,14 +258,23 @@ function formUsuario(u, atuais, ccs, funcoes) {
       <div class="largo"><div class="muted" style="margin-bottom:6px">Perfis de acesso *</div>
         <div class="grade" style="grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:8px">${PERFIS.map(([v, t, d]) => `<label class="check" style="align-items:flex-start"><input type="checkbox" name="p_${v}" ${atuais.includes(v) ? 'checked' : ''} ${v === 'administrador' && u?.id === estado.usuario.id ? 'disabled' : ''}>
           <span><b>${t}</b><br><span class="muted">${d}</span></span></label>`).join('')}</div></div>
-      <div class="largo"><div class="muted" style="margin-bottom:6px">Telas que pode acessar</div>
-        <label class="check"><input type="checkbox" name="menus_padrao" ${!u?.menus?.length ? 'checked' : ''}> Todas as telas liberadas pelos perfis marcados</label>
-        <div id="lista-menus" class="grade" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:4px 12px;margin-top:8px" ${!u?.menus?.length ? 'hidden' : ''}>
-          ${MENU.map((i, k) => i[0] === 'grupo' ? `<div class="menu-titulo" style="grid-column:1/-1;font-weight:700;margin-top:6px">${i[2] || ''} ${esc(i[1])}</div>`
-            : i[0] === 'sub' ? `<div class="muted" style="grid-column:1/-1;font-size:12px;text-transform:uppercase;letter-spacing:.05em;margin-top:2px">${esc(i[1])}</div>`
-            : `<label class="check"><input type="checkbox" name="m_${k}" data-perfis="${(i[2] || []).join(',')}" ${!u?.menus?.length || u.menus.includes(i[1]) ? 'checked' : ''}> ${esc(i[0])}</label>`).join('')}
-        </div>
-        <p class="muted" style="margin-top:6px">O perfil define o que a pessoa pode fazer; aqui você escolhe quais telas aparecem para ela.</p></div>
+      <div class="largo ac-bloco"><div class="ac-cab"><b>Telas, submenus e guias que a pessoa acessa</b></div>
+        <label class="check"><input type="radio" name="menus_modo" value="perfil" ${!u?.menus?.length ? 'checked' : ''}> Padrão dos perfis marcados acima</label>
+        <label class="check"><input type="radio" name="menus_modo" value="pers" ${u?.menus?.length ? 'checked' : ''}> Acesso personalizado: eu escolho cada tela e guia</label>
+        <div id="lista-menus" ${!u?.menus?.length ? 'hidden' : ''}>
+          <p class="muted ac-nota">Aparece no menu exatamente o que estiver marcado. O perfil continua definindo o que a pessoa pode <b>alterar</b> em cada tela; sem o perfil do setor, a tela abre só com o que o banco de dados libera para ela.</p>
+          <div class="ac-acoes"><button type="button" class="btn peq" data-ac="perfis">Marcar o que os perfis liberam</button><button type="button" class="btn peq" data-ac="tudo">Marcar tudo</button><button type="button" class="btn peq" data-ac="nada">Desmarcar tudo</button></div>
+          ${(() => { const blocos = []; let g = null;
+            MENU.forEach((i, k) => {
+              if (i[0] === 'grupo') { g = { nome: i[1], ic: i[2], itens: [] }; blocos.push(g); return; }
+              if (!g) { g = { nome: 'Geral', ic: 'painel', itens: [] }; blocos.push(g); }
+              g.itens.push([i, k]); });
+            return blocos.map((b, bi) => `<details class="ac-grupo" open><summary><label class="check" onclick="event.stopPropagation()"><input type="checkbox" data-grupo="${bi}"> ${ico(b.ic)} <b>${esc(b.nome)}</b></label></summary>
+              <div class="ac-itens">${b.itens.map(([i, k]) => i[0] === 'sub' ? `<div class="ac-sub">${esc(i[1])}</div>`
+                : `<div class="ac-item"><label class="check"><input type="checkbox" name="m_${k}" data-g="${bi}" data-perfis="${(i[2] || []).join(',')}" ${!u?.menus?.length || u.menus.includes(i[1]) ? 'checked' : ''}> ${esc(i[0])}</label>
+                   ${GUIAS[i[1]] ? `<div class="ac-guias"><span class="muted">Guias:</span>${GUIAS[i[1]].itens.map(([gk, gt]) => { const sel = (u?.menus || []).filter(x => x.startsWith(i[1] + '::'));
+                     return `<label class="check"><input type="checkbox" name="g_${k}_${gk}" data-mk="${k}" ${!sel.length || sel.includes(i[1] + '::' + gk) ? 'checked' : ''}> ${esc(gt)}</label>`; }).join('')}</div>` : ''}</div>`).join('')}</div></details>`).join(''); })()}
+        </div></div>
     </div>
     <datalist id="lista-setores">${[...new Set([...SETORES, ...funcoes.setores])].sort().map(x => `<option value="${esc(x)}">`).join('')}</datalist>
     <datalist id="lista-funcoes">${funcoes.cargos.map(x => `<option value="${esc(x)}">`).join('')}</datalist>
@@ -269,16 +284,33 @@ function formUsuario(u, atuais, ccs, funcoes) {
 }
 
 function ligarMenus(raiz) {
-  const atualiza = () => {
-    if (!$('[name=menus_padrao]', raiz)) return;   // janela já fechada
-    const perfis = PERFIS.map(p => p[0]).filter(p => $(`[name=p_${p}]`, raiz)?.checked);
-    $('#lista-menus', raiz).hidden = $('[name=menus_padrao]', raiz).checked;
-    $$('[data-perfis]', raiz).forEach(c => { const req = c.dataset.perfis ? c.dataset.perfis.split(',') : null;
-      const pode = !req || req.some(p => perfis.includes(p)); c.disabled = !pode; c.closest('label').style.opacity = pode ? 1 : .45; });
-  };
-  raiz.addEventListener('change', atualiza); atualiza();
+  const lista = $('#lista-menus', raiz); if (!lista) return;
+  const itens = () => $$('[name^="m_"]', raiz);
+  const sincGrupos = () => $$('[data-grupo]', raiz).forEach(c => { const xs = itens().filter(x => x.dataset.g === c.dataset.grupo);
+    c.checked = xs.length && xs.every(x => x.checked); c.indeterminate = !c.checked && xs.some(x => x.checked); });
+  const sincGuias = () => $$('[data-mk]', raiz).forEach(c => { const m = $(`[name="m_${c.dataset.mk}"]`, raiz); c.disabled = !m.checked; c.closest('label').style.opacity = m.checked ? 1 : .5; });
+  raiz.addEventListener('change', e => {
+    if (e.target.name === 'menus_modo') { lista.hidden = $('[name=menus_modo]:checked', raiz)?.value !== 'pers';
+      if (!lista.hidden && !itens().some(x => x.checked)) marcarPerfis(); }
+    if (e.target.dataset.grupo != null) itens().filter(x => x.dataset.g === e.target.dataset.grupo).forEach(x => (x.checked = e.target.checked));
+    sincGrupos(); sincGuias();
+  });
+  const marcarPerfis = () => { const perfis = PERFIS.map(p => p[0]).filter(p => $(`[name=p_${p}]`, raiz)?.checked);
+    itens().forEach(c => { const req = c.dataset.perfis ? c.dataset.perfis.split(',') : null; c.checked = perfis.includes('administrador') || !req || req.some(p => perfis.includes(p)); }); };
+  $$('[data-ac]', raiz).forEach(b => (b.onclick = () => { const a = b.dataset.ac;
+    if (a === 'perfis') marcarPerfis(); else itens().forEach(c => (c.checked = a === 'tudo'));
+    if (a !== 'nada') $$('[data-mk]', raiz).forEach(c => (c.checked = true)); sincGrupos(); sincGuias(); }));
+  sincGrupos(); sincGuias();
 }
-const menusEscolhidos = r => r.menus_padrao ? null : MENU.filter((i, k) => i[0] !== 'grupo' && i[0] !== 'sub' && r['m_' + k]).map(i => i[1]);
+// telas marcadas + guias ("#/tela::guia"; só grava guias quando nem todas estão marcadas)
+const menusEscolhidos = r => {
+  if (r.menus_modo !== 'pers') return null;
+  const out = [];
+  MENU.forEach((i, k) => { if (i[0] === 'grupo' || i[0] === 'sub' || !r['m_' + k]) return; out.push(i[1]);
+    const g = GUIAS[i[1]]; if (!g) return; const marc = g.itens.filter(([gk]) => r[`g_${k}_${gk}`]).map(([gk]) => gk);
+    if (marc.length < g.itens.length) out.push(...(marc.length ? marc.map(gk => i[1] + '::' + gk) : [i[1] + '::-'])); });
+  return out.length ? out : ['#/inicio'];
+};
 function ligarLoginCPF(raiz) {
   const cb = $('[name=login_cpf]', raiz), em = $('[name=email]', raiz); if (!cb || !em) return;
   const at = () => { $('#campo-email', raiz).style.display = cb.checked ? 'none' : ''; em.required = !cb.checked; const b = $('button[value=reenviar]', raiz); if (b) b.hidden = cb.checked; };

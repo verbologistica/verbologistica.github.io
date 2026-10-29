@@ -157,7 +157,8 @@ rota('/ssma/integracoes/ver/:id', async (tela, id) => {
   const U = porId(us), ok = vs.filter(v => v.resultado === 'satisfatoria' && v.atestado_em).length, pend = vs.find(v => !v.atestado_em);
   const pos = avs.filter(a => a.positiva).length, acc = avs.length ? Math.round(100 * pos / avs.length) : null;
   const aberta = ['em_integracao', 'aguardando_liberacao'].includes(i.status);
-  const cnhOk = !cargo?.cnh_minima || !i.c?.cnh_categoria || i.c.cnh_categoria.includes(cargo.cnh_minima) || i.c.cnh_categoria >= cargo.cnh_minima;
+  const cnhNv = x => Math.max(0, ...[...String(x || '')].map(c => ({ B: 1, C: 2, D: 3, E: 4 })[c] || 0));
+  const cnhOk = !cargo?.cnh_minima || !i.c?.cnh_categoria || ((!cargo.cnh_minima.includes('A') || i.c.cnh_categoria.includes('A')) && cnhNv(i.c.cnh_categoria) >= cnhNv(cargo.cnh_minima));
   const vencidos = venc.filter(v => v.vencimento < hojeISO());
   const fimPad = i.fim_apadrinhamento, acabou = fimPad && hojeISO() >= fimPad;
   tela.innerHTML = `<div class="topo"><div><h1>${esc(i.numero)} · ${esc(i.c?.nome || '')}</h1><p class="sub">${tagX(ST_INT, i.status)} ${i.padrinho_id ? tagX(BONUS_TXT, i.bonus_padrinho) : ''} · início ${dataBR(i.data_inicio)}${fimPad ? ' · apadrinhamento até ' + dataBR(fimPad) : ''}</p></div>

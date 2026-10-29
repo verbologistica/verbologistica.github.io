@@ -505,18 +505,53 @@ const MENU = [
   ['Calendário do CRLV', '#/config/calendario_crlv', ['administrador'], 'calendario', 'calendario_crlv', true],
   ['Importar sistema anterior', '#/config/importar', ['administrador'], 'enviar', null, true],
 ];
-// Telas permitidas: o perfil libera; a lista do cadastro (se houver) restringe. Administrador vê tudo.
+// Telas permitidas: sem lista no cadastro, valem as telas dos perfis; com lista (acesso personalizado), valem exatamente
+// as telas marcadas no cadastro do usuário, sem filtro automático pelo perfil. Administrador vê tudo.
 function menuPara(perfis, menus) {
   const admin = perfis.includes('administrador');
   const lista = !admin && Array.isArray(menus) && menus.length ? menus : null;
-  const SEMPRE = ['#/inicio', '#/planos', '#/chamados'];   // aparecem para todos, mesmo com lista de telas restrita
+  const SEMPRE = ['#/inicio'];   // a tela inicial aparece para todos
   const fch = i => Array.isArray(i[2]) && i[2].some(p => p.startsWith('fch:') && perfis.includes(p));   // responsável pelo fechamento do setor
-  const ok = MENU.filter(i => i[0] === 'grupo' || i[0] === 'sub' || SEMPRE.includes(i[1]) || fch(i) || ((!i[2] || i[2].some(p => perfis.includes(p))) && (!lista || lista.includes(i[1]))));
+  const ok = MENU.filter(i => i[0] === 'grupo' || i[0] === 'sub' || SEMPRE.includes(i[1]) || (lista ? lista.includes(i[1]) : (fch(i) || !i[2] || i[2].some(p => perfis.includes(p)))));
   const semSub = ok.filter((i, k) => i[0] !== 'sub' || (ok[k + 1] && !['sub', 'grupo'].includes(ok[k + 1][0])));
   return semSub.filter((i, k) => i[0] !== 'grupo' || (semSub[k + 1] && semSub[k + 1][0] !== 'grupo'));
 }
 function menu() {
   return menuPara([...estado.perfis, ...(estado.fch || []).map(c => 'fch:' + c)], estado.usuario?.menus).map(i => i[0] === 'grupo' ? ['grupo', i[1], true, i[2]] : i[0] === 'sub' ? ['sub', i[1]] : [i[0], i[1], true, i[3], i[4], i[5]]);
+}
+// Guias (abas) das telas: no acesso personalizado, o cadastro pode liberar só algumas ("#/tela::guia")
+const GUIAS = {
+  '#/rh/colaboradores': { rota: '#/rh/colaboradores/ver/', param: 'aba', itens: [['dados', 'Dados'], ['docs', 'Documentos'], ['deps', 'Dependentes'], ['admissao', 'Admissão'], ['ferias', 'Férias'], ['treinamentos', 'Treinamentos'],
+    ['avaliacoes', 'Avaliações'], ['disciplinar', 'Disciplinar'], ['patrimonio', 'Patrimônio e EPI'], ['ssma', 'Saúde e segurança'], ['desligamento', 'Desligamento'], ['gerados', 'Documentos gerados']] },
+  '#/rh/admissoes': { rota: '#/rh/admissoes', param: 'aba', itens: [['processos', 'Processos'], ['agenda', 'Agenda de treinamentos'], ['indicadores', 'Indicadores']] },
+  '#/planos': { rota: '#/planos', param: 'ver', itens: [['minhas', 'No meu nome'], ['criadas', 'Que eu abri'], ['planos', 'Reuniões, auditorias e outros'], ['todas', 'Todas as ações']] },
+  '#/financeiro/pagar': { rota: '#/financeiro/pagar', param: 'aba', itens: [['variaveis', 'Despesas variáveis'], ['fixas', 'Contas fixas mensais'], ['todas', 'Todas']] },
+  '#/rh/treinamentos': { rota: '#/rh/treinamentos', param: 'aba', itens: [['matriz', 'Matriz de capacitação'], ['turmas', 'Turmas realizadas'], ['catalogo', 'Catálogo e obrigatoriedade']] },
+  '#/rh/ferias': { rota: '#/rh/ferias', param: 'aba', itens: [['saldos', 'Saldos a programar'], ['programacao', 'Programação'], ['todos', 'Todos os períodos']] },
+  '#/ssma/documentos': { rota: '#/ssma/documentos', param: 'aba', itens: [['vencimentos', 'Painel preditivo de vencimentos'], ['corporativos', 'Documentos corporativos']] },
+  '#/operacao/abastecimentos': { rota: '#/operacao/abastecimentos', param: 'aba', itens: [['lancamentos', 'Lançamentos'], ['painel', 'Consumo e custos'], ['faturas', 'Faturas dos postos'], ['app', 'App dos motoristas']] },
+};
+function guiasLiberadas(menuHref) {
+  const l = estado.usuario?.menus;
+  if (estado.perfis?.includes('administrador') || !Array.isArray(l) || !l.length) return null;
+  const g = l.filter(x => x.startsWith(menuHref + '::')).map(x => x.slice(menuHref.length + 2));
+  return g.length ? g.filter(x => x !== '-') : null;   // nenhuma marcação = todas as guias
+}
+// esconde as guias não liberadas e, se a pessoa abriu uma delas, leva para a primeira liberada
+function aplicarGuias(tela, telaAtual) {
+  const [caminho, qs] = telaAtual.split('?');
+  for (const [menuHref, g] of Object.entries(GUIAS)) {
+    if (!(g.rota.endsWith('/') ? caminho.startsWith(g.rota) : caminho === g.rota)) continue;
+    const ok = guiasLiberadas(menuHref); if (!ok) return false;
+    const atual = new URLSearchParams(qs || '').get(g.param) || g.itens[0][0];
+    $$('.abas a', tela).forEach(a => { const v = new URLSearchParams((a.getAttribute('href') || '').split('?')[1] || '').get(g.param); if (v && !ok.includes(v)) a.remove(); });
+    if (!ok.includes(atual)) {
+      if (!ok.length) { tela.innerHTML = '<div class="cartao vazio">Você não tem acesso às guias desta tela. Fale com o administrador.</div>'; return true; }
+      const p = new URLSearchParams(qs || ''); p.set(g.param, ok[0]); location.replace(`${caminho}?${p}`); return true;
+    }
+    return false;
+  }
+  return false;
 }
 const telaPermitida = h => { const r = '#' + h; return !MENU.some(i => i[0] !== 'grupo' && i[0] !== 'sub' && i[1] === r) || menu().some(i => i[1] === r); };
 
@@ -710,7 +745,7 @@ async function navegar() {
     if (m) {
       // enquanto carrega, a tela antiga fica com a altura dela (evita o "pulo" para o topo)
       tela.style.minHeight = tela.offsetHeight + 'px';
-      try { await ROTAS[padrao](tela, ...m.slice(1).map(decodeURIComponent)); if (typeof ferramentasExportacao === 'function') ferramentasExportacao(tela); botaoVoltar(tela); }
+      try { await ROTAS[padrao](tela, ...m.slice(1).map(decodeURIComponent)); if (aplicarGuias(tela, telaAtual)) { tela.style.minHeight = ''; _ultimaTela = telaAtual; return; } if (typeof ferramentasExportacao === 'function') ferramentasExportacao(tela); botaoVoltar(tela); }
       catch (e) { tela.innerHTML = `<div class="cartao erro-txt">Não foi possível abrir esta tela: ${esc(e.message)}</div>`; console.error(e); }
       tela.style.minHeight = '';
       const alvo = mesmaRota ? yAntes : (ROLAGEM[telaAtual] ?? 0);

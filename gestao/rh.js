@@ -174,11 +174,13 @@ async function formColaborador(tela, c = null) {
   f.cipeiro?.addEventListener('change', () => { $('#f-cipa-fn').hidden = !f.cipeiro.checked; if (!f.cipeiro.checked) f.cipa_funcao.value = ''; });
   f.cargo_id.addEventListener('change', () => { const cg = cgs.find(x => x.id === f.cargo_id.value); if (cg?.setor_id && !f.setor_id.value) f.setor_id.value = cg.setor_id; avisoCNH(); });
   const ordemCNH = { A: 0, B: 1, AB: 1, C: 2, AC: 2, D: 3, AD: 3, E: 4, AE: 4 };
+  const cnhAtende = (cat, min) => { const nv = { B: 1, C: 2, D: 3, E: 4 }, alto = x => Math.max(0, ...[...String(x)].map(c => nv[c] || 0));
+    return (!String(min).includes('A') || String(cat).includes('A')) && alto(cat) >= alto(min); };
   const avisoCNH = () => {
     const cg = cgs.find(x => x.id === f.cargo_id.value), cat = f.cnh_categoria.value, msgs = [];
     if (cg?.motorista) {
       if (!cat) msgs.push(`O cargo ${cg.nome} exige CNH ${cg.cnh_minima || ''}.`);
-      else if (cg.cnh_minima && (ordemCNH[cat] ?? -1) < (ordemCNH[cg.cnh_minima] ?? 0)) msgs.push(`⚠️ Categoria ${cat} é inferior à exigida para ${cg.nome} (${cg.cnh_minima}).`);
+      else if (cg.cnh_minima && !cnhAtende(cat, cg.cnh_minima)) msgs.push(`⚠️ A CNH ${cat} não atende ao exigido para ${cg.nome} (${cg.cnh_minima}).`);
       if (!f.cnh_ear.checked) msgs.push('Motorista profissional precisa da observação EAR na CNH.');
       if (cg.exige_indivisiveis && !f.curso_indivisiveis.checked) msgs.push(`O cargo ${cg.nome} exige o curso de transporte de cargas indivisíveis na CNH.`);
       if (cg.exige_mopp && !f.curso_mopp.checked) msgs.push(`O cargo ${cg.nome} exige MOPP.`);
@@ -252,7 +254,7 @@ rota('/rh/colaboradores/ver/:id', async (tela, id) => {
           if (!ts.length) return ''; return `<h3 style="margin:14px 0 6px">${nomeCat}</h3><ul class="lista-simples">${ts.map(t => { const d = atuais.find(x => x.tipo_id === t.id);
             return `<li style="flex-wrap:wrap"><span>${d ? (d.dispensado ? '➖' : '✅') : '⏳'} <b>${esc(t.nome)}</b>${d?.numero ? ` <span class="muted">nº ${esc(d.numero)}</span>` : ''}
               ${d?.vencimento && !d.dispensado ? ' ' + tagDoc({ tem_validade: true, vencimento: d.vencimento }) + ` <span class="muted">vence ${dataBR(d.vencimento)}</span>` : ''}${d?.dispensado ? ' <span class="tag">Não se aplica</span>' : ''}${!d ? ' <span class="tag amarelo">Pendente</span>' : ''}</span>
-              <span class="acoes">${d ? `<span class="anx-doc" data-id="${d.id}"></span>` : ''}${pode ? `<button class="btn peq" data-tipo="${t.id}">${d ? 'Atualizar' : 'Receber'}</button>` : ''}</span></li>`; }).join('')}</ul>`; }).join('')}
+              <span class="acoes">${d ? `<span class="anx-doc" data-id="${d.id}"></span>` : ''}${pode ? `<button class="btn peq" data-tipo="${t.id}">${d ? 'Atualizar' : 'Receber'}</button>` : ''}${pode && d ? `<button class="btn peq perigo" data-exdoc="${d.id}" data-nome="${esc(t.nome)}" title="Excluir este documento da ficha (fica registrado quem excluiu e o motivo)">Excluir</button>` : ''}</span></li>`; }).join('')}</ul>`; }).join('')}
       </div>`,
     deps: `<div class="cartao"><div class="topo" style="margin:0 0 8px"><h2 style="margin:0">Dependentes</h2>${pode ? '<button class="btn prim peq" id="novo-dep">+ Dependente</button>' : ''}</div>
         ${deps.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Nome</th><th>Parentesco</th><th>Nascimento</th><th>CPF</th><th>IR</th><th>Salário-família</th><th>Plano de saúde</th><th></th></tr></thead><tbody>
@@ -302,6 +304,9 @@ rota('/rh/colaboradores/ver/:id', async (tela, id) => {
     } catch (err) { falha(err); }
   };
   $('#novo-doc-rh')?.addEventListener('click', () => receberDoc(''));
+  $$('[data-exdoc]', tela).forEach(b => b.addEventListener('click', async () => {
+    const m = await confirmar(`Excluir "${b.dataset.nome}" da ficha? O arquivo sai da ficha e dos documentos; fica registrado quem excluiu e o motivo. Informe o motivo:`, { comMotivo: true, botao: 'Excluir documento' });
+    if (!m) return; try { await api.rpc('excluir_documento_colaborador', { p_doc: b.dataset.exdoc, p_motivo: m }); aviso('Documento excluído da ficha.'); navegar(); } catch (err) { falha(err); } }));
   $$('[data-tipo]', tela).forEach(b => b.addEventListener('click', () => receberDoc(b.dataset.tipo)));
 
   $('#novo-dep')?.addEventListener('click', async () => {

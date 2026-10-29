@@ -490,7 +490,7 @@ function adRequisitos(e, D) {
     case 'docs': return (D.docs_exigidos || []).filter(d => (d.etapa || 'docs') === 'docs').map(d => R(d.nome, d.ok));
     case 'aso': return [R('ASO admissional lançado no SSMA', D.aso, D.aso && dataBR(D.aso.data)), ...docEt('aso'), R(D.aso?.resultado === 'apto_restricao' ? 'Resultado apto (com restrição)' : 'Resultado apto', D.aso && /^apto/.test(D.aso.resultado || ''), D.aso && !/^apto/.test(D.aso.resultado || '') ? D.aso.resultado : '')];
     case 'tox': return [R('Toxicológico negativo lançado no SSMA', e.status === 'feito'), ...docEt('tox')];
-    case 'cnh': { const L = [R(`Categoria${k.minima ? ' (mínimo ' + k.minima + ')' : ''}`, k.categoria && (!k.minima || (ordem[k.categoria] ?? -1) >= ordem[k.minima]), k.categoria || 'não informada'),
+    case 'cnh': { const L = [R(`Categoria${k.minima ? ' (exigida ' + k.minima + ')' : ''}`, k.categoria && (!k.minima || ((!k.minima.includes('A') || k.categoria.includes('A')) && Math.max(0, ...[...k.categoria].map(c => ({ B: 1, C: 2, D: 3, E: 4 })[c] || 0)) >= Math.max(0, ...[...k.minima].map(c => ({ B: 1, C: 2, D: 3, E: 4 })[c] || 0)))), k.categoria || 'não informada'),
         R('Observação EAR', k.ear), R('CNH válida na admissão', k.validade && k.validade >= (a.data_prevista || hj), k.validade && 'até ' + dataBR(k.validade))];
       if (k.exige_indivisiveis) L.push(curso('Curso de cargas indivisíveis', k.indivisiveis, k.indivisiveis_validade));
       if (k.exige_mopp) L.push(curso('MOPP (produtos perigosos)', k.mopp, k.mopp_validade));
