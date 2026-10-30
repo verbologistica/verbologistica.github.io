@@ -435,7 +435,7 @@ async function dadosQuadroTreinamentos(ts, porCargo = false) {
   const cols = [];
   cgs.filter(c => c.ativo).forEach(c => { const v = vetor(tc, 'cargo_id', c.id); if (!v.some(Boolean)) return;
     const k = v.join(''), g = !porCargo && cols.find(x => x.tipo === 'c' && x.k === k);
-    g ? (g.nomes.push(c.nome), (g.mot = g.mot || c.motorista)) : cols.push({ tipo: 'c', k, v, nomes: [c.nome], mot: !!c.motorista }); });
+    g ? (g.nomes.push(c.nome), (g.mot = g.mot && !!c.motorista)) : cols.push({ tipo: 'c', k, v, nomes: [c.nome], mot: !!c.motorista }); });
   cols.sort((a, b) => (b.mot - a.mot) || (b.v.filter(Boolean).length - a.v.filter(Boolean).length));
   ss.filter(s => s.ativo).forEach(s => { const v = vetor(tset, 'setor_id', s.id); if (v.some(Boolean)) cols.push({ tipo: 's', k: 's' + s.id, v, nomes: [s.nome] }); });
   cols.forEach((c, i) => { c.rotulo = c.tipo === 's' ? 'Todos do setor ' + c.nomes[0] : porCargo ? c.nomes[0] : rotuloFuncao(c.nomes); c.cod = 'F' + (i + 1);
