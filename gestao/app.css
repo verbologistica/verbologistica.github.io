@@ -1530,7 +1530,8 @@ body.og-imprimindo .og-arvore { min-width: 0; margin: 0 auto; }
 .ob-tab th.ob-nome { text-align: left; white-space: nowrap; font-weight: 600; } .ob-tab td { text-align: center; padding: 2px; }
 .ob-c { width: 30px; height: 26px; border: 1px solid var(--borda); border-radius: 6px; background: var(--cartao, #fff); cursor: pointer; font: 700 13px var(--f-body); color: inherit; }
 .ob-c.v1 { background: #e6f4ee; border-color: #19966e; color: #0f6e4f; } .ob-c.v2 { background: #fff3d6; border-color: #dda936; color: #8a5a00; } .ob-c:disabled { cursor: default; opacity: .7; }
-.qd-wrap { overflow-x: auto; } table.qd-tab { width: 100%; } table.qd-tab th { background: var(--fundo-th, #f3f6f5); font-size: 12px; }
-table.qd-tab td:first-child { text-align: left; } th.qd-f { min-width: 130px; max-width: 220px; font-weight: 600; white-space: normal; }
+.qd-wrap { overflow-x: auto; } table.qd-tab th { background: var(--fundo-th, #f3f6f5); font-size: 11.5px; vertical-align: middle; } table.qd-tab td:not(:first-child) { white-space: nowrap; }
+table.qd-tab thead th:nth-child(n+2):nth-child(-n+5) { white-space: normal; min-width: 80px; max-width: 110px; } table.qd-tab td:first-child { min-width: 260px; }
+table.qd-tab td:first-child { text-align: left; } th.qd-f { min-width: 200px; max-width: 260px; font-weight: 600; white-space: normal; }
 table.qd-tab td.qd-v1 { color: #02654D; font-weight: 700; } table.qd-tab td.qd-v2 { color: #966400; background: #FBF3DC; font-weight: 700; } table.qd-tab td.qd-v0 { color: #aab2b6; }
 table.qd-tab tfoot th, table.qd-tab tfoot td { background: #E2F0EB; text-align: right; } table.qd-tab tfoot td { text-align: center; }

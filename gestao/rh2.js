@@ -429,12 +429,14 @@ function rotuloFuncao(nomes) {
 }
 async function dadosQuadroTreinamentos(ts, porCargo = false) {
   const [cgs, ss, tc, tset] = await Promise.all([cargosL(), setoresL(), api.listar('treinamento_cargos', 'select=*&ativo=eq.true'), api.listar('treinamento_setores', 'select=*&ativo=eq.true').catch(() => [])]);
-  const tsA = ts.filter(t => t.ativo).sort((a, b) => (a.area === b.area ? 0 : a.area === 'SSMA' ? -1 : 1));
+  const MES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'], mesN = t => { const m = semAcento(t.mes_sugerido || '').slice(0, 3); const i = MES.indexOf(m); return i < 0 ? 99 : i; };
+  const tsA = ts.filter(t => t.ativo).sort((a, b) => (a.area === b.area ? 0 : a.area === 'SSMA' ? -1 : 1) || mesN(a) - mesN(b) || a.nome.localeCompare(b.nome, 'pt'));
   const vetor = (lista, col, id) => tsA.map(t => { const x = lista.find(y => y[col] === id && y.treinamento_id === t.id); return x ? (x.na_admissao ? 2 : 1) : 0; });
   const cols = [];
   cgs.filter(c => c.ativo).forEach(c => { const v = vetor(tc, 'cargo_id', c.id); if (!v.some(Boolean)) return;
     const k = v.join(''), g = !porCargo && cols.find(x => x.tipo === 'c' && x.k === k);
-    g ? g.nomes.push(c.nome) : cols.push({ tipo: 'c', k, v, nomes: [c.nome] }); });
+    g ? (g.nomes.push(c.nome), (g.mot = g.mot || c.motorista)) : cols.push({ tipo: 'c', k, v, nomes: [c.nome], mot: !!c.motorista }); });
+  cols.sort((a, b) => (b.mot - a.mot) || (b.v.filter(Boolean).length - a.v.filter(Boolean).length));
   ss.filter(s => s.ativo).forEach(s => { const v = vetor(tset, 'setor_id', s.id); if (v.some(Boolean)) cols.push({ tipo: 's', k: 's' + s.id, v, nomes: [s.nome] }); });
   cols.forEach((c, i) => { c.rotulo = c.tipo === 's' ? 'Todos do setor ' + c.nomes[0] : porCargo ? c.nomes[0] : rotuloFuncao(c.nomes); c.cod = 'F' + (i + 1);
     c.qtd = c.v.filter(Boolean).length; c.horas = String(tsA.reduce((s, t, j) => s + (c.v[j] ? Number(t.carga_horaria) || 0 : 0), 0)).replace('.', ','); });
@@ -451,8 +453,8 @@ async function exportarQuadroTreinamentos(Q, formato, area) {
     if (!r) return; E = es.find(x => x.id === r.empresa) || E; }
   const titulo = area === 'SSMA' ? 'Matriz de Treinamentos - Saúde e Segurança do Trabalho' : 'Matriz de Treinamentos';
   const LEG = 'X = obrigatório  |  A = obrigatório e realizado antes de iniciar as atividades (na admissão)  |  - = não se aplica';
-  const curto = Q.cols.length > 5 || Q.cols.some(c => c.rotulo.length > 70);
-  const cabF = Q.cols.map(c => curto ? c.cod : c.rotulo);
+  const curto = Q.cols.length > 5;
+  const cabF = Q.cols.map(c => curto ? c.cod : c.tipo === 's' ? c.rotulo : [...c.nomes].sort((a, b) => a.localeCompare(b, 'pt')).join('\n'));
   const marca = v => ['-', 'X', 'A'][v];
   const nomeArq = `Matriz de treinamentos ${hojeISO()}`;
   if (formato === 'pdf') {
