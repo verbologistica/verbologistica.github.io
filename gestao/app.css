@@ -1521,3 +1521,12 @@ body.og-imprimindo .og-arvore { min-width: 0; margin: 0 auto; }
 .og-colid-l { cursor: pointer; padding: 4px 0; border-radius: 8px; } .og-colid-l + .og-colid-l { border-top: 1px dashed rgba(185,201,194,.25); margin-top: 4px; padding-top: 8px; }
 .og-colid-l:hover b { text-decoration: underline; }
 @media print { .og-colid-t { color: #5a6a77; } }
+
+/* Treinamentos: programação anual e obrigatoriedade */
+.prog-anual { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; margin-bottom: 12px; }
+.prog-mes h3 { margin: 0 0 8px; } .prog-mes.atual { border-color: var(--verde, #19966e); box-shadow: 0 0 0 2px rgba(25,150,110,.25); }
+.prog-t { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; padding: 8px 0; border-top: 1px solid var(--borda); } .prog-t:first-of-type { border-top: 0; }
+.prog-p { font-size: 13px; color: var(--amarelo, #9a6a00); margin-top: 2px; }
+.ob-tab th.ob-nome { text-align: left; white-space: nowrap; font-weight: 600; } .ob-tab td { text-align: center; padding: 2px; }
+.ob-c { width: 30px; height: 26px; border: 1px solid var(--borda); border-radius: 6px; background: var(--cartao, #fff); cursor: pointer; font: 700 13px var(--f-body); color: inherit; }
+.ob-c.v1 { background: #e6f4ee; border-color: #19966e; color: #0f6e4f; } .ob-c.v2 { background: #fff3d6; border-color: #dda936; color: #8a5a00; } .ob-c:disabled { cursor: default; opacity: .7; }

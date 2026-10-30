@@ -623,7 +623,7 @@ rota('/rh/admissoes/ver/:id', async (tela, id) => {
     ${quadro}
     ${AD_FASES.filter(f => f !== 'Integração e treinamentos').map(f => `<div class="cartao"><h2>${esc(f)}</h2><ol class="ad-ets">${ets.filter(e => e.fase === f).map(itemEtapa).join('')}</ol></div>`).join('')}
     <div class="cartao"><div class="topo" style="margin:0 0 8px"><div><h2 style="margin:0">Integração e treinamentos</h2><div class="muted">O RH monta a agenda; cada setor confirma a sua parte com a lista de presença ou o certificado. O treinamento no cliente é confirmado pelo SSMA.</div></div>
-        ${rh && andamento ? '<div class="acoes"><button class="btn" id="tr-cargo">Sugerir do cargo</button><button class="btn prim" id="tr-novo">+ Agendar treinamento</button></div>' : ''}</div>
+        ${rh && andamento ? '<div class="acoes"><button class="btn" id="tr-cargo">Trazer da matriz de treinamentos</button><button class="btn prim" id="tr-novo">+ Agendar treinamento</button></div>' : ''}</div>
       <ol class="ad-ets">${ets.filter(e => e.fase === 'Integração e treinamentos').map(itemEtapa).join('')}</ol>
       ${trs.length ? `<ul class="ad-trs">${trs.map(linhaTreino).join('')}</ul>` : '<p class="muted">Nenhum treinamento agendado.</p>'}</div>
     ${typeof htmlFeriadosProcesso === 'function' ? htmlFeriadosProcesso(D, 'admissao', andamento, rh || meus.includes('SSMA')) : ''}`;
@@ -806,17 +806,18 @@ rota('/rh/admissoes/ver/:id', async (tela, id) => {
   };
   $('#tr-novo')?.addEventListener('click', () => formTreino());
   $('#tr-cargo')?.addEventListener('click', async () => {
-    const tc = await api.listar('treinamento_cargos', `cargo_id=eq.${a.cargo_id}&ativo=eq.true&select=treinamento:treinamentos(id,nome,carga_horaria)`).catch(() => []);
-    const novos = tc.map(x => x.treinamento).filter(x => x && !trs.some(t => t.treinamento_id === x.id && t.status !== 'cancelado'));
-    if (!novos.length) return aviso('Nenhum treinamento exigido para o cargo que ainda não esteja na agenda.', true);
-    const r = await modal(`<form><h2>Treinamentos exigidos para o cargo</h2><div class="form"><div class="largo">${novos.map(x => `<label class="check"><input type="checkbox" name="t_${x.id}" checked> ${esc(x.nome)}${x.carga_horaria ? ` <span class="muted">${x.carga_horaria} h</span>` : ''}</label>`).join('')}</div>
+    const tc = (await api.rpc('treinamentos_admissao', { p_adm: a.id }).catch(() => [])) || [];
+    const novos = tc.filter(x => x && !trs.some(t => t.treinamento_id === x.id && t.status !== 'cancelado'));
+    if (!tc.length) return aviso('Nenhum treinamento marcado "na admissão" para este cargo ou setor. O SSMA e o RH definem isso em Treinamentos › Quem precisa de cada treinamento.', true);
+    if (!novos.length) return aviso('Todos os treinamentos de admissão do cargo e do setor já estão na agenda.', true);
+    const r = await modal(`<form><h2>Treinamentos da admissão (cargo e setor)</h2><div class="form"><div class="largo">${novos.map(x => `<label class="check"><input type="checkbox" name="t_${x.id}" checked> ${esc(x.nome)} <span class="tag ${x.area === 'SSMA' ? 'amarelo' : 'azul'}">${esc(x.area)}</span>${x.origem === 'setor' ? ' <span class="muted">integração do setor</span>' : ''}${x.carga_horaria ? ` <span class="muted">${x.carga_horaria} h</span>` : ''}</label>`).join('')}</div>
       <label class="campo">A partir de *<input type="date" name="data" required></label><label class="campo">Início do dia *<input type="time" name="h" value="08:00" required></label>
       <p class="muted largo">O sistema coloca um após o outro (carga horária do catálogo, mínimo 1 h, até 8 h por dia). Ajuste depois o local, o responsável e quem confirma.</p></div>
       <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Agendar</button></div></form>`);
     if (!r) return;
     let cur = new Date(`${r.data}T${r.h}`), usadoDia = 0; const ls = [];
     for (const x of novos.filter(x => r['t_' + x.id])) { let h = Math.min(8, Math.max(1, Number(x.carga_horaria) || 1)); if (usadoDia + h > 8) { cur = new Date(cur); cur.setDate(cur.getDate() + 1); const [hh, mm] = r.h.split(':'); cur.setHours(+hh, +mm, 0, 0); usadoDia = 0; }
-      const fim = new Date(cur.getTime() + h * 3600e3); ls.push({ admissao_id: a.id, treinamento_id: x.id, titulo: x.nome, inicio: cur.toISOString(), fim: fim.toISOString(), setor: 'RH', confirma_setor: 'RH' }); cur = fim; usadoDia += h; }
+      const fim = new Date(cur.getTime() + h * 3600e3); ls.push({ admissao_id: a.id, treinamento_id: x.id, titulo: x.nome, inicio: cur.toISOString(), fim: fim.toISOString(), setor: x.area === 'SSMA' ? 'SSMA' : 'RH', confirma_setor: x.area === 'SSMA' ? 'SSMA' : 'RH' }); cur = fim; usadoDia += h; }
     try { if (ls.length) await api.inserir('admissao_treinamentos', ls); aviso(`${ls.length} treinamento(s) na agenda.`); navegar(); } catch (err) { falha(err); }
   });
   $$('[data-ted]', tela).forEach(b => (b.onclick = () => formTreino(trs.find(t => t.id === b.dataset.ted), !!b.dataset.reag)));

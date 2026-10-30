@@ -276,23 +276,26 @@ ABAS_RH_EXTRA.desligamento = async (box, c) => {
 
 // ===================== Treinamentos e matriz de capacitação =====================
 const SIT_TREIN = { pendente: ['Pendente', 'amarelo', '⏳'], vencido: ['Vencido', 'vermelho', '❌'], vence_30: ['Vence em 30 dias', 'amarelo', '⚠️'], em_dia: ['Em dia', 'verde', '✅'] };
-rota('/rh/treinamentos', async tela => {
+async function telaTreinamentos(tela, area = null) {
+  const BASE = area === 'SSMA' ? '#/ssma/treinamentos' : '#/rh/treinamentos';
+  const editaTrein = () => editaRH() || (typeof editaSSMA === 'function' && editaSSMA());
+  const podeT = t => editaRH() || (typeof editaSSMA === 'function' && editaSSMA() && (!t || t.area === 'SSMA'));
   const aba = estado.params.get('aba') || 'matriz';
-  const abas = [['matriz', 'Matriz de capacitação'], ['turmas', 'Turmas realizadas'], ['catalogo', 'Catálogo e obrigatoriedade']];
-  tela.innerHTML = `<div class="topo"><div><h1>Treinamentos</h1><p class="sub">Quem precisa de qual treinamento, quem já fez e o que vence</p></div>
-      ${editaRH() ? '<div class="acoes"><button class="btn prim" id="nova-turma">+ Registrar turma</button></div>' : ''}</div>
-    <div class="abas">${abas.map(([k, t]) => `<a href="#/rh/treinamentos?aba=${k}" class="${k === aba ? 'ativa' : ''}">${t}</a>`).join('')}</div><div id="conteudo-t"></div>`;
+  const abas = [['matriz', 'Matriz de capacitação'], ['programacao', 'Programação anual'], ['obrigatoriedade', 'Quem precisa de cada treinamento'], ['turmas', 'Turmas realizadas'], ['catalogo', 'Catálogo']];
+  tela.innerHTML = `<div class="topo"><div><h1>${area === 'SSMA' ? 'Matriz de treinamentos do SSMA' : 'Treinamentos'}</h1><p class="sub">${area === 'SSMA' ? 'Treinamentos de segurança: mesma base do RH, só os de responsabilidade do SSMA' : 'Quem precisa de qual treinamento, quem já fez e o que vence (RH e SSMA)'}</p></div>
+      ${editaTrein() ? '<div class="acoes"><button class="btn prim" id="nova-turma">+ Registrar turma</button></div>' : ''}</div>
+    <div class="abas">${abas.map(([k, t]) => `<a href="${BASE}?aba=${k}" class="${k === aba ? 'ativa' : ''}">${t}</a>`).join('')}</div><div id="conteudo-t"></div>`;
   const box = $('#conteudo-t');
-  const ts = await api.listar('treinamentos', 'order=nome');
+  const tsTodos = await api.listar('treinamentos', 'order=nome'), ts = area ? tsTodos.filter(t => t.area === area) : tsTodos, idsT = new Set(ts.map(t => t.id));
   $('#nova-turma')?.addEventListener('click', () => formTurma(ts));
   if (aba === 'matriz') {
-    const mz = await api.listar('v_matriz_treinamentos', 'order=nome,treinamento');
+    const mz = (await api.listar('v_matriz_treinamentos', 'order=nome,treinamento')).filter(x => idsT.has(x.treinamento_id));
     const filtro = estado.params.get('sit') || '';
     const pessoas = [...new Map(mz.map(x => [x.colaborador_id, x])).values()];
     const tsUsados = [...new Map(mz.map(x => [x.treinamento_id, x.treinamento])).entries()];
     const cont = Object.fromEntries(Object.keys(SIT_TREIN).map(k => [k, mz.filter(x => x.situacao === k).length]));
-    box.innerHTML = `<div class="grade" style="margin-bottom:12px">${Object.entries(SIT_TREIN).map(([k, [t, cor]]) => `<a class="cartao kpi ${k !== 'em_dia' && cont[k] ? 'alerta' : ''}" href="#/rh/treinamentos?aba=matriz&sit=${k}"><div class="n">${cont[k]}</div><div class="r">${t}</div></a>`).join('')}</div>
-      ${filtro ? `<div class="cartao"><h2>${SIT_TREIN[filtro][0]} <a class="btn peq" href="#/rh/treinamentos?aba=matriz">ver matriz</a></h2><div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Colaborador</th><th>Cargo</th><th>Treinamento</th><th>Realizado</th><th>Vencimento</th></tr></thead><tbody>
+    box.innerHTML = `<div class="grade" style="margin-bottom:12px">${Object.entries(SIT_TREIN).map(([k, [t, cor]]) => `<a class="cartao kpi ${k !== 'em_dia' && cont[k] ? 'alerta' : ''}" href="${BASE}?aba=matriz&sit=${k}"><div class="n">${cont[k]}</div><div class="r">${t}</div></a>`).join('')}</div>
+      ${filtro ? `<div class="cartao"><h2>${SIT_TREIN[filtro][0]} <a class="btn peq" href="${BASE}?aba=matriz">ver matriz</a></h2><div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Colaborador</th><th>Cargo</th><th>Treinamento</th><th>Realizado</th><th>Vencimento</th></tr></thead><tbody>
         ${mz.filter(x => x.situacao === filtro).map(x => `<tr><td data-r="Colaborador">${esc(x.nome)}</td><td data-r="Cargo">${esc(x.cargo || '')}</td><td data-r="Treinamento">${esc(x.treinamento)}</td><td data-r="Realizado">${dataBR(x.realizado) || '—'}</td><td data-r="Vencimento">${dataBR(x.vencimento) || '—'}</td></tr>`).join('')}</tbody></table></div></div>`
       : `<div class="cartao">${pessoas.length ? `<div class="tabela-wrap"><table class="matriz"><thead><tr><th>Colaborador</th>${tsUsados.map(([, n]) => `<th class="girado"><span>${esc(n)}</span></th>`).join('')}</tr></thead><tbody>
         ${pessoas.map(p => `<tr><td><a href="#/rh/colaboradores/ver/${p.colaborador_id}?aba=treinamentos">${esc(p.nome)}</a><div class="muted">${esc(p.cargo || '')}</div></td>${tsUsados.map(([tid]) => { const x = mz.find(y => y.colaborador_id === p.colaborador_id && y.treinamento_id === tid);
@@ -300,18 +303,62 @@ rota('/rh/treinamentos', async tela => {
         <p class="muted">✅ em dia · ⚠️ vence em 30 dias · ❌ vencido · ⏳ pendente · · não exigido para o cargo</p>` : '<div class="vazio">Nenhum colaborador com treinamento obrigatório. Defina a obrigatoriedade por cargo no catálogo.</div>'}</div>`}
       ${avisoLei('treinamentos')}`;
   } else if (aba === 'turmas') {
-    const tt = await api.listar('treinamento_turmas', 'select=*,treinamento:treinamentos(nome),participantes:treinamento_participantes(id)&ativo=eq.true&order=data.desc&limit=200');
+    const tt = (await api.listar('treinamento_turmas', 'select=*,treinamento:treinamentos(nome),participantes:treinamento_participantes(id)&ativo=eq.true&order=data.desc&limit=300')).filter(t => idsT.has(t.treinamento_id));
     box.innerHTML = `<div class="cartao">${tt.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Nº</th><th>Data</th><th>Treinamento</th><th>Instrutor</th><th>Participantes</th><th>Custo</th></tr></thead><tbody>
       ${tt.map(t => `<tr class="clicavel" data-turma="${t.id}"><td data-r="Nº">${esc(t.numero || '')}</td><td data-r="Data">${dataBR(t.data)}</td><td data-r="Treinamento">${esc(t.treinamento?.nome || '')}</td>
         <td data-r="Instrutor">${esc([t.instrutor, t.instituicao].filter(Boolean).join(' · '))}</td><td data-r="Participantes">${(t.participantes || []).length}</td><td data-r="Custo">${t.custo != null ? brl(t.custo) : '—'}</td></tr>`).join('')}</tbody></table></div>` : '<div class="vazio">Nenhuma turma registrada.</div>'}</div>`;
     $$('[data-turma]', box).forEach(tr => tr.onclick = () => verTurma(tt.find(t => t.id === tr.dataset.turma), ts));
+  } else if (aba === 'programacao') {
+    // calendário anual pelo mês sugerido: quem precisa fazer (pendente, vencido ou vencendo até o fim do mês)
+    const MESES_T = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+    const ano = Number(estado.params.get('ano')) || new Date().getFullYear(), mesAtual = new Date().getMonth();
+    const mz = (await api.listar('v_matriz_treinamentos', 'order=nome')).filter(x => idsT.has(x.treinamento_id));
+    const precisa = (t, m) => { const fimMes = new Date(ano, m + 1, 0).toISOString().slice(0, 10);
+      return mz.filter(x => x.treinamento_id === t.id && (x.situacao === 'pendente' || x.situacao === 'vencido' || (x.vencimento && x.vencimento <= fimMes))); };
+    const doMes = m => ts.filter(t => t.ativo && semAcento(String(t.mes_sugerido || '').toLowerCase()).includes(semAcento(MESES_T[m].toLowerCase())));
+    const semMes = ts.filter(t => t.ativo && !t.mes_sugerido);
+    box.innerHTML = `<div class="topo" style="margin:0 0 10px"><p class="muted" style="margin:0">Programação ${ano} pelo mês sugerido de cada treinamento. Em cada mês aparece quem precisa fazer: nunca fez, está vencido ou vence até o fim do mês.</p>
+        <div class="acoes"><a class="btn peq" href="${BASE}?aba=programacao&ano=${ano - 1}">‹ ${ano - 1}</a><a class="btn peq" href="${BASE}?aba=programacao&ano=${ano + 1}">${ano + 1} ›</a></div></div>
+      <div class="prog-anual">${MESES_T.map((nm, m) => { const l = doMes(m); return `<div class="cartao prog-mes ${ano === new Date().getFullYear() && m === mesAtual ? 'atual' : ''}"><h3>${nm}</h3>
+        ${l.length ? l.map(t => { const p = precisa(t, m); return `<div class="prog-t"><div><b>${esc(t.nome)}</b><div class="muted">${t.carga_horaria ? t.carga_horaria + ' h inicial' : ''}${t.carga_reciclagem ? ' · ' + t.carga_reciclagem + ' h reciclagem' : ''} · ${esc(t.area)}</div>
+          ${p.length ? `<div class="prog-p">${p.length} pessoa(s): ${esc(p.slice(0, 6).map(x => x.nome.split(' ')[0]).join(', '))}${p.length > 6 ? '…' : ''}</div>` : '<div class="muted">ninguém pendente</div>'}</div>
+          ${podeT(t) && p.length ? `<button type="button" class="btn peq" data-turma-t="${t.id}" data-pessoas="${p.map(x => x.colaborador_id).join(',')}">Registrar turma</button>` : ''}</div>`; }).join('') : '<p class="muted">Nenhum treinamento programado.</p>'}</div>`; }).join('')}</div>
+      ${semMes.length ? `<div class="cartao"><h3>Sem mês definido</h3><p class="muted">${esc(semMes.map(t => t.nome).join(' · '))}</p></div>` : ''}`;
+    $$('[data-turma-t]', box).forEach(b => (b.onclick = () => formTurma(ts, b.dataset.turmaT, b.dataset.pessoas.split(','))));
+  } else if (aba === 'obrigatoriedade') {
+    // quem precisa de cada treinamento: por cargo e (integração de setor) por setor; ✓ = obrigatório, A = obrigatório e feito na admissão
+    const [cgs, ss, tcTodos, tsTodosSet] = await Promise.all([cargosL(), setoresL(), api.listar('treinamento_cargos', 'select=*'), api.listar('treinamento_setores', 'select=*').catch(() => [])]);
+    const tsA = ts.filter(t => t.ativo), cgA = cgs.filter(c => c.ativo), ssA = ss.filter(s => s.ativo);
+    const est = {}; const chave = (tipo, id, tid) => `${tipo}|${id}|${tid}`;
+    tcTodos.filter(x => x.ativo).forEach(x => (est[chave('c', x.cargo_id, x.treinamento_id)] = x.na_admissao ? 2 : 1));
+    tsTodosSet.filter(x => x.ativo).forEach(x => (est[chave('s', x.setor_id, x.treinamento_id)] = x.na_admissao ? 2 : 1));
+    const orig = { ...est }; const SIM = ['', '✓', 'A'];
+    const linha = (tipo, o) => `<tr><th class="ob-nome">${esc(o.nome)}</th>${tsA.map(t => { const v = est[chave(tipo, o.id, t.id)] || 0;
+      return `<td><button type="button" class="ob-c v${v}" data-ob="${chave(tipo, o.id, t.id)}" ${podeT(t) ? '' : 'disabled'} title="${esc(o.nome)} · ${esc(t.nome)}">${SIM[v]}</button></td>`; }).join('')}</tr>`;
+    box.innerHTML = `<div class="cartao"><p class="muted" style="margin-top:0">Clique na célula para alternar: <b>vazio</b> = não exigido · <b>✓</b> = obrigatório · <b>A</b> = obrigatório e feito já na admissão (entra sozinho na agenda da admissão).
+        ${area === 'SSMA' ? 'Aqui aparecem só os treinamentos do SSMA; o RH vê todos em RH › Treinamentos.' : ''}</p>
+      <div class="tabela-wrap"><table class="matriz ob-tab"><thead><tr><th>Cargo</th>${tsA.map(t => `<th class="girado"><span>${esc(t.nome)}</span></th>`).join('')}</tr></thead>
+        <tbody>${cgA.map(c => linha('c', c)).join('')}</tbody>
+        <thead><tr><th>Integração de setor (vale para todos do setor)</th>${tsA.map(() => '<th></th>').join('')}</tr></thead>
+        <tbody>${ssA.map(s => linha('s', s)).join('')}</tbody></table></div>
+      ${tsA.some(podeT) ? '<div class="acoes" style="justify-content:flex-end;margin-top:10px"><span class="muted" id="ob-n"></span><button class="btn prim" id="ob-salvar" disabled>Salvar obrigatoriedade</button></div>' : ''}</div>`;
+    const conta = () => { const n = Object.keys({ ...orig, ...est }).filter(k => (orig[k] || 0) !== (est[k] || 0)).length; const b = $('#ob-salvar', box); if (b) { b.disabled = !n; $('#ob-n', box).textContent = n ? n + ' alteração(ões)' : ''; } };
+    $$('[data-ob]', box).forEach(b => (b.onclick = () => { const k = b.dataset.ob, v = ((est[k] || 0) + 1) % 3; est[k] = v; b.className = 'ob-c v' + v; b.textContent = SIM[v]; conta(); }));
+    $('#ob-salvar', box)?.addEventListener('click', async e => {
+      await ocupado(e.target, async () => { try {
+        for (const k of Object.keys({ ...orig, ...est })) { const a = orig[k] || 0, v = est[k] || 0; if (a === v) continue;
+          const [tipo, id, tid] = k.split('|'), tab = tipo === 'c' ? 'treinamento_cargos' : 'treinamento_setores', col = tipo === 'c' ? 'cargo_id' : 'setor_id';
+          const ex = (tipo === 'c' ? tcTodos : tsTodosSet).find(x => x[col] === id && x.treinamento_id === tid);
+          if (ex) await api.alterar(tab, `id=eq.${ex.id}`, { ativo: v > 0, na_admissao: v === 2 });
+          else if (v > 0) await api.inserir(tab, { treinamento_id: tid, [col]: id, na_admissao: v === 2 }); }
+        aviso('Obrigatoriedade salva. A matriz de cada colaborador já foi recalculada.'); navegar(); } catch (err) { falha(err); } }); });
   } else {
     const [cgs, tcTodos] = await Promise.all([cargosL(), api.listar('treinamento_cargos', 'select=*')]);
     const tc = tcTodos.filter(x => x.ativo);
-    box.innerHTML = `<div class="cartao"><div class="topo" style="margin:0 0 8px"><h2 style="margin:0">Catálogo</h2>${editaRH() ? '<button class="btn prim peq" id="novo-trein">+ Treinamento</button>' : ''}</div>
-      <div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Treinamento</th><th>Tipo / norma</th><th>Carga</th><th>Validade</th><th>Obrigatório para</th></tr></thead><tbody>
-      ${ts.filter(t => t.ativo).map(t => `<tr class="${editaRH() ? 'clicavel' : ''}" data-trein="${t.id}"><td data-r="Treinamento"><b>${esc(t.nome)}</b></td><td data-r="Tipo">${esc([t.tipo, t.norma].filter(Boolean).join(' · '))}</td>
-        <td data-r="Carga">${t.carga_horaria ? t.carga_horaria + ' h' : '—'}</td><td data-r="Validade">${t.validade_meses ? t.validade_meses + ' meses' : 'Sem vencimento'}</td>
+    box.innerHTML = `<div class="cartao"><div class="topo" style="margin:0 0 8px"><h2 style="margin:0">Catálogo</h2>${editaTrein() ? '<button class="btn prim peq" id="novo-trein">+ Treinamento</button>' : ''}</div>
+      <div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Treinamento</th><th>Responsável</th><th>Tipo / norma</th><th>Carga</th><th>Validade</th><th>Mês sugerido</th><th>Obrigatório para</th></tr></thead><tbody>
+      ${ts.filter(t => t.ativo).map(t => `<tr class="${podeT(t) ? 'clicavel' : ''}" data-trein="${t.id}"><td data-r="Treinamento"><b>${esc(t.nome)}</b></td><td data-r="Responsável"><span class="tag ${t.area === 'SSMA' ? 'amarelo' : 'azul'}">${esc(t.area || 'RH')}</span></td><td data-r="Tipo">${esc([t.tipo, t.norma].filter(Boolean).join(' · '))}</td>
+        <td data-r="Carga">${t.carga_horaria ? t.carga_horaria + ' h' : '—'}${t.carga_reciclagem ? ` <span class="muted">· recicl. ${t.carga_reciclagem} h</span>` : ''}</td><td data-r="Validade">${t.validade_eventual ? 'Eventual (refaz quando mudar)' : t.validade_meses ? (({ 6: 'Semestral', 12: 'Anual', 24: 'Bienal' })[t.validade_meses] || t.validade_meses + ' meses') : 'Sem vencimento'}</td><td data-r="Mês sugerido">${esc(t.mes_sugerido || '—')}</td>
         <td data-r="Cargos">${esc(tc.filter(x => x.treinamento_id === t.id).map(x => cgs.find(c => c.id === x.cargo_id)?.nome).filter(Boolean).join(', ') || '—')}</td></tr>`).join('')}</tbody></table></div></div>`;
     const editar = async t => {
       const marcados = tc.filter(x => x.treinamento_id === t?.id).map(x => x.cargo_id);
@@ -319,15 +366,20 @@ rota('/rh/treinamentos', async tela => {
         <label class="campo largo">Nome *<input name="nome" required value="${esc(t?.nome || '')}"></label>
         <label class="campo">Tipo<select name="tipo" data-valor="${esc(t?.tipo || '')}">${['NR', 'Legal', 'Interno', 'Externo', 'Reciclagem', 'Outro'].map(x => `<option ${x === t?.tipo ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
         <label class="campo">Norma / referência<input name="norma" value="${esc(t?.norma || '')}" placeholder="Ex.: NR-35"></label>
-        <label class="campo">Carga horária (h)<input name="carga_horaria" inputmode="decimal" value="${t?.carga_horaria ?? ''}"></label>
-        <label class="campo">Validade (meses, vazio = não vence)<input type="number" name="validade_meses" value="${t?.validade_meses ?? ''}"></label>
+        <label class="campo">Setor responsável<select name="area">${['SSMA', 'RH'].filter(x => editaRH() || x === 'SSMA').map(x => `<option ${x === (t?.area || area || 'RH') ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
+        <label class="campo">Carga horária inicial (h)<input name="carga_horaria" inputmode="decimal" value="${t?.carga_horaria ?? ''}"></label>
+        <label class="campo">Carga horária da reciclagem (h)<input name="carga_reciclagem" inputmode="decimal" value="${t?.carga_reciclagem ?? ''}"></label>
+        <label class="campo">Validade (meses; 6 semestral, 12 anual, 24 bienal; vazio = não vence)<input type="number" name="validade_meses" value="${t?.validade_meses ?? ''}"></label>
+        <label class="check"><input type="checkbox" name="validade_eventual" ${t?.validade_eventual ? 'checked' : ''}> Validade eventual (refaz só quando houver mudança)</label>
+        <label class="campo">Mês sugerido<input name="mes_sugerido" value="${esc(t?.mes_sugerido || '')}" placeholder="Ex.: Março / Setembro"></label>
         <label class="campo largo">Conteúdo programático<textarea name="conteudo" rows="3">${esc(t?.conteudo || '')}</textarea></label>
-        <div class="largo"><div class="muted" style="margin-bottom:4px">Obrigatório para os cargos</div><div class="chips">${cgs.filter(c => c.ativo).map(c => `<label class="chip"><input type="checkbox" name="cg_${c.id}" ${marcados.includes(c.id) ? 'checked' : ''}> ${esc(c.nome)}</label>`).join('')}</div></div></div>
+        <div class="largo"><div class="muted" style="margin-bottom:4px">Obrigatório para os cargos (para marcar "na admissão" e integração de setor, use a guia Quem precisa de cada treinamento)</div><div class="chips">${cgs.filter(c => c.ativo).map(c => `<label class="chip"><input type="checkbox" name="cg_${c.id}" ${marcados.includes(c.id) ? 'checked' : ''}> ${esc(c.nome)}</label>`).join('')}</div></div></div>
         <div class="rodape">${t ? '<button class="btn perigo" value="desativar">Desativar</button>' : ''}<button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim" value="salvar">Salvar</button></div></form>`);
       if (!r) return;
       try {
         if (r._acao === 'desativar') { await api.alterar('treinamentos', `id=eq.${t.id}`, { ativo: false }); return navegar(); }
-        const dados = { nome: r.nome, tipo: r.tipo, norma: r.norma || null, carga_horaria: num(r.carga_horaria), validade_meses: r.validade_meses ? Number(r.validade_meses) : null, conteudo: r.conteudo || null };
+        const dados = { nome: r.nome, tipo: r.tipo, norma: r.norma || null, carga_horaria: num(r.carga_horaria), validade_meses: r.validade_eventual ? null : r.validade_meses ? Number(r.validade_meses) : null, conteudo: r.conteudo || null,
+          area: r.area || area || 'RH', carga_reciclagem: num(r.carga_reciclagem), mes_sugerido: r.mes_sugerido || null, validade_eventual: !!r.validade_eventual };
         let id = t?.id; if (t) await api.alterar('treinamentos', `id=eq.${id}`, dados); else [{ id }] = await api.inserir('treinamentos', dados);
         const todosCg = [...new Set([...cgs.map(c => c.id), ...Object.keys(r).filter(k => k.startsWith('cg_')).map(k => k.slice(3))])].map(id => ({ id }));
         for (const c of todosCg) {
@@ -339,12 +391,15 @@ rota('/rh/treinamentos', async tela => {
       } catch (err) { falha(err); }
     };
     $('#novo-trein')?.addEventListener('click', () => editar(null));
-    if (editaRH()) $$('[data-trein]', box).forEach(tr => tr.onclick = () => editar(ts.find(t => t.id === tr.dataset.trein)));
+    $$('[data-trein]', box).forEach(tr => { const t = ts.find(x => x.id === tr.dataset.trein); if (podeT(t)) tr.onclick = () => editar(t); });
   }
   refazerExportacao();
-});
+}
+rota('/rh/treinamentos', tela => telaTreinamentos(tela));
+rota('/ssma/treinamentos', tela => telaTreinamentos(tela, 'SSMA'));
 async function formTurma(ts, treinamentoIni = '', colabIni = '') {
-  const [cs, cgs] = await Promise.all([colabsRH('&status=in.(ativo,ferias,afastado,aviso_previo,em_admissao)'), cargosL()]);
+  const marcados = new Set([].concat(colabIni || []));
+  const [cs, cgs] = await Promise.all([tem('administrador', 'rh', 'dp', 'diretoria') ? colabsRH('&status=in.(ativo,ferias,afastado,aviso_previo,em_admissao)') : api.rpc('organograma_dados').then(r => r || []), cargosL()]);
   const r = await modal(`<form><h2>Registrar turma de treinamento</h2><div class="form">
     <label class="campo largo">Treinamento *<select name="treinamento_id" required>${ts.filter(t => t.ativo).map(t => `<option value="${t.id}" ${t.id === treinamentoIni ? 'selected' : ''}>${esc(t.nome)}</option>`).join('')}</select></label>
     <label class="campo">Data *<input type="date" name="data" required value="${hojeISO()}"></label><label class="campo">Término<input type="date" name="data_fim"></label>
@@ -352,7 +407,7 @@ async function formTurma(ts, treinamentoIni = '', colabIni = '') {
     <label class="campo">Local<input name="local"></label><label class="campo">Carga horária (h)<input name="carga_horaria" inputmode="decimal"></label>
     <label class="campo">Custo (R$)<input name="custo" inputmode="decimal"></label>
     <div class="largo"><div class="muted" style="margin-bottom:4px">Participantes (presentes e aprovados)</div><input id="busca-part" placeholder="Filtrar por nome" style="margin-bottom:6px;width:100%">
-      <div class="chips" id="lista-part" style="max-height:220px;overflow:auto">${cs.map(c => `<label class="chip" data-nome="${esc(c.nome.toLowerCase())}"><input type="checkbox" name="p_${c.id}" ${c.id === colabIni ? 'checked' : ''}> ${esc(nomeColabOp(cs, cgs)(c))}</label>`).join('')}</div></div>
+      <div class="chips" id="lista-part" style="max-height:220px;overflow:auto">${cs.map(c => `<label class="chip" data-nome="${esc(c.nome.toLowerCase())}"><input type="checkbox" name="p_${c.id}" ${marcados.has(c.id) ? 'checked' : ''}> ${esc(nomeColabOp(cs, cgs)(c))}</label>`).join('')}</div></div>
     <label class="campo largo">Certificados / lista de presença assinada<input type="file" name="arquivos" multiple accept="image/*,application/pdf"></label></div>
     <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Salvar</button></div></form>`,
     { aoAbrir: raiz => { const b = $('#busca-part', raiz); b.oninput = () => $$('#lista-part label', raiz).forEach(l => (l.hidden = !l.dataset.nome.includes(b.value.toLowerCase()))); } });
@@ -373,9 +428,9 @@ async function verTurma(t, ts) {
   const r = await modal(`<form><h2>${esc(t.treinamento?.nome || '')} · ${esc(t.numero || '')}</h2>
     <p class="muted">${dataBR(t.data)}${t.data_fim ? ' a ' + dataBR(t.data_fim) : ''} · ${esc([t.instrutor, t.instituicao, t.local].filter(Boolean).join(' · '))}</p>
     <ul class="lista-simples">${ps.map(p => `<li><span>${esc(p.colab?.nome || '')}</span><span class="muted">${p.vencimento ? 'vence ' + dataBR(p.vencimento) : 'sem vencimento'}</span>
-      ${editaRH() ? `<label class="check"><input type="checkbox" name="ap_${p.id}" ${p.aprovado && p.presente ? 'checked' : ''}> presente/aprovado</label>` : ''}</li>`).join('')}</ul>
+      ${editaRH() || (typeof editaSSMA === 'function' && editaSSMA()) ? `<label class="check"><input type="checkbox" name="ap_${p.id}" ${p.aprovado && p.presente ? 'checked' : ''}> presente/aprovado</label>` : ''}</li>`).join('')}</ul>
     <div>${anexos}</div>
-    <div class="rodape"><button type="button" class="btn" value="lista">Lista de presença</button><button type="button" class="btn" data-fechar>Fechar</button>${editaRH() ? '<button class="btn prim" value="salvar">Salvar</button>' : ''}</div></form>`,
+    <div class="rodape"><button type="button" class="btn" value="lista">Lista de presença</button><button type="button" class="btn" data-fechar>Fechar</button>${editaRH() || (typeof editaSSMA === 'function' && editaSSMA()) ? '<button class="btn prim" value="salvar">Salvar</button>' : ''}</div></form>`,
     { aoAbrir: (raiz, fechar) => { $('[value=lista]', raiz).onclick = async () => { fechar(); const m = await modeloPorCodigo('RH-TRE-001'); if (!m) return;
       const tr = ts.find(x => x.id === t.treinamento_id) || {};
       await gerarDocumento(m, null, { turma: { ...t, data: dataBR(t.data), treinamento: tr.nome, conteudo: tr.conteudo || '', carga_horaria: t.carga_horaria || tr.carga_horaria || '',
