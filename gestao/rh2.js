@@ -281,7 +281,7 @@ async function telaTreinamentos(tela, area = null) {
   const editaTrein = () => editaRH() || (typeof editaSSMA === 'function' && editaSSMA());
   const podeT = t => editaRH() || (typeof editaSSMA === 'function' && editaSSMA() && (!t || t.area === 'SSMA'));
   const aba = estado.params.get('aba') || 'matriz';
-  const abas = [['matriz', 'Matriz de capacitação'], ['programacao', 'Programação anual'], ['obrigatoriedade', 'Quem precisa de cada treinamento'], ['turmas', 'Turmas realizadas'], ['catalogo', 'Catálogo']];
+  const abas = [['matriz', 'Matriz de capacitação'], ['funcao', 'Matriz por função'], ['programacao', 'Programação anual'], ['obrigatoriedade', 'Quem precisa de cada treinamento'], ['turmas', 'Turmas realizadas'], ['catalogo', 'Catálogo']];
   tela.innerHTML = `<div class="topo"><div><h1>${area === 'SSMA' ? 'Matriz de treinamentos do SSMA' : 'Treinamentos'}</h1><p class="sub">${area === 'SSMA' ? 'Treinamentos de segurança: mesma base do RH, só os de responsabilidade do SSMA' : 'Quem precisa de qual treinamento, quem já fez e o que vence (RH e SSMA)'}</p></div>
       ${editaTrein() ? '<div class="acoes"><button class="btn prim" id="nova-turma">+ Registrar turma</button></div>' : ''}</div>
     <div class="abas">${abas.map(([k, t]) => `<a href="${BASE}?aba=${k}" class="${k === aba ? 'ativa' : ''}">${t}</a>`).join('')}</div><div id="conteudo-t"></div>`;
@@ -325,6 +325,24 @@ async function telaTreinamentos(tela, area = null) {
           ${podeT(t) && p.length ? `<button type="button" class="btn peq" data-turma-t="${t.id}" data-pessoas="${p.map(x => x.colaborador_id).join(',')}">Registrar turma</button>` : ''}</div>`; }).join('') : '<p class="muted">Nenhum treinamento programado.</p>'}</div>`; }).join('')}</div>
       ${semMes.length ? `<div class="cartao"><h3>Sem mês definido</h3><p class="muted">${esc(semMes.map(t => t.nome).join(' · '))}</p></div>` : ''}`;
     $$('[data-turma-t]', box).forEach(b => (b.onclick = () => formTurma(ts, b.dataset.turmaT, b.dataset.pessoas.split(','))));
+  } else if (aba === 'funcao') {
+    // visão igual à planilha do SSMA: treinamento × função, para enviar ao cliente
+    const Q = await dadosQuadroTreinamentos(ts, estado.params.get('cargos') === '1');
+    const lnk = (v, t) => `<a class="btn peq ${(estado.params.get('cargos') === '1') === v ? 'prim' : ''}" href="${BASE}?aba=funcao${v ? '&cargos=1' : ''}">${t}</a>`;
+    box.innerHTML = `<div class="cartao"><div class="topo" style="margin:0 0 8px"><div><h2 style="margin:0">Matriz de treinamentos por função</h2>
+        <p class="muted" style="margin:4px 0 0">Mesmo formato da planilha do SSMA, montado com o que está cadastrado. Para mudar, use a guia Quem precisa de cada treinamento.</p></div>
+        <div class="acoes">${lnk(false, 'Agrupar funções iguais')}${lnk(true, 'Um cargo por coluna')}
+          <button type="button" class="btn peq" id="qd-xls">⬇ Excel</button><button type="button" class="btn prim peq" id="qd-pdf">⬇ PDF para o cliente</button></div></div>
+      ${Q.cols.length ? `<div class="qd-wrap"><table class="matriz qd-tab"><thead><tr><th>Treinamento / norma</th><th>Carga horária (inicial)</th><th>Validade</th><th>Carga horária (reciclagem)</th><th>Mês sugerido</th>
+        ${Q.cols.map(c => Q.porCargo ? `<th class="girado"><span>${esc(c.rotulo)}</span></th>` : `<th class="qd-f">${esc(c.rotulo)}</th>`).join('')}</tr></thead>
+        <tbody>${Q.linhas.map(l => `<tr><td><b>${esc(l.t.nome)}</b>${l.t.area === 'RH' ? ' <span class="tag azul">RH</span>' : ''}</td><td>${esc(l.ch)}</td><td>${esc(l.val)}</td><td>${esc(l.rec)}</td><td>${esc(l.mes)}</td>
+          ${l.v.map(v => `<td class="qd-v${v}">${['–', 'X', 'A'][v]}</td>`).join('')}</tr>`).join('')}</tbody>
+        <tfoot><tr><th>Total de treinamentos obrigatórios</th><td colspan="4"></td>${Q.cols.map(c => `<td><b>${c.qtd}</b></td>`).join('')}</tr>
+          <tr><th>Carga horária inicial total</th><td colspan="4"></td>${Q.cols.map(c => `<td><b>${c.horas}h</b></td>`).join('')}</tr></tfoot></table></div>
+        <p class="muted">X = obrigatório · A = obrigatório e realizado antes de iniciar as atividades (na admissão) · – = não se aplica</p>`
+      : '<div class="vazio">Nenhum treinamento marcado como obrigatório ainda.</div>'}</div>`;
+    $('#qd-pdf', box)?.addEventListener('click', e => ocupado(e.target, () => exportarQuadroTreinamentos(Q, 'pdf', area).catch(falha)));
+    $('#qd-xls', box)?.addEventListener('click', e => ocupado(e.target, () => exportarQuadroTreinamentos(Q, 'xls', area).catch(falha)));
   } else if (aba === 'obrigatoriedade') {
     // quem precisa de cada treinamento: por cargo e (integração de setor) por setor; ✓ = obrigatório, A = obrigatório e feito na admissão
     const [cgs, ss, tcTodos, tsTodosSet] = await Promise.all([cargosL(), setoresL(), api.listar('treinamento_cargos', 'select=*'), api.listar('treinamento_setores', 'select=*').catch(() => [])]);
@@ -397,6 +415,119 @@ async function telaTreinamentos(tela, area = null) {
 }
 rota('/rh/treinamentos', tela => telaTreinamentos(tela));
 rota('/ssma/treinamentos', tela => telaTreinamentos(tela, 'SSMA'));
+
+// ── Matriz de treinamentos por função (formato da planilha, para enviar ao cliente) ──
+const VAL_TREIN = t => t.validade_eventual ? 'Eventual' : t.validade_meses ? (({ 6: 'Semestral', 12: 'Anual', 24: 'Bienal', 36: 'Trienal' })[t.validade_meses] || t.validade_meses + ' meses') : 'Sem vencimento';
+const horasTxt = h => h == null || h === '' ? '-' : String(h).replace('.', ',') + 'h';
+// junta nomes com o mesmo começo: "Motorista de Caminhão, Carreta, Tritrem"
+function rotuloFuncao(nomes) {
+  const grupos = new Map();
+  [...nomes].sort((a, b) => a.localeCompare(b, 'pt')).forEach(n => { const k = n.split(' ')[0].toLowerCase(); grupos.set(k, [...(grupos.get(k) || []), n]); });
+  return [...grupos.values()].map(g => { if (g.length === 1) return g[0];
+    const ps = g.map(n => n.split(' ')); let i = 0; while (ps.every(p => p.length > i + 1 && p[i].toLowerCase() === ps[0][i].toLowerCase())) i++;
+    return ps[0].slice(0, i).join(' ') + ' ' + ps.map(p => p.slice(i).join(' ')).join(', '); }).join(' · ');
+}
+async function dadosQuadroTreinamentos(ts, porCargo = false) {
+  const [cgs, ss, tc, tset] = await Promise.all([cargosL(), setoresL(), api.listar('treinamento_cargos', 'select=*&ativo=eq.true'), api.listar('treinamento_setores', 'select=*&ativo=eq.true').catch(() => [])]);
+  const tsA = ts.filter(t => t.ativo).sort((a, b) => (a.area === b.area ? 0 : a.area === 'SSMA' ? -1 : 1));
+  const vetor = (lista, col, id) => tsA.map(t => { const x = lista.find(y => y[col] === id && y.treinamento_id === t.id); return x ? (x.na_admissao ? 2 : 1) : 0; });
+  const cols = [];
+  cgs.filter(c => c.ativo).forEach(c => { const v = vetor(tc, 'cargo_id', c.id); if (!v.some(Boolean)) return;
+    const k = v.join(''), g = !porCargo && cols.find(x => x.tipo === 'c' && x.k === k);
+    g ? g.nomes.push(c.nome) : cols.push({ tipo: 'c', k, v, nomes: [c.nome] }); });
+  ss.filter(s => s.ativo).forEach(s => { const v = vetor(tset, 'setor_id', s.id); if (v.some(Boolean)) cols.push({ tipo: 's', k: 's' + s.id, v, nomes: [s.nome] }); });
+  cols.forEach((c, i) => { c.rotulo = c.tipo === 's' ? 'Todos do setor ' + c.nomes[0] : porCargo ? c.nomes[0] : rotuloFuncao(c.nomes); c.cod = 'F' + (i + 1);
+    c.qtd = c.v.filter(Boolean).length; c.horas = String(tsA.reduce((s, t, j) => s + (c.v[j] ? Number(t.carga_horaria) || 0 : 0), 0)).replace('.', ','); });
+  const linhas = tsA.map((t, j) => ({ t, ch: horasTxt(t.carga_horaria), val: VAL_TREIN(t), rec: horasTxt(t.carga_reciclagem), mes: t.mes_sugerido || '-', v: cols.map(c => c.v[j]) }))
+    .filter(l => l.v.some(Boolean));
+  return { cols, linhas, porCargo };
+}
+async function exportarQuadroTreinamentos(Q, formato, area) {
+  const es = await empresasL().catch(() => []);
+  let E = es[0] || {};
+  if (es.length > 1) { const r = await modal(`<form><h2>${formato === 'pdf' ? 'PDF' : 'Excel'} da matriz de treinamentos</h2><div class="form">
+      <label class="campo largo">Empresa que aparece no documento<select name="empresa">${es.map(x => `<option value="${x.id}">${esc(rotEmpresa(x))}</option>`).join('')}</select></label></div>
+      <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Gerar</button></div></form>`);
+    if (!r) return; E = es.find(x => x.id === r.empresa) || E; }
+  const titulo = area === 'SSMA' ? 'Matriz de Treinamentos - Saúde e Segurança do Trabalho' : 'Matriz de Treinamentos';
+  const LEG = 'X = obrigatório  |  A = obrigatório e realizado antes de iniciar as atividades (na admissão)  |  - = não se aplica';
+  const curto = Q.cols.length > 5 || Q.cols.some(c => c.rotulo.length > 70);
+  const cabF = Q.cols.map(c => curto ? c.cod : c.rotulo);
+  const marca = v => ['-', 'X', 'A'][v];
+  const nomeArq = `Matriz de treinamentos ${hojeISO()}`;
+  if (formato === 'pdf') {
+    await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+    await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js');
+    const IMG = await imagensTimbrado(true);
+    const doc = new window.jspdf.jsPDF({ unit: 'mm', format: 'a4', orientation: 'landscape' });
+    const W = 297, H = 210, ML = 20, MR = W - 20, TOPO = 40, BASE = H - 28, LU = MR - ML;
+    const hex = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+    const C = { texto: [37, 46, 53], cinza: [107, 115, 120], ouro: hex(REL_COR.ouro), verde: hex(REL_COR.verde), escuro: hex(REL_COR.escuro), claro: hex(REL_COR.claro), zebra: hex(REL_COR.zebra), borda: hex(REL_COR.borda) };
+    const feitas = new Set(); const moldura = () => { const pg = doc.getCurrentPageInfo().pageNumber; if (feitas.has(pg)) return; feitas.add(pg); molduraTimbrado(doc, E, IMG); };
+    moldura();
+    let y = 44;
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(15); doc.setTextColor(...C.texto); doc.text(titulo, ML, y); y += 5.5;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(...C.cinza);
+    doc.text('Treinamentos obrigatórios por função, carga horária, validade, reciclagem e programação anual', ML, y);
+    doc.setFontSize(8.5); doc.text(`Emitido em ${dataBR(hojeISO())}`, MR, 44, { align: 'right' }); y += 4;
+    doc.setDrawColor(...C.borda); doc.setLineWidth(0.2); doc.line(ML, y, MR, y); y += 4;
+    const fixo = { 0: 66, 1: 18, 2: 19, 3: 20, 4: 24 }, resto = LU - 147, wf = resto / Math.max(1, Q.cols.length);
+    const corpo = Q.linhas.map(l => [l.t.nome, l.ch, l.val, l.rec, l.mes, ...l.v.map(marca)]);
+    corpo.push([{ content: 'Total de treinamentos obrigatórios', colSpan: 5, styles: { fontStyle: 'bold', halign: 'right', fillColor: C.claro } }, ...Q.cols.map(c => ({ content: String(c.qtd), styles: { fontStyle: 'bold', fillColor: C.claro } }))]);
+    corpo.push([{ content: 'Carga horária inicial total', colSpan: 5, styles: { fontStyle: 'bold', halign: 'right', fillColor: C.claro } }, ...Q.cols.map(c => ({ content: c.horas + 'h', styles: { fontStyle: 'bold', fillColor: C.claro } }))]);
+    doc.autoTable({ startY: y, margin: { left: ML, right: W - MR, top: TOPO, bottom: H - BASE }, theme: 'grid',
+      head: [['TREINAMENTO / NORMA', 'CARGA HORÁRIA (INICIAL)', 'VALIDADE', 'CARGA HORÁRIA (RECICLAGEM)', 'MÊS SUGERIDO', ...cabF.map(x => x.toUpperCase())]], body: corpo,
+      styles: { font: 'helvetica', fontSize: 7.6, textColor: C.texto, lineColor: [222, 230, 227], lineWidth: 0.15, cellPadding: 1.5, valign: 'middle', halign: 'center' },
+      headStyles: { fillColor: C.escuro, textColor: 255, fontStyle: 'bold', fontSize: Q.cols.length > 5 ? 6.6 : 6.4, halign: 'center', valign: 'middle' },
+      alternateRowStyles: { fillColor: C.zebra }, rowPageBreak: 'avoid',
+      columnStyles: { ...Object.fromEntries(Object.entries(fixo).map(([k, v]) => [k, { cellWidth: v }])), 0: { cellWidth: fixo[0], halign: 'left', fontStyle: 'bold' } },
+      didParseCell: d => { if (d.section === 'body' && d.column.index >= 5 && typeof d.cell.raw === 'string') {
+        if (d.cell.raw === 'X') { d.cell.styles.fontStyle = 'bold'; d.cell.styles.textColor = C.verde; }
+        else if (d.cell.raw === 'A') { d.cell.styles.fontStyle = 'bold'; d.cell.styles.textColor = [150, 100, 0]; d.cell.styles.fillColor = [251, 243, 220]; }
+        else d.cell.styles.textColor = [170, 178, 182]; }
+        if (d.section === 'head' && d.column.index === 0) d.cell.styles.halign = 'left'; },
+      willDrawPage: moldura });
+    y = doc.lastAutoTable.finalY + 5;
+    const bloco = linhas => { const h = linhas.length * 3.6 + 2; if (y + h > BASE) { doc.addPage(); moldura(); y = TOPO + 4; } };
+    doc.setFontSize(7.5); bloco([1]); doc.setFont('helvetica', 'bold'); doc.setTextColor(...C.verde); doc.text('LEGENDA', ML, y); y += 3.6;
+    doc.setFont('helvetica', 'normal'); doc.setTextColor(...C.cinza); doc.text(LEG, ML, y); y += 5;
+    if (curto) { const ls = Q.cols.flatMap(c => doc.splitTextToSize(`${c.cod}: ${c.tipo === 's' ? c.rotulo : c.nomes.join(', ')}`, LU));
+      bloco(ls); doc.setFont('helvetica', 'bold'); doc.setTextColor(...C.verde); doc.text('FUNÇÕES', ML, y); y += 3.6;
+      doc.setFont('helvetica', 'normal'); doc.setTextColor(...C.texto); ls.forEach(l => { if (y > BASE) { doc.addPage(); moldura(); y = TOPO + 4; } doc.text(l, ML, y); y += 3.4; }); }
+    paginarTimbrado(doc, true);
+    doc.save(nomeArq + '.pdf');
+    return;
+  }
+  await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js');
+  const wb = new ExcelJS.Workbook(); wb.creator = estado.usuario.nome; wb.created = new Date();
+  const fill = c => ({ type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF' + c.replace('#', '') } });
+  const fina = { style: 'thin', color: { argb: 'FFD7DFE5' } }, borda = { top: fina, bottom: fina, left: fina, right: fina };
+  const ws = wb.addWorksheet('Matriz', { views: [{ showGridLines: false }], pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9 } });
+  const n = 5 + Q.cols.length;
+  let logoId = null; try { const b = await (await fetch('logo.png')).arrayBuffer(); logoId = wb.addImage({ buffer: b, extension: 'png' }); } catch { /* sem logo */ }
+  ws.mergeCells(1, 1, 3, 1); if (logoId != null) ws.addImage(logoId, { tl: { col: 0.1, row: 0.2 }, ext: { width: 150, height: 44 } });
+  ws.mergeCells(1, 2, 1, n); ws.getCell(1, 2).value = titulo; ws.getCell(1, 2).font = { size: 16, bold: true, color: { argb: 'FF0C1D18' } };
+  ws.mergeCells(2, 2, 2, n); ws.getCell(2, 2).value = [E.razao_social || E.nome_fantasia || 'Verbo Logística', E.cnpj && 'CNPJ ' + fmtCNPJ(E.cnpj)].filter(Boolean).join(' · '); ws.getCell(2, 2).font = { size: 10, color: { argb: 'FF5A6A77' } };
+  ws.mergeCells(3, 2, 3, n); ws.getCell(3, 2).value = `Emitido em ${dataBR(hojeISO())}`; ws.getCell(3, 2).font = { size: 9, italic: true, color: { argb: 'FF5A6A77' } };
+  ws.getRow(1).height = 24; ws.getRow(2).height = 16; ws.getRow(3).height = 16;
+  const L0 = 5, cab = ['Treinamento / Norma', 'Carga Horária (Inicial)', 'Validade', 'Carga Horária (Reciclagem)', 'Mês Sugerido', ...Q.cols.map(c => c.rotulo)];
+  const rc = ws.getRow(L0); cab.forEach((h, k) => { const x = rc.getCell(k + 1); x.value = h; x.font = { bold: true, size: 10, color: { argb: 'FFFFFFFF' } }; x.fill = fill(REL_COR.escuro); x.border = borda;
+    x.alignment = { vertical: 'middle', horizontal: k ? 'center' : 'left', wrapText: true }; });
+  rc.height = Math.min(120, 18 + 12 * Math.ceil(Math.max(...Q.cols.map(c => c.rotulo.length)) / 22));
+  Q.linhas.forEach((l, i) => { const r = ws.getRow(L0 + 1 + i); [l.t.nome, l.ch, l.val, l.rec, l.mes, ...l.v.map(marca)].forEach((v, k) => { const x = r.getCell(k + 1); x.value = v; x.border = borda;
+    x.alignment = { vertical: 'middle', horizontal: k ? 'center' : 'left', wrapText: true }; x.font = { size: 10, ...(k === 0 ? { bold: true } : {}) }; if (i % 2) x.fill = fill(REL_COR.zebra);
+    if (k >= 5) { if (v === 'X') x.font = { size: 10, bold: true, color: { argb: 'FF02654D' } }; else if (v === 'A') { x.font = { size: 10, bold: true, color: { argb: 'FF966400' } }; x.fill = fill('#FBF3DC'); } else x.font = { size: 10, color: { argb: 'FFAAB2B6' } }; } }); });
+  let lin = L0 + 1 + Q.linhas.length;
+  [['Total de treinamentos obrigatórios', c => c.qtd], ['Carga horária inicial total', c => c.horas + 'h']].forEach(([rot, f]) => {
+    ws.mergeCells(lin, 1, lin, 5); const a = ws.getCell(lin, 1); a.value = rot; a.font = { bold: true, size: 10 }; a.alignment = { horizontal: 'right' }; a.fill = fill(REL_COR.claro);
+    Q.cols.forEach((c, k) => { const x = ws.getCell(lin, 6 + k); x.value = f(c); x.font = { bold: true, size: 10 }; x.alignment = { horizontal: 'center' }; x.fill = fill(REL_COR.claro); x.border = borda; }); lin++; });
+  lin++; ws.getCell(lin, 1).value = 'Legenda'; ws.getCell(lin, 1).font = { bold: true, color: { argb: 'FF02654D' } }; lin++;
+  ws.mergeCells(lin, 1, lin, n); ws.getCell(lin, 1).value = LEG; ws.getCell(lin, 1).font = { size: 10, color: { argb: 'FF5A6A77' } };
+  [46, 14, 14, 15, 18, ...Q.cols.map(() => Q.porCargo ? 14 : 24)].forEach((w, k) => (ws.getColumn(k + 1).width = w));
+  ws.views = [{ showGridLines: false, state: 'frozen', ySplit: L0, xSplit: 1 }];
+  const buf = await wb.xlsx.writeBuffer();
+  baixarArquivo(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), nomeArq + '.xlsx');
+}
 async function formTurma(ts, treinamentoIni = '', colabIni = '') {
   const marcados = new Set([].concat(colabIni || []));
   const [cs, cgs] = await Promise.all([tem('administrador', 'rh', 'dp', 'diretoria') ? colabsRH('&status=in.(ativo,ferias,afastado,aviso_previo,em_admissao)') : api.rpc('organograma_dados').then(r => r || []), cargosL()]);
