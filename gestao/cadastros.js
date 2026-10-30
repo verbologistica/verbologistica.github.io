@@ -96,16 +96,19 @@ rota('/cadastros/:tabela', async (tela, tabela) => {
   const linhas = await api.listar(tabela, `order=${def.ordem}${inativos ? '' : '&ativo=eq.true'}`);
   const rot = Object.fromEntries(def.campos.map(c => [c[0], c[1]]));
   const celulas = await Promise.all(linhas.map(async l => Promise.all(def.colunas.map(c => valorExibido(c, l[c])))));
+  // cargos: aponta o que falta preencher (some sozinho quando o cadastro fica completo)
+  const faltaCargo = l => tabela !== 'cargos' ? [] : [[!l.cbo, 'CBO'], [!l.setor_id, 'setor'], [!(Number(l.salario_base) > 0), 'salário base'], [!String(l.descricao || '').trim(), 'descrição das atividades'], [!String(l.requisitos || '').trim(), 'requisitos']].filter(x => x[0]).map(x => x[1]);
+  const nIncomp = tabela === 'cargos' ? linhas.filter(l => l.ativo && faltaCargo(l).length).length : 0;
   tela.innerHTML = `
-    <div class="topo"><div><h1>${esc(def.titulo)}</h1><p class="sub">${linhas.length} cadastro(s)</p></div>
+    <div class="topo"><div><h1>${esc(def.titulo)}</h1><p class="sub">${linhas.length} cadastro(s)${nIncomp ? ` · <span class="tag amarelo">${nIncomp} com itens a preencher</span>` : ''}</p></div>
       <div class="acoes"><a class="btn" href="#/cadastros/${tabela}${inativos ? '' : '?inativos=1'}">${inativos ? 'Ocultar inativos' : 'Mostrar inativos'}</a>
       ${def.edita() ? '<button class="btn prim" id="novo">+ Novo</button>' : ''}</div></div>
-    <div class="cartao">${linhas.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr>${def.colunas.map(c => `<th>${esc(rot[c].replace(/ \(.*/, ''))}</th>`).join('')}<th></th></tr></thead><tbody>
-      ${linhas.map((l, i) => `<tr class="${def.edita() ? 'clicavel' : ''}" data-i="${i}">${def.colunas.map((c, j) => `<td data-r="${esc(rot[c])}">${esc(celulas[i][j])}</td>`).join('')}<td>${l.ativo ? '' : '<span class="tag">Inativo</span>'}</td></tr>`).join('')}
+    <div class="cartao">${linhas.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr>${def.colunas.map(c => `<th>${esc(rot[c].replace(/ \(.*/, ''))}</th>`).join('')}${tabela === 'cargos' ? '<th>Cadastro</th>' : ''}<th></th></tr></thead><tbody>
+      ${linhas.map((l, i) => `<tr class="${def.edita() ? 'clicavel' : ''}" data-i="${i}">${def.colunas.map((c, j) => `<td data-r="${esc(rot[c])}">${esc(celulas[i][j])}</td>`).join('')}${tabela === 'cargos' ? `<td data-r="Cadastro">${faltaCargo(l).length ? `<span class="tag amarelo" title="Falta preencher">Falta: ${esc(faltaCargo(l).join(', '))}</span>` : '<span class="tag verde">Completo</span>'}</td>` : ''}<td>${l.ativo ? '' : '<span class="tag">Inativo</span>'}</td></tr>`).join('')}
     </tbody></table></div>` : '<div class="vazio">Nenhum cadastro ainda.</div>'}</div>`;
   const editar = async (l = null) => {
     const campos = (await Promise.all(def.campos.map(c => campoHTML(c, l?.[c[0]])))).join('');
-    const r = await modal(`<form><h2>${l ? 'Editar' : 'Novo'} · ${esc(def.titulo)}</h2><div class="form">${campos}</div>
+    const r = await modal(`<form><h2>${l ? 'Editar' : 'Novo'} · ${esc(def.titulo)}</h2>${l && faltaCargo(l).length ? `<div class="alerta-obs" style="margin-bottom:10px">Falta preencher: <b>${esc(faltaCargo(l).join(', '))}</b>.</div>` : ''}<div class="form">${campos}</div>
       <div class="rodape">${l ? `<button class="btn ${l.ativo ? 'perigo' : ''}" value="${l.ativo ? 'desativar' : 'ativar'}">${l.ativo ? 'Desativar' : 'Reativar'}</button>` : ''}
       <button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim" value="salvar">Salvar</button></div></form>`);
     if (!r) return;
