@@ -92,9 +92,9 @@ rota('/ssma/aso', async tela => {
   $('#novo-ex')?.addEventListener('click', () => formExame());
   $$('[data-hist]', tela).forEach(b => b.onclick = () => historicoExames(b.dataset.hist));
 });
-async function formExame(colabId = null) {
+async function formExame(colabId = null, ex = null) {
   const [cs, fs] = await Promise.all([colabsBasico(), cad('fornecedores', 'select=id,razao_social,nome_fantasia,documento,ativo&order=razao_social')]);
-  const r = await modal(`<form><h2>Registrar exame</h2><div class="form">
+  const r = await modal(`<form><h2>${ex ? 'Alterar exame' : 'Registrar exame'}</h2><div class="form">
     <label class="campo largo">Colaborador *<select name="colab" required><option value="">Selecione…</option>${cs.map(c => `<option value="${c.id}" ${c.id === colabId ? 'selected' : ''}>${esc(c.nome)}${c.cargo ? ' · ' + esc(c.cargo) : ''}</option>`).join('')}</select></label>
     <label class="campo">Tipo *<select name="tipo">${Object.entries(TIPO_EXAME).map(([k, t]) => `<option value="${k}">${t}</option>`).join('')}</select></label>
     <label class="campo">Data do exame *<input type="date" name="data" required value="${hojeISO()}"></label>
@@ -112,9 +112,19 @@ async function formExame(colabId = null) {
         f.resultado.innerHTML = (tox ? ['negativo', 'positivo', 'pendente'] : ['apto', 'apto_restricao', 'inapto']).map(k => `<option value="${k}">${RES_EXAME[k][0]}</option>`).join('');
         f.validade.placeholder = tox ? 'padrão: 30 (CTB art. 148-A)' : 'padrão: 12 (PCMSO)'; $('#b-val', raiz).hidden = ['demissional', 'monitoracao_pontual'].includes(f.tipo.value); sr(); };
       const sr = () => { $('#b-rest', raiz).hidden = f.resultado.value !== 'apto_restricao'; };
-      f.tipo.onchange = s; f.resultado.onchange = sr; s(); },
+      f.tipo.onchange = s; f.resultado.onchange = sr;
+      if (ex) { f.colab.value = ex.colaborador_id; f.colab.disabled = true; f.tipo.value = ex.tipo; s(); f.data.value = ex.data_exame || ''; f.resultado.value = ex.resultado || f.resultado.value;
+        f.validade.value = ex.validade_meses ?? ''; f.restricoes.value = ex.restricoes || ''; f.medico.value = ex.medico || ''; f.crm.value = ex.crm || ''; f.clinica_id.value = ex.clinica_id || '';
+        f.custo.value = ex.custo != null ? String(ex.custo).replace('.', ',') : ''; f.compl.value = ex.exames_complementares || ''; sr(); }
+      else s(); },
       validar: d => d.resultado === 'apto_restricao' && !d.restricoes ? 'Descreva as restrições.' : null });
   if (!r) return;
+  if (ex) { try {
+      await api.alterar('exames_ocupacionais', `id=eq.${ex.id}`, { tipo: r.tipo, data_exame: r.data, resultado: r.resultado, restricoes: r.resultado === 'apto_restricao' ? r.restricoes || null : null,
+        validade_meses: r.validade ? Number(r.validade) : null, medico: r.medico || null, crm: r.crm || null, clinica_id: r.clinica_id || null, custo: num(r.custo), exames_complementares: r.compl || null });
+      if (r.arquivos?.length) await anexar('exame_ocupacional', ex.id, r.arquivos);
+      aviso('Exame alterado.'); navegar(); } catch (err) { falha(err); }
+    return; }
   try { const [x] = await api.inserir('exames_ocupacionais', { colaborador_id: r.colab, tipo: r.tipo, data_exame: r.data, resultado: r.resultado, restricoes: r.restricoes || null, validade_meses: r.validade ? Number(r.validade) : null,
       medico: r.medico || null, crm: r.crm || null, clinica_id: r.clinica_id || null, custo: num(r.custo), exames_complementares: r.compl || null });
     if (r.arquivos?.length) await anexar('exame_ocupacional', x.id, r.arquivos);
@@ -124,9 +134,21 @@ async function formExame(colabId = null) {
 async function historicoExames(colabId) {
   const xs = await api.listar('exames_ocupacionais', `colaborador_id=eq.${colabId}&ativo=eq.true&select=*,cl:fornecedores(razao_social)&order=data_exame.desc`);
   const anx = {}; await Promise.all(xs.map(async x => (anx[x.id] = await htmlAnexos('exame_ocupacional', x.id))));
+  const podeEx = editaSSMA() || tem('rh');
   await modal(`<form><h2>Histórico de exames</h2>${xs.length ? `<ul class="lista-simples">${xs.map(x => `<li style="flex-wrap:wrap"><span><b>${TIPO_EXAME[x.tipo]}</b> · ${dataBR(x.data_exame)} ${tagSt(RES_EXAME, x.resultado)}
-      <div class="muted">${esc([x.restricoes, x.medico && 'Dr(a). ' + x.medico + (x.crm ? ' CRM ' + x.crm : ''), x.cl?.razao_social, x.proximo_exame && 'próximo ' + dataBR(x.proximo_exame)].filter(Boolean).join(' · '))}</div></span><span>${anx[x.id]}</span></li>`).join('')}</ul>` : '<p class="muted">Nenhum exame registrado.</p>'}
+      <div class="muted">${esc([x.restricoes, x.medico && 'Dr(a). ' + x.medico + (x.crm ? ' CRM ' + x.crm : ''), x.cl?.razao_social, x.proximo_exame && 'próximo ' + dataBR(x.proximo_exame)].filter(Boolean).join(' · '))}</div></span><span>${anx[x.id]}</span>
+      ${podeEx ? `<span class="acoes" style="margin-left:auto"><button class="btn peq" value="alt:${x.id}">Alterar</button><button class="btn peq perigo" value="exc:${x.id}">Excluir</button></span>` : ''}</li>`).join('')}</ul>` : '<p class="muted">Nenhum exame registrado.</p>'}
     <div class="rodape">${editaSSMA() || tem('rh') ? '<button class="btn" value="novo">+ Registrar exame</button><button class="btn" value="enc">Gerar encaminhamento</button>' : ''}<button type="button" class="btn prim" data-fechar>Fechar</button></div></form>`).then(async r => {
+    const [op, id] = String(r?._acao || '').split(':'), x = xs.find(y => y.id === id);
+    if (op === 'alt' && x) return formExame(x.colaborador_id, x);
+    if (op === 'exc' && x) {
+      const m = await modal(`<form><h2>Excluir exame</h2><p>${TIPO_EXAME[x.tipo]} de ${dataBR(x.data_exame)}. O exame sai do histórico e da situação do ASO; o registro fica guardado na auditoria.</p>
+        <div class="form"><label class="campo largo">Motivo *<input name="motivo" required placeholder="Ex.: lançado em duplicidade / colaborador errado"></label></div>
+        <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn perigo">Excluir</button></div></form>`);
+      if (!m) return;
+      try { await api.alterar('exames_ocupacionais', `id=eq.${x.id}`, { ativo: false, observacao: [x.observacao, `Excluído em ${dataBR(hojeISO())} por ${estado.usuario.nome}: ${m.motivo.trim()}`].filter(Boolean).join('\n') });
+        aviso('Exame excluído.'); navegar(); } catch (err) { falha(err); }
+      return; }
     if (r?._acao === 'novo') formExame(colabId);
     if (r?._acao === 'enc') { const m = await modeloPorCodigo('RH-FOR-001'); if (m) gerarDocumento(m, colabId); else aviso('Modelo de encaminhamento não encontrado.', true); } });
 }
