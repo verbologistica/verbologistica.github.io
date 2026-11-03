@@ -358,7 +358,9 @@ rota('/apresentacoes', async tela => {
         <div class="vb-card-ac"><a class="btn peq" href="#/apresentacoes/${a.id}">${vbPodeEditar(a) ? 'Editar' : 'Abrir'}</a><button class="btn peq prim" data-ap="${i}">▶ Apresentar</button>
           <button class="btn peq" data-dup="${i}" title="Duplicar">${ico('copiar')}</button>${vbPodeEditar(a) ? `<button class="btn peq perigo" data-arq="${i}" title="Excluir">✕ Excluir</button>` : ''}</div></div>`).join('')}</div>`
       : `<div class="cartao vazio">Nenhuma apresentação ainda. Clique em <b>Nova apresentação</b> para começar a partir do modelo Verbo.</div>`}`;
-  const ajustar = () => $$('.vb-card-img .vb-mini', tela).forEach(m => { const w = m.clientWidth; m.style.height = (w * 0.5625) + 'px'; m.firstElementChild.style.transform = `scale(${w / 1333.33})`; });
+  let wUlt = 0; // evita o "tremor": a barra de rolagem aparece/some e muda a largura em ~15 px
+  const ajustar = () => { const m0 = $('.vb-card-img .vb-mini', tela); if (!m0) return; const w0 = m0.clientWidth; if (wUlt && Math.abs(w0 - wUlt) < 30) return; wUlt = w0;
+    $$('.vb-card-img .vb-mini', tela).forEach(m => { const w = m.clientWidth; m.style.height = (w * 0.5625) + 'px'; m.firstElementChild.style.transform = `scale(${w / 1333.33})`; }); };
   ajustar(); new ResizeObserver(ajustar).observe(tela.querySelector('.vb-grade') || tela);
   $('#vb-modelo', tela).onclick = () => vboBaixarPptx(VBO_MODELO, 'Modelo padrão Verbo', true);
   $('#vb-nova', tela).onclick = async () => {
@@ -513,6 +515,6 @@ rota('/apresentacoes/:id', async (tela, id) => {
   $('[data-show]', tela).onclick = () => { let n = 0; for (let k = 0; k < sel; k++) n += qtd(deck.slides[k]); vboApresentar(deck, n); };
   $('[data-pdf]', tela).onclick = () => vboPdf(deck);
   $('[data-pptx]', tela).onclick = () => vboBaixarPptx(deck, $('.vb-ed-tit', tela).value.trim() || ap.titulo);
-  const ro = new ResizeObserver(() => desenharPalco()); ro.observe($p);
+  let wPal = 0; const ro = new ResizeObserver(() => { const w = $p.clientWidth; if (wPal && Math.abs(w - wPal) < 30) return; wPal = w; desenharPalco(); }); ro.observe($p);
   tudo();
 });
