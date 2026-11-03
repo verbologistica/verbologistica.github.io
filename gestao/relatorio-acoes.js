@@ -53,7 +53,9 @@ async function resumoArquivo(x, blob) {
   try {
     if (t === 'Apresentação' || t === 'Documento Word' || t === 'Planilha') {
       await carregarScript(JSZIP_URL); const z = await JSZip.loadAsync(blob);
-      const txt = xml => [...xml.matchAll(/<(?:a|w):t[^>]*>([^<]*)<\/(?:a|w):t>/g)].map(m => m[1]).join(' ');
+      // junta os pedaços de cada parágrafo sem espaço (o Office quebra palavras em vários trechos) e os parágrafos com espaço
+      const txt = xml => String(xml || '').split(/<\/(?:a|w):p>/).map(p => [...p.matchAll(/<(?:a|w):t(?:\s[^>]*)?>([^<]*)<\/(?:a|w):t>/g)].map(m => m[1]).join('')).filter(Boolean).join(' ')
+        .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'");
       if (t === 'Apresentação') {
         const sl = Object.keys(z.files).filter(f => /^ppt\/slides\/slide\d+\.xml$/.test(f)).sort((a, b) => a.match(/\d+/)[0] - b.match(/\d+/)[0]);
         const tit = []; for (const f of sl.slice(0, 40)) { const xml = await z.file(f).async('string');
@@ -68,7 +70,10 @@ async function resumoArquivo(x, blob) {
     if (t === 'PDF') {
       await carregarScript(PDFJS_URL); pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_URL.replace('pdf.min.js', 'pdf.worker.min.js');
       const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(await blob.arrayBuffer()) }).promise;
-      const p1 = limpa((await (await pdf.getPage(1)).getTextContent()).items.map(i => i.str).join(' '));
+      // tira o que se repete em todas as páginas (timbrado, cabeçalho e rodapé)
+      const pag = async n => (await (await pdf.getPage(n)).getTextContent()).items.map(i => limpa(i.str)).filter(Boolean);
+      const t1 = await pag(1), rep = pdf.numPages > 1 ? new Set(await pag(2)) : new Set();
+      const p1 = limpa(t1.filter(s => !rep.has(s)).join(' '));
       return `PDF com ${pdf.numPages} página(s)${p1 ? '. Início: "' + p1.slice(0, 220) + (p1.length > 220 ? '…' : '') + '"' : ' (digitalizado, sem texto)'}`;
     }
   } catch { /* arquivo protegido ou fora do padrão: fica só o tipo */ }
@@ -147,15 +152,15 @@ async function relatorioAcoes(acs, { titulo, subtitulo = '', plano = null } = {}
     if (itens.length) {
       y += 1.5; cabe(16);
       doc.autoTable({ startY: y, margin: { left: ML, right: W - MR, top: TOPO + 2, bottom: 297 - BASE }, theme: 'grid',
-        head: [['ARQUIVO', 'RESUMO', 'ENVIADO']], body: itens.map(i => [`${i.x.nome_original}\n${tipoTxt(i.x)}${i.x.tamanho_bytes ? ' · ' + tamTxt(i.x.tamanho_bytes) : ''}\n${i.link ? 'Baixar ›' : ''}`, i.resumo, dataBR(String(i.x.enviado_em || '').slice(0, 10))]),
+        head: [['ARQUIVO', 'RESUMO', 'ENVIADO']], body: itens.map(i => [`${i.x.nome_original}\n${tipoTxt(i.x)}${i.x.tamanho_bytes ? ' · ' + tamTxt(i.x.tamanho_bytes) : ''}${i.link ? '\n ' : ''}`, i.resumo, dataBR(String(i.x.enviado_em || '').slice(0, 10))]),
         styles: { font: 'helvetica', fontSize: 8, textColor: C.texto, lineColor: [228, 234, 232], lineWidth: 0.15, cellPadding: 1.8, valign: 'top' },
         headStyles: { fillColor: C.verde, textColor: 255, fontStyle: 'bold', fontSize: 7.2 }, alternateRowStyles: { fillColor: [246, 249, 248] },
         columnStyles: { 0: { cellWidth: 58, fontStyle: 'bold' }, 1: { cellWidth: LU - 58 - 20 }, 2: { cellWidth: 20, halign: 'center' } }, rowPageBreak: 'avoid',
         willDrawPage: moldura,
         didDrawCell: d => { if (d.section !== 'body' || d.column.index !== 0) return; const it = itens[d.row.index]; if (!it?.link) return;
           const ls = d.cell.text, yl = d.cell.y + d.cell.padding('top') + (ls.length - 1) * (d.cell.styles.fontSize * 0.3528 * 1.15) + 2.6;
-          doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(...C.azul); doc.setFillColor(...(d.row.index % 2 ? [246, 249, 248] : [255, 255, 255]));
-          doc.rect(d.cell.x + 1.5, yl - 3, 20, 3.8, 'F'); doc.textWithLink('Baixar ›', d.cell.x + d.cell.padding('left'), yl, { url: it.link }); } });
+          doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(...C.azul);
+          doc.textWithLink('Baixar ›', d.cell.x + d.cell.padding('left'), yl, { url: it.link }); } });
       y = doc.lastAutoTable.finalY + 4;
     } else { txt('Sem anexos.', { tam: 8.5, cor: 'cinza' }); }
     y += 3;

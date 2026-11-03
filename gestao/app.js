@@ -270,10 +270,19 @@ async function htmlAnexos(entidade, id) {
   const a = await api.listar('anexos', `entidade=eq.${entidade}&entidade_id=eq.${id}&cancelado_em=is.null&order=enviado_em`);
   if (!a.length) return '<span class="muted">Sem anexos</span>';
   return '<div class="anexos">' + a.map(x =>
-    `<span class="anexo" data-arquivo="${esc(x.caminho_arquivo)}" title="${esc(x.descricao || x.caminho_arquivo)}">${/^https?:/.test(x.caminho_arquivo) ? '🔗' : x.tipo_mime?.includes('pdf') ? '📄' : x.tipo_mime?.startsWith('image/') ? '🖼️' : /sheet|excel|csv/.test(x.tipo_mime || '') ? '📊' : /presentation|powerpoint/.test(x.tipo_mime || '') ? '📽️' : '📎'} ${x.descricao ? `<b>${esc(x.descricao)}:</b> ` : ''}${esc(x.nome_original || 'arquivo')}</span>`).join('')
+    `<span class="anexo" data-arquivo="${esc(x.caminho_arquivo)}" title="${esc(x.descricao || x.caminho_arquivo)}">${/^https?:/.test(x.caminho_arquivo) ? '🔗' : x.tipo_mime?.includes('pdf') ? '📄' : x.tipo_mime?.startsWith('image/') ? '🖼️' : /sheet|excel|csv/.test(x.tipo_mime || '') ? '📊' : /presentation|powerpoint/.test(x.tipo_mime || '') ? '📽️' : '📎'} ${x.descricao ? `<b>${esc(x.descricao)}:</b> ` : ''}${esc(x.nome_original || 'arquivo')}</span>${x.enviado_por === estado.usuario?.id || editaFin() ? `<button type="button" class="anexo-x" data-anx-del="${x.id}" data-anx-nome="${esc(x.nome_original || 'arquivo')}" title="Retirar este anexo" aria-label="Retirar anexo">×</button>` : ''}`).join('')
     + (a.filter(x => !/^https?:/.test(x.caminho_arquivo)).length > 1 ? `<button type="button" class="btn peq" data-zip="${esc(entidade)}|${esc(id)}" data-zip-nome="Anexos ${hojeISO()}">⬇ Baixar todos (.zip)</button>` : '') + '</div>';
 }
 
+// retirar anexo (lançado errado, boleto substituído…): sai da lista, mas fica guardado com quem retirou e quando
+document.addEventListener('click', async e => {
+  const b = e.target.closest('[data-anx-del]'); if (!b) return;
+  e.preventDefault(); e.stopPropagation();
+  if (!(await confirmar(`Retirar o anexo "${b.dataset.anxNome}"? Ele sai da lista, mas fica guardado no histórico.`, { botao: 'Retirar anexo' }))) return;
+  try { await api.alterar('anexos', `id=eq.${b.dataset.anxDel}`, { cancelado_em: new Date().toISOString(), cancelado_por: estado.usuario.id });
+    b.previousElementSibling?.classList.contains('anexo') && b.previousElementSibling.remove(); b.remove(); aviso('Anexo retirado.'); }
+  catch (err) { falha(err); }
+}, true);
 document.addEventListener('click', async e => {
   const a = e.target.closest('[data-arquivo]');
   if (!a) return;

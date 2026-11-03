@@ -1535,3 +1535,5 @@ table.qd-tab thead th:nth-child(n+2):nth-child(-n+5) { white-space: normal; min-
 table.qd-tab td:first-child { text-align: left; } th.qd-f { min-width: 200px; max-width: 260px; font-weight: 600; white-space: normal; }
 table.qd-tab td.qd-v1 { color: #02654D; font-weight: 700; } table.qd-tab td.qd-v2 { color: #966400; background: #FBF3DC; font-weight: 700; } table.qd-tab td.qd-v0 { color: #aab2b6; }
 table.qd-tab tfoot th, table.qd-tab tfoot td { background: #E2F0EB; text-align: right; } table.qd-tab tfoot td { text-align: center; }
+.anexo-x { border: 0; background: transparent; color: var(--cinza, #6b7378); font-size: 16px; line-height: 1; padding: 2px 6px; margin: 0 6px 0 -4px; border-radius: 6px; cursor: pointer; align-self: center; }
+.anexo-x:hover { background: #fde8e6; color: #b42318; }
