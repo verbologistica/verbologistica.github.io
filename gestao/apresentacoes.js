@@ -157,6 +157,40 @@ function vboSlideHtml(s, n, A) {
         <thead><tr>${cols.map(c => `<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${ls.map(l => `<tr>${cols.map((_, j) => `<td>${esc(String(l[j] ?? ''))}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
       if (s.nota) h += vbT(esc(s.nota), { x: 0.6, y: 6.45, w: 10, h: 0.3, fs: 11, cor: VBO.cinza });
       break; }
+    case 'foto': {
+      const img = s.imagem === 'foto' || !s.imagem ? A.foto : String(s.imagem).startsWith('data:image') ? s.imagem : A.foto;
+      h = `<div class="vb-bg" style="background:#0C1D18 url(${img}) center/cover"></div><div class="vb-bg" style="background:linear-gradient(180deg,rgba(12,29,24,.25) 0%,rgba(12,29,24,.35) 45%,rgba(12,29,24,.92) 78%)"></div>`
+        + `<img class="vb-logo" src="${A.logoClaro}" style="${vbPos(11.35, 0.5, 1.4, 1.4 * 123 / 418)}" alt="">`
+        + `<div class="vb-r an" data-e="fade" style="${vbPos(0.75, 4.35, 0.9, 0.07)};background:#${VBO.ouro};--d:300ms"></div>`
+        + (s.rotulo ? vbT(esc(s.rotulo), { x: 0.75, y: 4.55, w: 11, h: 0.4, fs: 14, bold: true, cor: VBO.ouro, ls: 5, an: an(300) }) : '')
+        + (s.titulo ? vbT(esc(s.titulo), { x: 0.75, y: 4.95, w: 11.6, h: 1.1, fs: 34, bold: true, cor: VBO.branco, an: an(550) }) : '')
+        + (s.texto ? vbT(esc(s.texto), { x: 0.75, y: 6.05, w: 11.6, h: 0.75, fs: 17, cor: 'DCE8E3', an: an(850) }) : '');
+      break; }
+    case 'certoerrado': {
+      h = vbMolde('claro', { ...s, titulo: s.titulo || 'Certo × Errado' }, n, A);
+      [['errado', 'imagem', 'ERRADO', VBO_ERRADO, '✕', 0.6], ['certo', 'imagem2', 'CERTO', VBO_CERTO, '✓', 6.82]].forEach(([k, ki, rot, cor, sim, x], j) => {
+        const w = 5.91, y = 1.55, a = an(300 + j * 500); const im = String(s[ki] || '').startsWith('data:image') ? s[ki] : s[ki] === 'foto' ? A.foto : null;
+        h += vbCaixa(x, y, w, 5.15, { fill: vbHex(VBO.claro), an: a }) + vbCaixa(x, y, w, 0.62, { fill: '#' + cor, an: a })
+          + vbT(sim + '&nbsp;&nbsp;' + rot, { x: x + 0.3, y, w: w - 0.6, h: 0.62, fs: 18, bold: true, cor: VBO.branco, valign: 'middle', ls: 3, an: a });
+        let yy = y + 0.85;
+        if (im) { h += `<div class="vb-img an" data-e="fade" style="${vbPos(x + 0.3, yy, w - 0.6, 2.1)};background-image:url(${im});border-radius:8px;--d:${a[0]}ms"></div>`; yy += 2.3; }
+        const ls = (s[k] || []).filter(Boolean).slice(0, 6);
+        h += vbT(ls.map(l => `<p style="display:flex;gap:.55em"><b style="color:#${cor}">${sim}</b><span>${esc(l)}</span></p>`).join(''), { x: x + 0.3, y: yy, w: w - 0.6, h: y + 5.0 - yy, fs: im ? 15 : 20, cor: VBO.texto, cls: 'vb-par', an: a }); });
+      break; }
+    case 'quiz': {
+      const resp = s._vista === 'resposta'; const ok = vboIdxCorreta(s);
+      h = vbMolde('escuro', { ...s, titulo: '' }, n, A)
+        + vbT(resp ? 'RESPOSTA' : 'PERGUNTA PARA A TURMA', { x: 0.6, y: 0.45, w: 8, h: 0.4, fs: 14, bold: true, cor: VBO.ouro, ls: 5 })
+        + vbT(esc(s.pergunta || ''), { x: 0.6, y: 0.95, w: 12.13, h: 1.35, fs: 28, bold: true, cor: VBO.branco, valign: 'middle', m: 'qz-perg' });
+      const al = (s.alternativas || []).filter(Boolean).slice(0, 4); const rh = 0.78, g = 0.16, y0 = 2.55;
+      al.forEach((t, i) => { const y = y0 + i * (rh + g); const certa = resp && i === ok, apaga = resp && i !== ok; const a = resp ? null : an(400 + i * 250);
+        h += `<div class="vb-r${a ? ' an' : ''}" data-m="qz-b${i}"${a ? ' data-e="fade"' : ''} style="${vbPos(0.6, y, 12.13, rh)};background:${certa ? '#' + VBO_CERTO : vbHex(VBO.esc2)};border:1px solid ${certa ? '#' + VBO_CERTO : vbHex(VBO.esc3)};border-radius:10px;opacity:${apaga ? .5 : 1};${a ? `--d:${a[0]}ms;` : ''}transition:background .4s"></div>`
+          + vbBola(0.78 + 0.28, y + 0.39, 0.56, { fill: certa ? '#fff' : vbHex(VBO.ouro), an: a })
+          + vbT('ABCD'[i], { x: 0.78, y: y + 0.11, w: 0.56, h: 0.56, fs: 17, bold: true, cor: certa ? VBO_CERTO : VBO.esc, align: 'center', valign: 'middle', an: a })
+          + vbT(esc(t) + (certa ? '&nbsp;&nbsp;✓' : ''), { x: 1.6, y, w: 10.9, h: rh, fs: 19, bold: certa, cor: apaga ? '7F948C' : VBO.branco, valign: 'middle', an: a }); });
+      if (resp && s.explicacao) h += vbT(esc(s.explicacao), { x: 0.6, y: y0 + al.length * (rh + g) + 0.05, w: 12.13, h: 0.85, fs: 16, cor: 'CFE6DD', an: an(500) });
+      h += vbChevron(11.45, 6.55, 1.25);
+      break; }
     case 'citacao':
       h = vbMolde('verde', s, n, A) + vbT('“', { x: 0.75, y: 0.35, w: 2, h: 2.2, fs: 200, bold: true, cor: VBO.ouro, an: an(200, 'zoom'), cls: 'vb-aspas' })
         + vbT(esc(s.texto || ''), { x: 1.6, y: 2.0, w: 10.2, h: 3.3, fs: 32, cor: VBO.branco, valign: 'middle', an: an(450) })
@@ -276,7 +310,7 @@ async function vboBaixarPptx(deck, nome, guia = false) {
     const A = await vboAssetsNav(); const sem = u => String(u).replace(/^data:/, '');
     const nomes = new Set(['estrela']); (deck.slides || []).forEach(s => s.tipo === 'cards' && (s.itens || []).forEach(c => nomes.add(c.icone || 'estrela')));
     const icones = {}; for (const n of nomes) icones[n] = sem(await vboIconePng(n));
-    const d2 = { ...deck, slides: (deck.slides || []).map(s => s.tipo === 'conteudo' && String(s.imagem || '').startsWith('data:') ? { ...s, imagem: sem(s.imagem) } : s) };
+    const d2 = { ...deck, slides: (deck.slides || []).map(s => { const o = { ...s }; for (const k of ['imagem', 'imagem2']) if (String(o[k] || '').startsWith('data:')) o[k] = sem(o[k]); return o; }) };
     const blob = await vboGerarPptx(d2, { PptxGenJS: window.PptxGenJS, JSZip: window.JSZip, geo: A.geo, guia, saida: 'blob',
       assets: { logoClaro: sem(A.logoClaro), logoEscuro: sem(A.logoEscuro), fundoCapa: sem(A.fundo), foto: sem(A.foto), icone: n => icones[n] || icones.estrela } });
     baixarArquivo(blob, (nome || 'Apresentação Verbo').replace(/[\\/:*?"<>|]+/g, '-') + '.pptx');
@@ -322,7 +356,7 @@ rota('/apresentacoes', async tela => {
         <a href="#/apresentacoes/${a.id}" class="vb-card-img">${a.capa ? vbMini(a.capa, 1, A, 320) : '<div class="vb-mini vazio"></div>'}</a>
         <div class="vb-card-txt"><b>${esc(a.titulo)}</b><span class="muted">${esc(a.numero || '')} · ${esc(a.u?.nome || '')} · ${dataBR((a.atualizado_em || a.criado_em || '').slice(0, 10))}</span></div>
         <div class="vb-card-ac"><a class="btn peq" href="#/apresentacoes/${a.id}">${vbPodeEditar(a) ? 'Editar' : 'Abrir'}</a><button class="btn peq prim" data-ap="${i}">▶ Apresentar</button>
-          <button class="btn peq" data-dup="${i}" title="Duplicar">${ico('copiar')}</button>${vbPodeEditar(a) ? `<button class="btn peq" data-arq="${i}" title="Arquivar">${ico('arquivo')}</button>` : ''}</div></div>`).join('')}</div>`
+          <button class="btn peq" data-dup="${i}" title="Duplicar">${ico('copiar')}</button>${vbPodeEditar(a) ? `<button class="btn peq perigo" data-arq="${i}" title="Excluir">✕ Excluir</button>` : ''}</div></div>`).join('')}</div>`
       : `<div class="cartao vazio">Nenhuma apresentação ainda. Clique em <b>Nova apresentação</b> para começar a partir do modelo Verbo.</div>`}`;
   const ajustar = () => $$('.vb-card-img .vb-mini', tela).forEach(m => { const w = m.clientWidth; m.style.height = (w * 0.5625) + 'px'; m.firstElementChild.style.transform = `scale(${w / 1333.33})`; });
   ajustar(); new ResizeObserver(ajustar).observe(tela.querySelector('.vb-grade') || tela);
@@ -332,10 +366,13 @@ rota('/apresentacoes', async tela => {
       <label class="campo largo">Título *<input name="titulo" required placeholder="Ex.: Resultados do 3º trimestre"></label>
       <div class="campo largo"><span>Começar com</span>
         <label class="check"><input type="radio" name="base" value="basico" checked> Básico: capa, agenda, texto e imagem, encerramento</label>
-        <label class="check"><input type="radio" name="base" value="modelo"> Modelo completo: um exemplo de cada tipo de slide</label></div></div>
+        <label class="check"><input type="radio" name="base" value="modelo"> Modelo completo: um exemplo de cada tipo de slide</label>
+        ${lista.length ? `<label class="check"><input type="radio" name="base" value="copia"> Copiar uma apresentação pronta (ex.: integrações):</label>
+        <select name="origem">${lista.map(a => `<option value="${a.id}">${esc(a.numero || '')} · ${esc(a.titulo)}</option>`).join('')}</select>` : ''}</div></div>
       <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Criar</button></div></form>`);
     if (!r) return;
-    const slides = r.base === 'modelo' ? vbClone(VBO_MODELO.slides) : ['capa', 'agenda', 'conteudo', 'encerramento'].map(vbExemplo);
+    let slides = r.base === 'modelo' ? vbClone(VBO_MODELO.slides) : ['capa', 'agenda', 'conteudo', 'encerramento'].map(vbExemplo);
+    if (r.base === 'copia' && r.origem) { const o = await api.um('apresentacoes', `id=eq.${r.origem}&select=deck`).catch(() => null); if (o?.deck?.slides?.length) slides = vbClone(o.deck.slides); }
     slides[0].titulo = r.titulo.trim();
     try { const [n] = await api.inserir('apresentacoes', { titulo: r.titulo.trim(), deck: { titulo: r.titulo.trim(), slides } }); location.hash = '#/apresentacoes/' + n.id; } catch (err) { falha(err); }
   };
@@ -344,8 +381,8 @@ rota('/apresentacoes', async tela => {
   $$('[data-dup]', tela).forEach(b => (b.onclick = async () => { const a = await completo(lista[b.dataset.dup]); if (!a) return;
     try { const [n] = await api.inserir('apresentacoes', { titulo: a.titulo + ' (cópia)', deck: { ...a.deck, titulo: a.titulo + ' (cópia)' } }); location.hash = '#/apresentacoes/' + n.id; } catch (err) { falha(err); } }));
   $$('[data-arq]', tela).forEach(b => (b.onclick = async () => { const a = lista[b.dataset.arq];
-    if (!(await confirmar(`Arquivar "${a.titulo}"? Ela sai da lista (não é apagada).`, { botao: 'Arquivar' }))) return;
-    try { await api.alterar('apresentacoes', `id=eq.${a.id}`, { ativo: false }); aviso('Apresentação arquivada.'); navegar(); } catch (err) { falha(err); } }));
+    if (!(await confirmar(`Excluir "${a.titulo}"? Ela sai da lista de apresentações. O administrador ainda consegue recuperá-la, se precisar.`, { botao: 'Excluir' }))) return;
+    try { await api.alterar('apresentacoes', `id=eq.${a.id}`, { ativo: false }); aviso('Apresentação excluída.'); navegar(); } catch (err) { falha(err); } }));
 });
 
 rota('/apresentacoes/:id', async (tela, id) => {
@@ -370,7 +407,8 @@ rota('/apresentacoes/:id', async (tela, id) => {
       try { await api.alterar('apresentacoes', `id=eq.${id}`, { titulo, deck }); $st.textContent = 'Salvo às ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }); }
       catch (err) { $st.textContent = 'Não salvou'; falha(err); } }, 900); };
   $('.vb-ed-tit', tela).oninput = salvar;
-  const numero = i => { let n = 0; for (let k = 0; k <= i; k++) n += deck.slides[k].tipo === 'mapa' && deck.slides[k].zoom && (deck.slides[k].pontos || []).length ? 2 : 1; return n - (deck.slides[i].tipo === 'mapa' && deck.slides[i].zoom && (deck.slides[i].pontos || []).length ? 1 : 0); };
+  const qtd = s => vboPlanos({ slides: [s] }).length;
+  const numero = i => { let n = 1; for (let k = 0; k < i; k++) n += qtd(deck.slides[k]); return n; };
   const desenharPalco = () => { const s = deck.slides[sel]; if (!s) { $p.innerHTML = '<div class="vazio">Sem slides.</div>'; return; }
     const w = $p.clientWidth || 800; const zoom = s.tipo === 'mapa' && s.zoom && (s.pontos || []).length;
     $p.innerHTML = `<div class="vb-prev" style="height:${w * 0.5625}px"><div style="transform:scale(${w / 1333.33})">${vboSlideHtml({ ...s, _vista: 'brasil' }, numero(sel), A)}</div></div>`
@@ -400,9 +438,9 @@ rota('/apresentacoes/:id', async (tela, id) => {
       if (tipo === 'texto') return `<label class="campo">${rot}<textarea data-c="${k}" rows="${k === 'texto' && s.tipo === 'conteudo' ? 7 : 3}" ${dis}>${esc(s[k] || '')}</textarea></label>`;
       if (tipo === 'linhas') return `<label class="campo">${rot}<textarea data-c="${k}" data-linhas rows="5" ${dis}>${esc((s[k] || []).join('\n'))}</textarea></label>`;
       if (tipo === 'sim') return `<label class="check"><input type="checkbox" data-c="${k}" data-sim ${s[k] ? 'checked' : ''} ${dis}> ${rot}</label>`;
-      if (tipo === 'imagem') { const pr = String(s.imagem || '').startsWith('data:');
-        return `<div class="campo"><span>${rot}</span><select data-img ${dis}><option value="foto" ${s.imagem === 'foto' ? 'selected' : ''}>Foto padrão Verbo</option><option value="" ${!s.imagem ? 'selected' : ''}>Sem imagem (texto ocupa a largura)</option>${pr ? '<option value="propria" selected>Imagem enviada</option>' : ''}</select>
-          ${pode ? '<label class="btn peq" style="margin-top:6px">Enviar imagem…<input type="file" accept="image/*" data-arqimg hidden></label>' : ''}</div>`; }
+      if (tipo === 'imagem') { const pr = String(s[k] || '').startsWith('data:');
+        return `<div class="campo"><span>${rot}</span><select data-img="${k}" ${dis}><option value="foto" ${s[k] === 'foto' ? 'selected' : ''}>Foto padrão Verbo</option><option value="" ${!s[k] ? 'selected' : ''}>Sem imagem</option>${pr ? '<option value="propria" selected>Imagem enviada</option>' : ''}</select>
+          ${pode ? `<label class="btn peq" style="margin-top:6px">Enviar imagem…<input type="file" accept="image/*" data-arqimg="${k}" hidden></label>` : ''}</div>`; }
       if (tipo === 'cards') return `<div class="campo"><span>${rot}</span>${rep('itens', s.itens, linhaCard, 4)}</div>`;
       if (tipo === 'numeros') return `<div class="campo"><span>${rot}</span>${rep('itens', s.itens, linhaNum, 4)}</div>`;
       if (tipo === 'etapas') return `<div class="campo"><span>${rot}</span>${rep('itens', s.itens, linhaEt, 6)}</div>`;
@@ -442,10 +480,10 @@ rota('/apresentacoes/:id', async (tela, id) => {
     $('[data-tab]', $f)?.addEventListener('input', e => { const ls = e.target.value.split('\n').filter(l => l.trim()).map(l => l.split(l.includes('\t') ? '\t' : ';').map(x => x.trim()));
       s.tabela = { colunas: ls[0] || [], linhas: ls.slice(1) }; mudou(); });
     // imagem
-    $('[data-img]', $f)?.addEventListener('change', e => { if (e.target.value !== 'propria') { s.imagem = e.target.value; desenharForm(); mudou(); } });
-    $('[data-arqimg]', $f)?.addEventListener('change', async e => { const f = e.target.files[0]; if (!f) return;
+    $$('[data-img]', $f).forEach(el => el.addEventListener('change', e => { if (e.target.value !== 'propria') { s[el.dataset.img] = e.target.value; desenharForm(); mudou(); } }));
+    $$('[data-arqimg]', $f).forEach(el => el.addEventListener('change', async e => { const f = e.target.files[0]; if (!f) return; const ki = el.dataset.arqimg;
       try { const im = await vbImg(URL.createObjectURL(f)); const k = Math.min(1, 1600 / Math.max(im.naturalWidth, im.naturalHeight)); const [c, x] = vbCanvas(Math.round(im.naturalWidth * k), Math.round(im.naturalHeight * k));
-        x.drawImage(im, 0, 0, c.width, c.height); s.imagem = c.toDataURL('image/jpeg', 0.82); desenharForm(); mudou(); } catch { aviso('Não foi possível ler a imagem.', true); } });
+        x.drawImage(im, 0, 0, c.width, c.height); s[ki] = c.toDataURL('image/jpeg', 0.82); desenharForm(); mudou(); } catch { aviso('Não foi possível ler a imagem.', true); } }));
     // mapa
     let tPt; $('[data-pontos]', $f)?.addEventListener('input', e => { clearTimeout(tPt); const v = e.target.value;
       tPt = setTimeout(async () => { $('[data-ptst]', $f).textContent = 'Localizando as cidades…';
@@ -472,7 +510,7 @@ rota('/apresentacoes/:id', async (tela, id) => {
     $('[data-delsl]', tela).onclick = async () => { if (deck.slides.length < 2) return aviso('A apresentação precisa de pelo menos um slide.', true);
       if (!(await confirmar('Excluir este slide?', { botao: 'Excluir' }))) return; deck.slides.splice(sel, 1); sel = Math.max(0, sel - 1); tudo(); salvar(); };
   }
-  $('[data-show]', tela).onclick = () => { let n = 0; for (let k = 0; k < sel; k++) n += deck.slides[k].tipo === 'mapa' && deck.slides[k].zoom && (deck.slides[k].pontos || []).length ? 2 : 1; vboApresentar(deck, n); };
+  $('[data-show]', tela).onclick = () => { let n = 0; for (let k = 0; k < sel; k++) n += qtd(deck.slides[k]); vboApresentar(deck, n); };
   $('[data-pdf]', tela).onclick = () => vboPdf(deck);
   $('[data-pptx]', tela).onclick = () => vboBaixarPptx(deck, $('.vb-ed-tit', tela).value.trim() || ap.titulo);
   const ro = new ResizeObserver(() => desenharPalco()); ro.observe($p);

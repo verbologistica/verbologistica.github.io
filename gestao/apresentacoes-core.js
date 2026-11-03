@@ -53,6 +53,9 @@ const VBO_TIPOS = {
   etapas: { nome: 'Linha do tempo / etapas', campos: [['titulo', 'Título'], ['itens', 'Etapas (3 a 6)', 'etapas']] },
   tabela: { nome: 'Tabela', campos: [['titulo', 'Título'], ['tabela', 'Tabela', 'tabela'], ['nota', 'Nota de rodapé']] },
   citacao: { nome: 'Mensagem-chave', escuro: true, campos: [['texto', 'Mensagem', 'texto'], ['autor', 'Autor / fonte']] },
+  foto: { nome: 'Foto em destaque', escuro: true, campos: [['imagem', 'Foto (ocupa o slide inteiro)', 'imagem'], ['rotulo', 'Rótulo (acima do título)'], ['titulo', 'Título'], ['texto', 'Texto curto', 'texto']] },
+  certoerrado: { nome: 'Certo × Errado', campos: [['titulo', 'Título'], ['errado', 'Errado (um por linha)', 'linhas'], ['imagem', 'Foto do lado errado', 'imagem'], ['certo', 'Certo (um por linha)', 'linhas'], ['imagem2', 'Foto do lado certo', 'imagem']] },
+  quiz: { nome: 'Pergunta para a turma', escuro: true, campos: [['pergunta', 'Pergunta', 'texto'], ['alternativas', 'Alternativas (2 a 4, uma por linha)', 'linhas'], ['correta', 'Alternativa correta (A, B, C ou D)'], ['explicacao', 'Explicação da resposta', 'texto']] },
   encerramento: { nome: 'Encerramento', escuro: true, campos: [['titulo', 'Título'], ['texto', 'Texto', 'texto'], ['contatos', 'Contatos (um por linha)', 'linhas']] }
 };
 
@@ -91,6 +94,13 @@ const VBO_MODELO = { titulo: 'Modelo padrão Verbo', slides: [
   { tipo: 'tabela', titulo: 'Plano de ação', tabela: { colunas: ['Ação', 'Responsável', 'Prazo', 'Situação'], linhas: [
       ['Revisar a rota da operação', 'Operação', '30/11', 'Em andamento'], ['Treinar a equipe nova', 'SSMA', '15/12', 'Aberta'], ['Renovar o contrato de manutenção', 'Compras', '20/12', 'Aberta'], ['Apresentar o resultado do trimestre', 'Diretoria', '10/01', 'Aberta']] },
     nota: 'Exemplo de tabela: até 8 linhas por slide.', notas: 'Tabela: use para planos de ação e comparativos curtos.' },
+  { tipo: 'foto', imagem: 'foto', rotulo: 'FOTO EM DESTAQUE', titulo: 'Uma imagem forte vale por um parágrafo', texto: 'Use uma foto real da operação para abrir um tema ou provocar a turma.',
+    notas: 'Foto em destaque: a foto ocupa o slide inteiro, com o texto sobre uma faixa escura. Ótimo para abrir um assunto ou fazer uma pergunta.' },
+  { tipo: 'certoerrado', titulo: 'Certo × Errado', errado: ['Improvisar ferramentas', 'Ficar perto da carga suspensa', 'Esconder uma falha'], certo: ['Usar a ferramenta adequada', 'Manter distância segura', 'Comunicar cedo a falha'],
+    notas: 'Certo × Errado: compare o comportamento esperado com o que deve ser evitado. Pode ter uma foto em cada lado.' },
+  { tipo: 'quiz', pergunta: 'Quem é responsável pela guarda e conservação do EPI?', alternativas: ['Somente o técnico de segurança', 'O próprio colaborador', 'O almoxarifado', 'Ninguém'], correta: 'B',
+    explicacao: 'NR 6: cabe ao empregado responsabilizar-se pela guarda e conservação do EPI.',
+    notas: 'Pergunta para a turma: gera 2 slides — a pergunta e, no próximo clique, a resposta destacada com a explicação.' },
   { tipo: 'citacao', texto: 'Segurança, pessoas, resultados e sustentabilidade: é assim que a Verbo trabalha todos os dias.', autor: 'Verbo Logística',
     notas: 'Mensagem-chave: uma frase forte para fechar um bloco ou citar alguém.' },
   { tipo: 'encerramento', titulo: 'Obrigado', texto: 'Dúvidas e próximos passos', contatos: ['Nome do apresentador', 'email@verbologistica.com.br', '(00) 00000-0000'],
@@ -101,6 +111,8 @@ const VBO_MODELO = { titulo: 'Modelo padrão Verbo', slides: [
 // vboGerarPptx(deck, { PptxGenJS, JSZip, assets, geo, guia, saida }) → Blob (navegador) ou Buffer (Node)
 // assets: { logoClaro, logoEscuro, fundoCapa, foto, icone(nome, corHex) } — imagens como 'image/png;base64,...'
 const VBO_W = 13.333, VBO_H = 7.5;
+const VBO_ERRADO = 'C0392B', VBO_CERTO = '1E8E5A';
+const vboIdxCorreta = s => Math.max(0, 'ABCD'.indexOf(String(s.correta || 'A').trim().toUpperCase().charAt(0)));
 const vboMerc = (lng, lat) => [lng, -Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360)) * 180 / Math.PI];
 function vboEncaixe(caixa, alvo) { // caixa [x0,y0,x1,y1] projetada → função que leva para polegadas dentro do alvo {x,y,w,h}
   const s = Math.min(alvo.w / (caixa[2] - caixa[0]), alvo.h / (caixa[3] - caixa[1]));
@@ -117,7 +129,8 @@ function vboCaixaPontos(pontos, folga) {
 function vboPlanos(deck) {
   const out = [];
   for (const s of deck.slides || []) {
-    if (s.tipo === 'mapa' && s.zoom && (s.pontos || []).length) { out.push({ ...s, _vista: 'brasil' }); out.push({ ...s, _vista: 'zoom', notas: 'Zoom do mapa (gerado automaticamente a partir do slide anterior).' }); }
+    if (s.tipo === 'quiz') { out.push({ ...s, _vista: 'pergunta' }); out.push({ ...s, _vista: 'resposta', notas: s.explicacao || s.notas }); }
+    else if (s.tipo === 'mapa' && s.zoom && (s.pontos || []).length) { out.push({ ...s, _vista: 'brasil' }); out.push({ ...s, _vista: 'zoom', notas: 'Zoom do mapa (gerado automaticamente a partir do slide anterior).' }); }
     else out.push(s);
   }
   return out;
@@ -315,6 +328,45 @@ async function vboGerarPptx(deck, opts) {
       const colW = cols.map((_, j) => cols.length < 2 ? 12.13 : j === 0 ? 12.13 * 0.36 : 12.13 * 0.64 / (cols.length - 1));
       if (cols.length) sl.addTable(rows, { x: 0.6, y: 1.65, w: 12.13, colW, fontFace: F, rowH: 0.62, valign: 'middle', margin: [0.06, 0.15, 0.06, 0.15], border: [borda, { type: 'none' }, borda, { type: 'none' }], objectName: 'tb' });
       if (s.nota) txt(sl, s.nota, { x: 0.6, y: 6.45, w: 10, h: 0.3, fontSize: 11, color: VBO.cinza, objectName: 'tb-nota' });
+    } else if (s.tipo === 'foto') {
+      sl = pres.addSlide({ masterName: 'VERBO_ESCURO' });
+      const img = s.imagem === 'foto' ? A.foto : s.imagem && String(s.imagem).startsWith('image/') ? s.imagem : A.foto;
+      sl.addImage({ data: img, x: 0, y: 0, w: VBO_W, h: VBO_H, sizing: { type: 'cover', w: VBO_W, h: VBO_H }, objectName: 'ft-img' });
+      sl.addShape(pres.shapes.RECTANGLE, { x: 0, y: 0, w: VBO_W, h: VBO_H, fill: { color: VBO.esc, transparency: 62 }, line: { type: 'none' }, objectName: 'ft-veu' });
+      sl.addShape(pres.shapes.RECTANGLE, { x: 0, y: 3.9, w: VBO_W, h: 3.6, fill: { color: VBO.esc, transparency: 25 }, line: { type: 'none' }, objectName: 'ft-faixa' });
+      sl.addShape(pres.shapes.RECTANGLE, { x: 0.75, y: 4.35, w: 0.9, h: 0.07, fill: { color: VBO.ouro }, line: { type: 'none' }, objectName: 'ft-traco' });
+      if (s.rotulo) txt(sl, s.rotulo, { x: 0.75, y: 4.55, w: 11, h: 0.4, fontSize: 14, bold: true, color: VBO.ouro, charSpacing: 4, objectName: 'ft-rot' });
+      if (s.titulo) txt(sl, s.titulo, { x: 0.75, y: 4.95, w: 11.6, h: 1.1, fontSize: 34, bold: true, color: VBO.branco, valign: 'top', objectName: 'ft-tit' });
+      if (s.texto) txt(sl, s.texto, { x: 0.75, y: 6.05, w: 11.6, h: 0.75, fontSize: 17, color: 'DCE8E3', objectName: 'ft-txt' });
+      sl.addImage({ data: A.logoClaro, x: 11.35, y: 0.5, w: 1.4, h: 1.4 * 123 / 418, objectName: 'ft-logo' });
+      passo(['ft-traco', 'ft-rot'], 300); passo(['ft-tit'], 550); passo(['ft-txt'], 850);
+    } else if (s.tipo === 'certoerrado') {
+      sl = pres.addSlide({ masterName: 'VERBO_CLARO' });
+      sl.addText(s.titulo || 'Certo × Errado', { placeholder: 'title' });
+      [['errado', 'imagem', 'ERRADO', VBO_ERRADO, '✕', 0.6], ['certo', 'imagem2', 'CERTO', VBO_CERTO, '✓', 6.82]].forEach(([k, ki, rot, cor, sim, x], j) => {
+        const w = 5.91, y = 1.55; const im = String(s[ki] || '').startsWith('image/') ? s[ki] : null; const p = j ? 'ce-c' : 'ce-e';
+        sl.addShape(pres.shapes.ROUNDED_RECTANGLE, { x, y, w, h: 5.15, rectRadius: 0.12, fill: { color: VBO.claro }, line: { type: 'none' }, objectName: p + 'b' });
+        sl.addShape(pres.shapes.ROUNDED_RECTANGLE, { x, y, w, h: 0.62, rectRadius: 0.12, fill: { color: cor }, line: { type: 'none' }, objectName: p + 'h' });
+        txt(sl, sim + '  ' + rot, { x: x + 0.3, y, w: w - 0.6, h: 0.62, fontSize: 18, bold: true, color: VBO.branco, valign: 'middle', charSpacing: 3, objectName: p + 't' });
+        let yy = y + 0.85;
+        if (im) { sl.addImage({ data: im, x: x + 0.3, y: yy, w: w - 0.6, h: 2.1, sizing: { type: 'cover', w: w - 0.6, h: 2.1 }, objectName: p + 'i' }); yy += 2.3; }
+        const ls = (s[k] || []).filter(Boolean).slice(0, 6);
+        txt(sl, ls.map((l, i) => ({ text: l, options: { bullet: { code: j ? '2714' : '2716', indent: 22 }, color: VBO.texto, breakLine: i < ls.length - 1, paraSpaceAfter: 8 } })),
+          { x: x + 0.3, y: yy, w: w - 0.6, h: y + 5.0 - yy, fontSize: im ? 15 : 20, objectName: p + 'x' });
+        passo([p + 'b', p + 'h', p + 't', p + 'i', p + 'x'], 300 + j * 500, 'fade', 450); });
+    } else if (s.tipo === 'quiz') {
+      sl = pres.addSlide({ masterName: 'VERBO_ESCURO' }); const resp = s._vista === 'resposta'; const ok = vboIdxCorreta(s);
+      txt(sl, resp ? 'RESPOSTA' : 'PERGUNTA PARA A TURMA', { x: 0.6, y: 0.45, w: 8, h: 0.4, fontSize: 14, bold: true, color: VBO.ouro, charSpacing: 4, objectName: 'qz-rot' });
+      txt(sl, s.pergunta || '', { x: 0.6, y: 0.95, w: 12.13, h: 1.35, fontSize: 28, bold: true, color: VBO.branco, valign: 'middle', objectName: 'qz-perg' });
+      const al = (s.alternativas || []).filter(Boolean).slice(0, 4); const rh = 0.78, g = 0.16, y0 = 2.55;
+      al.forEach((a, i) => { const y = y0 + i * (rh + g); const certa = resp && i === ok; const apaga = resp && i !== ok;
+        sl.addShape(pres.shapes.ROUNDED_RECTANGLE, { x: 0.6, y, w: 12.13, h: rh, rectRadius: 0.1, fill: { color: certa ? VBO_CERTO : VBO.esc2, transparency: apaga ? 45 : 0 }, line: { color: certa ? VBO_CERTO : VBO.esc3, width: 1 }, objectName: 'qz-ab' + i });
+        sl.addShape(pres.shapes.OVAL, { x: 0.78, y: y + 0.11, w: 0.56, h: 0.56, fill: { color: certa ? VBO.branco : VBO.ouro }, line: { type: 'none' }, objectName: 'qz-ac' + i });
+        txt(sl, 'ABCD'[i], { x: 0.78, y: y + 0.11, w: 0.56, h: 0.56, fontSize: 17, bold: true, color: certa ? VBO_CERTO : VBO.esc, align: 'center', valign: 'middle', objectName: 'qz-al' + i });
+        txt(sl, a + (certa ? '   ✓' : ''), { x: 1.6, y, w: 10.9, h: rh, fontSize: 19, bold: certa, color: apaga ? '7F948C' : VBO.branco, valign: 'middle', objectName: 'qz-at' + i });
+        if (!resp) passo(['qz-ab' + i, 'qz-ac' + i, 'qz-al' + i, 'qz-at' + i], 400 + i * 250); });
+      if (resp && s.explicacao) { txt(sl, s.explicacao, { x: 0.6, y: y0 + al.length * (rh + g) + 0.05, w: 12.13, h: 0.85, fontSize: 16, color: 'CFE6DD', objectName: 'qz-exp' }); passo(['qz-exp'], 500); }
+      chevron(sl, 11.45, 6.55, 1.25);
     } else if (s.tipo === 'citacao') {
       sl = pres.addSlide({ masterName: 'VERBO_ESCURO' }); sl.background = { color: VBO.verde };
       txt(sl, '“', { x: 0.75, y: 0.35, w: 2, h: 2.2, fontSize: 200, bold: true, color: VBO.ouro, objectName: 'qt-aspas' });
@@ -396,4 +448,4 @@ async function vboPosProcessar(dados, meta, { JSZip, saida }) {
   }
   return zip.generateAsync({ type: saida === 'nodebuffer' ? 'nodebuffer' : 'blob', compression: 'DEFLATE', mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' });
 }
-if (typeof module !== 'undefined') module.exports = { VBO, VBO_ICONES, VBO_TIPOS, VBO_MODELO, VBO_CHEVRON, vboSvgIcone, vboPontosPath, vboMerc, vboEncaixe, vboCaixaPontos, vboPlanos, vboGeoMapa, vboGerarPptx };
+if (typeof module !== 'undefined') module.exports = { VBO_ERRADO, VBO_CERTO, vboIdxCorreta, VBO, VBO_ICONES, VBO_TIPOS, VBO_MODELO, VBO_CHEVRON, vboSvgIcone, vboPontosPath, vboMerc, vboEncaixe, vboCaixaPontos, vboPlanos, vboGeoMapa, vboGerarPptx };
