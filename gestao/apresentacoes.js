@@ -351,7 +351,7 @@ rota('/apresentacoes', async tela => {
   tela.innerHTML = '<div class="carregando">Carregando…</div>';
   const [A, lista] = await Promise.all([vboAssetsNav(), api.listar('apresentacoes', 'ativo=eq.true&order=atualizado_em.desc.nullslast,criado_em.desc&select=id,numero,titulo,criado_por,criado_em,atualizado_em,capa:deck->slides->0,u:usuarios!apresentacoes_criado_por_fkey(nome)').catch(err => { falha(err); return []; })]);
   tela.innerHTML = `<div class="topo"><div><h1>Apresentações</h1><p class="muted">Monte apresentações no padrão Verbo: transições, mapa animado, PDF e PowerPoint.</p></div>
-      <div class="acoes"><button class="btn" id="vb-modelo">${ico('arquivo')} Baixar modelo PowerPoint</button><button class="btn prim" id="vb-nova">${ico('mais')} Nova apresentação</button></div></div>
+      <div class="acoes">${tem('administrador', 'diretoria', 'qualidade') ? `<label class="btn" title="Importar apresentações de um arquivo .json">${ico('arquivo')} Importar<input type="file" accept=".json" id="vb-imp" hidden></label>` : ''}<button class="btn" id="vb-modelo">${ico('arquivo')} Baixar modelo PowerPoint</button><button class="btn prim" id="vb-nova">${ico('mais')} Nova apresentação</button></div></div>
     ${lista.length ? `<div class="vb-grade">${lista.map((a, i) => `<div class="cartao vb-card">
         <a href="#/apresentacoes/${a.id}" class="vb-card-img">${a.capa ? vbMini(a.capa, 1, A, 320) : '<div class="vb-mini vazio"></div>'}</a>
         <div class="vb-card-txt"><b>${esc(a.titulo)}</b><span class="muted">${esc(a.numero || '')} · ${esc(a.u?.nome || '')} · ${dataBR((a.atualizado_em || a.criado_em || '').slice(0, 10))}</span></div>
@@ -363,6 +363,10 @@ rota('/apresentacoes', async tela => {
     $$('.vb-card-img .vb-mini', tela).forEach(m => { const w = m.clientWidth; m.style.height = (w * 0.5625) + 'px'; m.firstElementChild.style.transform = `scale(${w / 1333.33})`; }); };
   ajustar(); new ResizeObserver(ajustar).observe(tela.querySelector('.vb-grade') || tela);
   $('#vb-modelo', tela).onclick = () => vboBaixarPptx(VBO_MODELO, 'Modelo padrão Verbo', true);
+  $('#vb-imp', tela)?.addEventListener('change', async e => { const f = e.target.files[0]; if (!f) return;
+    try { const B = JSON.parse(await f.text()); const aps = B.apresentacoes || (B.slides ? [B] : []); const tits = new Set(lista.map(a => a.titulo)); let n = 0;
+      for (const ap of aps) { if (!ap.titulo || !Array.isArray(ap.slides) || tits.has(ap.titulo)) continue; aviso('Importando ' + ap.titulo + '…'); await api.inserir('apresentacoes', { titulo: ap.titulo, deck: ap }); n++; }
+      aviso(n ? `${n} apresentação(ões) importada(s).` : 'Nada novo para importar (já existem com o mesmo título).'); navegar(); } catch (err) { falha(err); } });
   $('#vb-nova', tela).onclick = async () => {
     const r = await modal(`<form><h2>Nova apresentação</h2><div class="form">
       <label class="campo largo">Título *<input name="titulo" required placeholder="Ex.: Resultados do 3º trimestre"></label>
