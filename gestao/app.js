@@ -270,7 +270,8 @@ async function htmlAnexos(entidade, id) {
   const a = await api.listar('anexos', `entidade=eq.${entidade}&entidade_id=eq.${id}&cancelado_em=is.null&order=enviado_em`);
   if (!a.length) return '<span class="muted">Sem anexos</span>';
   return '<div class="anexos">' + a.map(x =>
-    `<span class="anexo" data-arquivo="${esc(x.caminho_arquivo)}" title="${esc(x.descricao || x.caminho_arquivo)}">${/^https?:/.test(x.caminho_arquivo) ? '🔗' : x.tipo_mime?.includes('pdf') ? '📄' : x.tipo_mime?.startsWith('image/') ? '🖼️' : /sheet|excel|csv/.test(x.tipo_mime || '') ? '📊' : /presentation|powerpoint/.test(x.tipo_mime || '') ? '📽️' : '📎'} ${x.descricao ? `<b>${esc(x.descricao)}:</b> ` : ''}${esc(x.nome_original || 'arquivo')}</span>`).join('') + '</div>';
+    `<span class="anexo" data-arquivo="${esc(x.caminho_arquivo)}" title="${esc(x.descricao || x.caminho_arquivo)}">${/^https?:/.test(x.caminho_arquivo) ? '🔗' : x.tipo_mime?.includes('pdf') ? '📄' : x.tipo_mime?.startsWith('image/') ? '🖼️' : /sheet|excel|csv/.test(x.tipo_mime || '') ? '📊' : /presentation|powerpoint/.test(x.tipo_mime || '') ? '📽️' : '📎'} ${x.descricao ? `<b>${esc(x.descricao)}:</b> ` : ''}${esc(x.nome_original || 'arquivo')}</span>`).join('')
+    + (a.filter(x => !/^https?:/.test(x.caminho_arquivo)).length > 1 ? `<button type="button" class="btn peq" data-zip="${esc(entidade)}|${esc(id)}" data-zip-nome="Anexos ${hojeISO()}">⬇ Baixar todos (.zip)</button>` : '') + '</div>';
 }
 
 document.addEventListener('click', async e => {
@@ -1298,10 +1299,11 @@ async function abrirAcao(a) {
       ${podeEditar || ehResp || gestor ? camposAnexoHtml() : ''}</div>
     ${linkMod ? `<p class="muted"><a href="${linkMod}" data-fechar>Ver no módulo de ${a.modulo === 'ssma' ? 'Segurança' : 'Qualidade'}</a></p>` : ''}
     ${a.plano_id && !location.hash.startsWith('#/planos/ver/') ? `<p class="muted">Referência: <a href="#/planos/ver/${a.plano_id}" data-fechar>${esc(a.origem)}</a></p>` : ''}
-    <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button>${podeDevolver ? '<button type="button" class="btn perigo" id="ac-devolver">↩ Devolver ação</button>' : ''}${podeEditar || ehResp || gestor ? `<button class="btn${aberta ? '' : ' prim'}" value="salvar">Salvar</button>${podeForcar && aberta ? '<button class="btn" value="forcar" title="Conclui mesmo sem a parte de todos">Concluir para todos</button>' : ''}${aberta && (!pg || ehResp) ? `<button class="btn ok" value="concluir">${!pg ? '✔ Concluir ação' : pg.minha ? '✔ Reenviar minha parte' : '✔ Enviar minha parte'}</button>` : ''}` : ''}</div></form>`,
+    <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button type="button" class="btn" id="ac-rel" title="PDF no padrão Verbo com o que foi feito, os anexos, um resumo de cada arquivo e links para baixar">⬇ Relatório PDF</button>${podeDevolver ? '<button type="button" class="btn perigo" id="ac-devolver">↩ Devolver ação</button>' : ''}${podeEditar || ehResp || gestor ? `<button class="btn${aberta ? '' : ' prim'}" value="salvar">Salvar</button>${podeForcar && aberta ? '<button class="btn" value="forcar" title="Conclui mesmo sem a parte de todos">Concluir para todos</button>' : ''}${aberta && (!pg || ehResp) ? `<button class="btn ok" value="concluir">${!pg ? '✔ Concluir ação' : pg.minha ? '✔ Reenviar minha parte' : '✔ Enviar minha parte'}</button>` : ''}` : ''}</div></form>`,
     { aoAbrir: (f, fechar) => { if (podeEditar) { $('.modal', f).classList.add('modal-largo'); ligarSelPessoas(f, pes); }
         $('#ac-repact', f)?.addEventListener('click', async () => { if (await repactuarAcao(a)) { fechar(null); navegar(); } });
-        $('#ac-devolver', f)?.addEventListener('click', async () => { if (await devolverAcao(a)) { fechar(null); navegar(); } }); },
+        $('#ac-devolver', f)?.addEventListener('click', async () => { if (await devolverAcao(a)) { fechar(null); navegar(); } });
+        $('#ac-rel', f)?.addEventListener('click', e => ocupado(e.target, () => relatorioAcoes([a], { titulo: a.descricao.slice(0, 120), subtitulo: a.origem || '', plano: a.plano_id || null }).catch(falha))); },
       validar: d => (d._acao === 'concluir' || d._acao === 'forcar' || (d.status === 'concluida' && a.status !== 'concluida')) && !(pg?.enviaram && d._acao !== 'concluir') && !d.evidencia?.trim() && !d.arquivos?.length && !d.links?.trim() && (minhaParte || !anxHtml.includes('data-arquivo')) ? 'Para concluir, descreva o que foi feito ou anexe a evidência.'
         : podeEditar && !lerPessoas(d.resp).length ? 'Inclua pelo menos um responsável.' : null });
   if (!r) return false;
@@ -1549,8 +1551,10 @@ rota('/planos/ver/:id', async (tela, id) => {
             <td data-r="Ata / assuntos"><div class="pl-ata">${esc(x.ata || '—')}</div></td><td data-r="Ações" class="num">${da.length}${ab ? `<div class="muted">${ab} em aberto</div>` : ''}</td>
             <td class="nowrap"><button class="btn peq" data-reu-ver="${x.id}">Ações</button> <button class="btn peq" data-reu-ed="${x.id}">Abrir</button></td></tr>`; }).join('')}</tbody></table></div>`
         : '<div class="vazio">Nenhuma reunião registrada.</div>'}</div>` : ''}
-    <div class="cartao" id="pl-acoes"><h2>Ações deste plano</h2>${acs.length ? tabelaAcoesHtml(acs, { mostrarOrigem: false }) : '<div class="vazio">Nenhuma ação lançada.</div>'}</div>`;
+    <div class="cartao" id="pl-acoes"><div class="topo" style="margin:0 0 8px"><h2 style="margin:0">Ações deste plano</h2>${acs.length ? '<button class="btn peq" id="pl-rel" title="PDF no padrão Verbo com todas as ações, o que cada um fez, os anexos com resumo e links para baixar">⬇ Relatório para a gestão (PDF)</button>' : ''}</div>${acs.length ? tabelaAcoesHtml(acs, { mostrarOrigem: false }) : '<div class="vazio">Nenhuma ação lançada.</div>'}</div>`;
   ligarTabelaAcoes(tela, acs);
+  $('#pl-rel', tela)?.addEventListener('click', e => ocupado(e.target, () => relatorioAcoes(acs.filter(a => a.status !== 'cancelada'),
+    { titulo: p.titulo, subtitulo: `${p.numero ? p.numero + ' · ' : ''}${TIPOS_PLANO[p.tipo] || 'Plano'} de ${dataBR(p.data)}${p.setor ? ' · ' + p.setor : ''}`, plano: id }).catch(falha)));
   const fl = acs.length ? filtroLocal(tela, { itens: '#pl-acoes tbody tr[data-i]', antes: '#pl-acoes .tabela-wrap', busca: true,
     campos: [...(p.recorrente ? [{ k: 'reun', rotulo: 'Reunião' }] : []), { k: 'resp', rotulo: 'Responsável' }, { k: 'sit', rotulo: 'Situação' }] }) : null;
   $('#mais-acoes').onclick = async () => { if (await modalAcoesNoPlano(id)) navegar(); };
