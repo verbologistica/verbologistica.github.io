@@ -404,7 +404,7 @@ const MENU = [
   ['grupo', 'Biblioteca', 'livro'],
   ['Modelos de documentos', '#/modelos', null, 'documento', null, true],
   ['Apresentações', '#/apresentacoes', null, 'monitor', null, true],
-  ['Documentos da qualidade', '#/qualidade/documentos', null, 'livro_ok', 'qual_docs_ler', true],
+  ['POPs e documentos', '#/qualidade/documentos', null, 'livro_ok', 'qual_docs_ler', true],
   ['grupo', 'Operação', 'caminhao'],
   ['Viagens', '#/operacao/viagens', [...P_OP, 'financeiro', 'manutencao'], 'rota', 'viagens_em_transito', true],
   ['Controle de jornada', '#/operacao/jornadas', [...P_OP, 'rh', 'dp'], 'prancheta', 'jornada_alertas', true],

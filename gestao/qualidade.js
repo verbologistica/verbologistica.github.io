@@ -4,6 +4,18 @@
 const editaQual = () => tem('administrador', 'qualidade');
 const ST_DOC = { rascunho: ['Rascunho', ''], em_revisao: ['Em revisão', 'amarelo'], aprovado: ['Aprovado', 'verde'], obsoleto: ['Obsoleto', ''] };
 const TIPOS_DOC = ['Política', 'Manual', 'Procedimento', 'Instrução de trabalho', 'Formulário', 'Registro', 'Outro'];
+// codificação: TIPO-ÁREA-nnn (ex.: POP-SEG-001); a lista mestra mostra quantos cada área já tem e o próximo número
+const DOC_TIPO_SIGLA = { 'Procedimento': 'POP', 'Instrução de trabalho': 'IT', 'Formulário': 'FOR', 'Manual': 'MAN', 'Política': 'POL', 'Registro': 'REG', 'Outro': 'DOC' };
+const DOC_AREAS = [['SEG', 'SSMA'], ['MAN', 'Manutenção'], ['OPE', 'Operação'], ['FRO', 'Frota'], ['ALM', 'Almoxarifado'], ['COM', 'Compras'], ['RH', 'Recursos Humanos'],
+  ['DP', 'Departamento Pessoal'], ['FIN', 'Financeiro'], ['ADM', 'Administrativo'], ['QUA', 'Qualidade']];
+const ROT_PDF = v => `PDF assinado v${v}`, ROT_EDIT = v => `Editável v${v}`;
+function listaMestraDocs(ds) {
+  const m = {};
+  ds.forEach(d => { const x = String(d.codigo || '').trim().toUpperCase().match(/^([A-Z]+-[A-Z]+)-(\d+)$/); if (!x) return;
+    const k = x[1]; m[k] ||= { n: 0, ult: 0, vig: 0 }; m[k].n++; if (d.status === 'aprovado') m[k].vig++; m[k].ult = Math.max(m[k].ult, Number(x[2])); });
+  return m;
+}
+const proximoCodDoc = (m, pref) => `${pref}-${String((m[pref]?.ult || 0) + 1).padStart(3, '0')}`;
 const ST_NC = { aberta: ['Aberta', 'amarelo'], em_analise: ['Em análise', 'azul'], plano_acao: ['Plano de ação', 'azul'], verificacao: ['Verificação de eficácia', 'amarelo'], encerrada: ['Encerrada', 'verde'], cancelada: ['Cancelada', ''] };
 const CLASS_NC = { nc: 'Não conformidade', reclamacao: 'Reclamação de cliente', observacao: 'Observação', oportunidade_melhoria: 'Oportunidade de melhoria' };
 const GRAV_NC = { menor: ['Menor', 'amarelo'], maior: ['Maior', 'vermelho'], critica: ['Crítica', 'vermelho'] };
@@ -51,28 +63,40 @@ rota('/qualidade', async tela => {
 // ===================== Documentos =====================
 rota('/qualidade/documentos', async tela => {
   const ler = estado.params.get('ler') === '1', q = (estado.params.get('q') || '').toLowerCase();
-  const [ds, lidos, ss] = await Promise.all([api.listar('qual_documentos', 'ativo=eq.true&select=*,s:setores(nome)&order=codigo'), api.listar('qual_documento_leituras', `usuario_id=eq.${estado.usuario.id}&ativo=eq.true&select=documento_id,versao`).catch(() => []), setoresL().catch(() => [])]);
+  const [ds, lidos, ss, pdfs] = await Promise.all([api.listar('qual_documentos', 'ativo=eq.true&select=*,s:setores(nome)&order=codigo'), api.listar('qual_documento_leituras', `usuario_id=eq.${estado.usuario.id}&ativo=eq.true&select=documento_id,versao`).catch(() => []), setoresL().catch(() => []),
+    api.listar('anexos', 'entidade=eq.qual_documento&cancelado_em=is.null&descricao=like.PDF%20assinado*&select=entidade_id,descricao,caminho_arquivo&order=enviado_em.desc').catch(() => [])]);
+  const pdfDe = d => pdfs.find(a => a.entidade_id === d.id && a.descricao === ROT_PDF(d.versao));
+  const lm = listaMestraDocs(ds);
   const jaLeu = d => lidos.some(l => l.documento_id === d.id && l.versao === d.versao);
   const paraMim = d => d.status === 'aprovado' && d.leitura_obrigatoria && (d.publico === 'todos' || d.publico.split(',').map(s => s.trim()).some(p => estado.perfis.includes(p)));
   let ls = ds.filter(d => editaQual() || d.status === 'aprovado' || d.elaborado_por === estado.usuario.id);
   if (ler) ls = ls.filter(d => paraMim(d) && !jaLeu(d)); if (q) ls = ls.filter(d => [d.codigo, d.titulo, d.tipo, d.s?.nome].join(' ').toLowerCase().includes(q));
-  tela.innerHTML = `<div class="topo"><div><h1>Documentos da qualidade</h1><p class="sub">${ls.length} documento(s)</p></div>${editaQual() ? '<a class="btn prim" href="#/qualidade/documentos/novo">+ Documento</a>' : ''}</div>
+  tela.innerHTML = `<div class="topo"><div><h1>POPs e documentos controlados</h1><p class="sub">${ls.length} documento(s) · para consulta de todos: abra o PDF assinado da versão vigente</p></div>${editaQual() ? '<a class="btn prim" href="#/qualidade/documentos/novo">+ Documento</a>' : ''}</div>
     <form class="filtros" id="filtros"><input name="q" value="${esc(estado.params.get('q') || '')}" placeholder="Código, título, setor"><label class="check"><input type="checkbox" name="ler" ${ler ? 'checked' : ''}> Só os que preciso ler</label><button class="btn">Filtrar</button></form>
-    <div class="cartao">${ls.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Código</th><th>Título</th><th>Tipo</th><th>Setor</th><th class="num">Versão</th><th>Situação</th><th>Revisão</th><th>Leitura</th></tr></thead><tbody>
-      ${ls.map(d => `<tr class="clicavel" onclick="location.hash='#/qualidade/documentos/ver/${d.id}'"><td data-r="Código" class="mono"><b>${esc(d.codigo)}</b></td><td data-r="Título">${esc(d.titulo)}</td><td data-r="Tipo">${esc(d.tipo)}</td><td data-r="Setor">${esc(d.s?.nome || '—')}</td>
+    <div class="cartao">${ls.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Código</th><th>Título</th><th>Tipo</th><th>Setor</th><th class="num">Versão</th><th>Situação</th><th>Revisão</th><th>Leitura</th><th>Documento oficial</th></tr></thead><tbody>
+      ${ls.map(d => `<tr class="clicavel" onclick="if(!event.target.closest('[data-arquivo]'))location.hash='#/qualidade/documentos/ver/${d.id}'"><td data-r="Código" class="mono"><b>${esc(d.codigo)}</b></td><td data-r="Título">${esc(d.titulo)}</td><td data-r="Tipo">${esc(d.tipo)}</td><td data-r="Setor">${esc(d.s?.nome || '—')}</td>
         <td data-r="Versão" class="num">${d.versao}</td><td data-r="Situação">${tagSt(ST_DOC, d.status)}</td><td data-r="Revisão">${d.proxima_revisao ? dataBR(d.proxima_revisao) + (d.proxima_revisao <= somaDias(hojeISO(), 30) ? ' <span class="tag amarelo">revisar</span>' : '') : '—'}</td>
-        <td data-r="Leitura">${paraMim(d) ? (jaLeu(d) ? '<span class="tag verde">lido</span>' : '<span class="tag vermelho">ler</span>') : '—'}</td></tr>`).join('')}</tbody></table></div>` : '<div class="vazio">Nenhum documento.</div>'}</div>
+        <td data-r="Leitura">${paraMim(d) ? (jaLeu(d) ? '<span class="tag verde">lido</span>' : '<span class="tag vermelho">ler</span>') : '—'}</td>
+        <td data-r="Documento oficial">${pdfDe(d) ? `<span class="anexo" data-arquivo="${esc(pdfDe(d).caminho_arquivo)}">📄 Abrir PDF</span>` : d.status === 'aprovado' ? (editaQual() ? '<span class="tag amarelo">falta PDF assinado</span>' : '<span class="muted">em publicação</span>') : '—'}</td></tr>`).join('')}</tbody></table></div>` : '<div class="vazio">Nenhum documento.</div>'}</div>
+    <div class="cartao"><div class="topo" style="margin:0 0 8px"><div><h2 style="margin:0">Lista mestra · numeração por área</h2>
+        <p class="muted" style="margin:2px 0 0">Código: TIPO-ÁREA-nº (ex.: POP-SEG-001). Para um POP novo, use o próximo número da sua área e o <a href="#/modelos">modelo QUA-MOD-001</a>.</p></div></div>
+      ${Object.keys(lm).length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Série</th><th>Área</th><th class="num">Documentos</th><th class="num">Vigentes</th><th>Último</th><th>Próximo código</th></tr></thead><tbody>
+        ${Object.entries(lm).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => `<tr><td data-r="Série" class="mono"><b>${esc(k)}</b></td><td data-r="Área">${esc((DOC_AREAS.find(a => a[0] === k.split('-')[1]) || [, '—'])[1])}</td>
+          <td data-r="Documentos" class="num">${v.n}</td><td data-r="Vigentes" class="num">${v.vig}</td><td data-r="Último" class="mono">${esc(k + '-' + String(v.ult).padStart(3, '0'))}</td><td data-r="Próximo" class="mono"><b>${esc(proximoCodDoc(lm, k))}</b></td></tr>`).join('')}</tbody></table></div>`
+        : '<div class="vazio">Nenhum documento codificado ainda.</div>'}</div>
     ${avisoLei('qualidade_doc')}`;
   $('#filtros').onsubmit = e => { e.preventDefault(); const d = formDados(e.target); location.hash = '#/qualidade/documentos?' + new URLSearchParams(Object.entries({ q: d.q, ler: d.ler ? '1' : '' }).filter(([, v]) => v)); };
 });
 async function formDocumentoQual(tela, d = null) {
   if (!editaQual()) { tela.innerHTML = '<div class="cartao vazio">Sem permissão.</div>'; return; }
-  const ss = await setoresL().catch(() => []);
+  const [ss, todos] = await Promise.all([setoresL().catch(() => []), api.listar('qual_documentos', 'ativo=eq.true&select=codigo,status').catch(() => [])]);
+  const lmF = listaMestraDocs(todos);
   const perfisOpc = PERFIS.map(p => p[0]).filter(p => p !== 'administrador');
   const pub = d?.publico && d.publico !== 'todos' ? d.publico.split(',').map(s => s.trim()) : [];
   tela.innerHTML = `<div class="topo"><div><h1>${d ? 'Editar ' + esc(d.codigo) + ' (versão ' + d.versao + ')' : 'Novo documento'}</h1></div></div>
     <form id="f-doc" class="cartao"><div class="form">
-      <label class="campo">Código *<input name="codigo" required value="${esc(d?.codigo || '')}" placeholder="PO-OPE-001"></label>
+      <label class="campo">Código *<input name="codigo" required value="${esc(d?.codigo || '')}" placeholder="POP-OPE-001"></label>
+      ${d ? '' : `<div class="campo"><span>Gerar o próximo código da área</span><div style="display:flex;gap:6px"><select id="cod-area">${DOC_AREAS.map(([k, n]) => `<option value="${k}">${k} · ${esc(n)}</option>`).join('')}</select><button type="button" class="btn peq" id="cod-gerar">Gerar</button></div></div>`}
       <label class="campo largo">Título *<input name="titulo" required value="${esc(d?.titulo || '')}"></label>
       <label class="campo">Tipo<select name="tipo" data-valor="${esc(d?.tipo || '')}">${TIPOS_DOC.map(t => `<option ${t === (d?.tipo || 'Procedimento') ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
       <label class="campo">Setor<select name="setor_id"><option value="">Todos</option>${ss.filter(s => s.ativo).map(s => `<option value="${s.id}" ${s.id === d?.setor_id ? 'selected' : ''}>${esc(s.nome)}</option>`).join('')}</select></label>
@@ -81,13 +105,17 @@ async function formDocumentoQual(tela, d = null) {
       <label class="campo largo">Conteúdo<textarea name="conteudo" rows="12" placeholder="Objetivo, aplicação, responsabilidades, descrição das atividades, registros…">${esc(d?.conteudo || '')}</textarea></label>
       <label class="check largo"><input type="checkbox" name="obrig" ${d?.leitura_obrigatoria ? 'checked' : ''}> Leitura obrigatória (as pessoas confirmam que leram cada versão)</label>
       <div class="largo"><div class="muted">Público da leitura (nenhum marcado = todos)</div>${perfisOpc.map(p => `<label class="check" style="display:inline-flex;margin-right:10px"><input type="checkbox" name="pf_${p}" ${pub.includes(p) ? 'checked' : ''}> ${esc(nomePerfil(p))}</label>`).join('')}</div>
-      <label class="campo largo">Arquivo (PDF/Word)<input type="file" name="arquivos" multiple></label></div>
+      <label class="campo largo">Arquivo editável (Word) · só a Qualidade vê<input type="file" name="editavel" multiple accept=".doc,.docx,.odt,.xls,.xlsx"></label>
+      <label class="campo largo">PDF assinado (documento oficial) · todos consultam<input type="file" name="pdf_assinado" accept="application/pdf"></label></div>
       <div class="acoes"><button class="btn prim">Salvar</button><a class="btn" href="javascript:history.back()">Cancelar</a></div></form>`;
   $('#f-doc').onsubmit = async e => { e.preventDefault(); const r = formDados(e.target); const ps = perfisOpc.filter(p => r['pf_' + p]);
     const dados = { codigo: r.codigo, titulo: r.titulo, tipo: r.tipo, setor_id: r.setor_id || null, revisar_a_cada_meses: Number(r.rev) || 12, resumo: r.resumo || null, conteudo: r.conteudo || null, leitura_obrigatoria: !!r.obrig, publico: ps.length ? ps.join(',') : 'todos' };
     await ocupado(e.submitter, async () => { try { let id = d?.id; if (d) await api.alterar('qual_documentos', `id=eq.${id}`, dados); else [{ id }] = await api.inserir('qual_documentos', dados);
-      if (r.arquivos?.length) await anexar('qual_documento', id, r.arquivos); aviso('Documento salvo.'); location.hash = '#/qualidade/documentos/ver/' + id;
+      const v = d?.versao || 1;
+      if (r.editavel?.length) await anexar('qual_documento', id, r.editavel, ROT_EDIT(v));
+      if (r.pdf_assinado?.length) await anexar('qual_documento', id, r.pdf_assinado, ROT_PDF(v)); aviso('Documento salvo.'); location.hash = '#/qualidade/documentos/ver/' + id;
     } catch (err) { falha(err.message.includes('duplicate') ? new Error('Já existe documento com esse código.') : err); } }); };
+  $('#cod-gerar')?.addEventListener('click', () => { const f = $('#f-doc'); const pref = `${DOC_TIPO_SIGLA[f.tipo.value] || 'DOC'}-${$('#cod-area').value}`; f.codigo.value = proximoCodDoc(lmF, pref); });
 }
 rota('/qualidade/documentos/novo', tela => formDocumentoQual(tela));
 rota('/qualidade/documentos/editar/:id', async (tela, id) => formDocumentoQual(tela, await api.um('qual_documentos', `id=eq.${id}`)));
@@ -106,7 +134,19 @@ rota('/qualidade/documentos/ver/:id', async (tela, id) => {
       ${d.resumo ? `<p><b>${esc(d.resumo)}</b></p>` : ''}<div style="white-space:pre-line;margin-top:8px">${esc(d.conteudo || '')}</div><div id="anx-doc" style="margin-top:10px"></div></div>
     <div class="cartao"><h2>Histórico de revisões</h2>${revs.length ? `<ul class="lista-simples">${revs.map(r => `<li><span><b>Versão ${r.versao}</b> · ${esc(r.alteracao)}</span><span class="muted">${dataBR(r.aprovado_em)}</span></li>`).join('')}</ul>` : '<div class="vazio">Versão inicial.</div>'}</div>
     ${ed && d.leitura_obrigatoria ? `<div class="cartao"><h2>Leituras da versão ${d.versao}</h2>${leit.filter(l => l.versao === d.versao).length ? `<ul class="lista-simples">${leit.filter(l => l.versao === d.versao).map(l => `<li><span>${esc(l.u?.nome || '')}</span><span class="muted">${dataHoraBR(l.lido_em)}</span></li>`).join('')}</ul>` : '<div class="vazio">Ninguém confirmou a leitura ainda.</div>'}</div>` : ''}`;
-  $('#anx-doc').innerHTML = await htmlAnexos('qual_documento', id);
+  { // documento oficial (PDF assinado da versão vigente) para todos; editáveis só para a Qualidade
+    const ax = await api.listar('anexos', `entidade=eq.qual_documento&entidade_id=eq.${id}&cancelado_em=is.null&order=enviado_em.desc`).catch(() => []);
+    const pdf = ax.find(a => a.descricao === ROT_PDF(d.versao));
+    let h = pdf ? `<p><span class="anexo" data-arquivo="${esc(pdf.caminho_arquivo)}" style="font-weight:600">📄 Abrir ${esc(d.codigo)} – versão ${d.versao} (PDF assinado)</span></p>`
+      : `<p class="muted">${d.status === 'aprovado' ? 'O PDF assinado desta versão ainda não foi publicado pela Qualidade.' : 'Documento em elaboração.'}</p>`;
+    if (ed) h += `<div class="form" style="margin-top:8px">
+        <label class="campo largo">Publicar PDF assinado da versão ${d.versao} (todos consultam)<input type="file" id="up-pdf" accept="application/pdf"></label>
+        <label class="campo largo">Enviar arquivo editável da versão ${d.versao} (só a Qualidade vê)<input type="file" id="up-edit" multiple></label></div>
+      <div class="muted" style="margin-top:6px">Todos os arquivos (só a Qualidade vê):</div>${await htmlAnexos('qual_documento', id)}`;
+    $('#anx-doc').innerHTML = h;
+    $('#up-pdf')?.addEventListener('change', async e => { try { await anexar('qual_documento', id, [...e.target.files], ROT_PDF(d.versao)); aviso('PDF assinado publicado.'); navegar(); } catch (err) { falha(err); } });
+    $('#up-edit')?.addEventListener('change', async e => { try { await anexar('qual_documento', id, [...e.target.files], ROT_EDIT(d.versao)); aviso('Arquivo editável enviado.'); navegar(); } catch (err) { falha(err); } });
+  }
   $('#li')?.addEventListener('click', async () => { try { await api.inserir('qual_documento_leituras', { documento_id: id, versao: d.versao }); aviso('Leitura registrada.'); navegar(); } catch (err) { falha(err); } });
   $('#aprovar')?.addEventListener('click', async () => { if (!await confirmar(`Aprovar a versão ${d.versao}? Ela passa a valer para todos.`, { botao: 'Aprovar' })) return;
     try { await api.alterar('qual_documentos', `id=eq.${id}`, { status: 'aprovado' }); aviso('Documento aprovado.'); navegar(); } catch (err) { falha(err); } });
