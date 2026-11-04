@@ -409,7 +409,7 @@ rota('/compras/painel', async tela => {
 // Financeiro/diretoria: caixa e contas · Compras: comprado e requisições · os dois: mapa dos fornecedores
 async function vxInicio(caixa) {
   if (!caixa) return;
-  const fin = veTudo(), comp = tem('administrador', 'comprador');
+  const fin = tem('administrador', 'diretoria'), comp = tem('administrador', 'comprador');   // resumo financeiro no Início: só administrador e diretoria
   if (!fin && !comp) { caixa.remove(); return; }
   try {
     const [f, c] = await Promise.all([fin ? api.rpc('painel_financeiro') : null, !fin && comp ? api.rpc('painel_compras') : null]);

@@ -998,7 +998,7 @@ rota('/inicio', async tela => {
     </section>
     <div class="inicio-kpis ik-pend-w" hidden><section class="ik-sec ik-pend" id="ik-pend"></section></div>
     ${blocoAgenda || blocoAcoes ? `<div class="ini-duo">${blocoAgenda}${blocoAcoes}</div>` : ''}${blocoDiarias}${typeof htmlChamadosInicio === 'function' ? htmlChamadosInicio(chamadosAb) : ''}
-    ${veTudo() || tem('administrador', 'comprador') ? '<section class="vx-ini" id="vx-ini"><div class="vx-ini-cab"><h2>Visão executiva</h2></div><div class="pn-vazio">Carregando indicadores…</div></section>' : ''}
+    ${tem('administrador', 'diretoria', 'comprador') ? '<section class="vx-ini" id="vx-ini"><div class="vx-ini-cab"><h2>Visão executiva</h2></div><div class="pn-vazio">Carregando indicadores…</div></section>' : ''}
     ${blocoGestao}
     <div class="inicio-kpis">
       <a class="cartao kpi ${minhasReq.some(r => r.status === 'devolvida') ? 'alerta' : ''}" href="#${minhasReq.length ? '/inicio' : '/compras/requisicoes'}" ${minhasReq.length ? 'onclick="event.preventDefault();document.getElementById(\'minhas-req\').scrollIntoView({behavior:\'smooth\'})"' : ''}><div class="n">${minhasReq.length}</div><div class="r">minha(s) requisição(ões) de compra em andamento</div></a>

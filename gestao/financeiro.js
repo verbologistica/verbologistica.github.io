@@ -288,6 +288,18 @@ async function novoTitulo(tela, tipo) {
     // conta 8.1 (Fundo Fixo) aqui não entra no saldo do fundo: reposição tem botão próprio
     if (tipo === 'pagar' && /^8\.1\b|fundo fixo/i.test(f.conta_id?.selectedOptions?.[0]?.textContent || '')
         && !await confirmar('Conta "Fundo fixo de colaboradores" = REPOSIÇÃO do Fundo Fixo. Quando esta conta for paga (por uma conta que não seja o próprio fundo), o valor entra sozinho no saldo do Fundo Fixo; se o pagamento for estornado, sai. Continuar?', { botao: 'Continuar' })) return;
+    // evita duplicidade com conta fixa mensal: mesmo fornecedor com conta fixa ativa ou conta fixa já gerada no mesmo mês
+    if (tipo === 'pagar' && d.pessoa_id && !d.legado) {
+      const mes = (d.vencimento || '').slice(0, 7), prox = mes ? new Date(Date.UTC(+mes.slice(0, 4), +mes.slice(5, 7), 1)).toISOString().slice(0, 10) : '';
+      const [fx, ger] = await Promise.all([
+        api.listar('contas_recorrentes', `fornecedor_id=eq.${d.pessoa_id}&ativo=is.true&select=descricao,valor,dia_vencimento`).catch(() => []),
+        mes ? api.listar('titulos', `fornecedor_id=eq.${d.pessoa_id}&origem=eq.recorrente&status=neq.cancelado&select=numero,descricao,valor_total,p:titulo_parcelas!inner(vencimento)&p.vencimento=gte.${mes}-01&p.vencimento=lt.${prox}`).catch(() => []) : []]);
+      if (fx.length || ger.length) {
+        const txt = ger.length ? `Já existe conta fixa lançada para este fornecedor neste mês: ${ger.map(g => `${g.numero} – ${g.descricao} (${brl(g.valor_total)})`).join(', ')}.`
+          : `Este fornecedor tem conta fixa mensal ativa: ${fx.map(x => `${x.descricao} (${brl(x.valor)}, dia ${x.dia_vencimento})`).join(', ')}.`;
+        if (!await confirmar(`${txt} A conta de cada mês é lançada sozinha. Lance aqui só se for uma despesa EXTRA, fora do contrato. Lançar mesmo assim?`, { botao: 'Lançar mesmo assim' })) return;
+      }
+    }
     await ocupado(e.submitter, async () => {
       try {
         const [t] = await api.inserir('titulos', { tipo, itens, observacoes: d.observacoes || null, origem: d.legado ? 'legado' : 'avulso',
