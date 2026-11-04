@@ -28,6 +28,49 @@ const VBO_ICONES = {
   escudo: "<path d=\"M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z\"/>",
   arvore: "<path d=\"m17 14 3 3.3a1 1 0 0 1-.7 1.7H4.7a1 1 0 0 1-.7-1.7L7 14h-.3a1 1 0 0 1-.7-1.7L9 9h-.2A1 1 0 0 1 8 7.3L12 3l4 4.3a1 1 0 0 1-.8 1.7H15l3 3.3a1 1 0 0 1-.7 1.7H17Z\"/><path d=\"M12 22v-3\"/>",
   fabrica: "<path d=\"M2 20a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8l-7 5V8l-7 5V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z\"/><path d=\"M17 18h1\"/><path d=\"M12 18h1\"/><path d=\"M7 18h1\"/>",
+  fogo: "<path d=\"M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z\"/>",
+  extintor: "<path d=\"M15 6.5V3a1 1 0 0 0-1-1h-2a1 1 0 0 0-1 1v3.5\"/><path d=\"M9 18h8\"/><path d=\"M18 3h-3\"/><path d=\"M11 3a6 6 0 0 0-6 6v11\"/><path d=\"M5 13h4\"/><path d=\"M17 10a4 4 0 0 0-8 0v10a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2Z\"/>",
+  olho: "<path d=\"M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z\"/><circle cx=\"12\" cy=\"12\" r=\"3\"/>",
+  mao: "<path d=\"M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2\"/><path d=\"M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2\"/><path d=\"M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8\"/><path d=\"M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15\"/>",
+  telefone: "<path d=\"M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z\"/>",
+  email: "<rect x=\"2\" y=\"4\" width=\"20\" height=\"16\" rx=\"2\"/><path d=\"m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7\"/>",
+  mensagem: "<path d=\"M7.9 20A9 9 0 1 0 4 16.1L2 22Z\"/>",
+  cadeado: "<rect x=\"3\" y=\"11\" width=\"18\" height=\"11\" rx=\"2\"/><path d=\"M7 11V7a5 5 0 0 1 10 0v4\"/>",
+  saude: "<path d=\"M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z\"/><path d=\"M3.22 12H9.5l.5-1 2 4.5 2-7 1.5 3.5h5.27\"/>",
+  refeicao: "<path d=\"M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2\"/><path d=\"M7 2v20\"/><path d=\"M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7\"/>",
+  onibus: "<path d=\"M8 6v6\"/><path d=\"M15 6v6\"/><path d=\"M2 12h19.6\"/><path d=\"M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.4-.1-.8-.2-1.2l-1.4-5C20.1 6.8 19.1 6 18 6H4a2 2 0 0 0-2 2v10h3\"/><circle cx=\"7\" cy=\"18\" r=\"2\"/><path d=\"M9 18h5\"/><circle cx=\"16\" cy=\"18\" r=\"2\"/>",
+  cama: "<path d=\"M2 4v16\"/><path d=\"M2 8h18a2 2 0 0 1 2 2v10\"/><path d=\"M2 17h20\"/><path d=\"M6 8v9\"/>",
+  cartao: "<rect width=\"20\" height=\"14\" x=\"2\" y=\"5\" rx=\"2\"/><line x1=\"2\" x2=\"22\" y1=\"10\" y2=\"10\"/>",
+  cracha: "<path d=\"M16 10h2\"/><path d=\"M16 14h2\"/><path d=\"M6.17 15a3 3 0 0 1 5.66 0\"/><circle cx=\"9\" cy=\"11\" r=\"2\"/><rect x=\"2\" y=\"5\" width=\"20\" height=\"14\" rx=\"2\"/>",
+  velocidade: "<path d=\"m12 14 4-4\"/><path d=\"M3.34 19a10 10 0 1 1 17.32 0\"/>",
+  chuva: "<path d=\"M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242\"/><path d=\"M16 14v6\"/><path d=\"M8 14v6\"/><path d=\"M12 16v6\"/>",
+  eletrica: "<path d=\"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z\"/>",
+  gota: "<path d=\"M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z\"/>",
+  termometro: "<path d=\"M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z\"/>",
+  checklist: "<rect width=\"8\" height=\"4\" x=\"8\" y=\"2\" rx=\"1\"/><path d=\"M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2\"/><path d=\"m9 14 2 2 4-4\"/>",
+  megafone: "<path d=\"m3 11 18-5v12L3 14v-3z\"/><path d=\"M11.6 16.8a3 3 0 1 1-5.8-1.6\"/>",
+  placa: "<path d=\"M12 13v8\"/><path d=\"M12 3v3\"/><path d=\"M4 6a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1h13a2 2 0 0 0 1.152-.365l3.424-2.317a1 1 0 0 0 0-1.635l-3.424-2.318A2 2 0 0 0 17 6z\"/>",
+  pneu: "<circle cx=\"12\" cy=\"12\" r=\"10\"/><circle cx=\"12\" cy=\"12\" r=\"4\"/><path d=\"M12 2v6\"/><path d=\"M12 16v6\"/><path d=\"M2 12h6\"/><path d=\"M16 12h6\"/>",
+  oculos: "<circle cx=\"6\" cy=\"15\" r=\"4\"/><circle cx=\"18\" cy=\"15\" r=\"4\"/><path d=\"M14 15a2 2 0 0 0-2-2 2 2 0 0 0-2 2\"/><path d=\"M2.5 13 5 7c.7-1.3 1.4-2 3-2\"/><path d=\"M21.5 13 19 7c-.7-1.3-1.5-2-3-2\"/>",
+  corrente: "<path d=\"M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71\"/><path d=\"M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71\"/>",
+  casa: "<path d=\"M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8\"/><path d=\"M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z\"/>",
+  coracao: "<path d=\"M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z\"/>",
+  proibido: "<circle cx=\"12\" cy=\"12\" r=\"10\"/><path d=\"m4.9 4.9 14.2 14.2\"/>",
+  noite: "<path d=\"M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z\"/>",
+  treinamento: "<path d=\"M12 7v14\"/><path d=\"M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z\"/>",
+  radio: "<circle cx=\"12\" cy=\"12\" r=\"2\"/><path d=\"M16.24 7.76a6 6 0 0 1 0 8.49\"/><path d=\"M4.93 19.07a10 10 0 0 1 0-14.14\"/><path d=\"M7.76 16.24a6 6 0 0 1 0-8.49\"/><path d=\"M19.07 4.93a10 10 0 0 1 0 14.14\"/>",
+  busca: "<circle cx=\"11\" cy=\"11\" r=\"8\"/><path d=\"m21 21-4.3-4.3\"/>",
+  lanterna: "<path d=\"M18 6c0 2-2 2-2 4v10a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2V10c0-2-2-2-2-4V2h12z\"/><path d=\"M6 6h12\"/><path d=\"M12 12v1\"/>",
+  peso: "<circle cx=\"12\" cy=\"5\" r=\"3\"/><path d=\"M6.5 8a2 2 0 0 0-1.905 1.46L2.1 18.5A2 2 0 0 0 4 21h16a2 2 0 0 0 1.925-2.54L19.4 9.5A2 2 0 0 0 17.48 8Z\"/>",
+  montanha: "<path d=\"m8 3 4 8 5-5 5 15H2L8 3z\"/>",
+  hospital: "<path d=\"M11 2a2 2 0 0 0-2 2v5H4a2 2 0 0 0-2 2v2c0 1.1.9 2 2 2h5v5c0 1.1.9 2 2 2h2a2 2 0 0 0 2-2v-5h5a2 2 0 0 0 2-2v-2a2 2 0 0 0-2-2h-5V4a2 2 0 0 0-2-2h-2z\"/>",
+  sirene: "<path d=\"M7 18v-6a5 5 0 1 1 10 0v6\"/><path d=\"M5 21a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-1a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2z\"/><path d=\"M21 12h1\"/><path d=\"M18.5 4.5 18 5\"/><path d=\"M2 12h1\"/><path d=\"M12 2v1\"/><path d=\"m4.929 4.929.707.707\"/><path d=\"M12 12v6\"/>",
+  balanca: "<path d=\"m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z\"/><path d=\"m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z\"/><path d=\"M7 21h10\"/><path d=\"M12 3v18\"/><path d=\"M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2\"/>",
+  sorriso: "<circle cx=\"12\" cy=\"12\" r=\"10\"/><path d=\"M8 14s1.5 2 4 2 4-2 4-2\"/><path d=\"M9 9h.01\"/><path d=\"M15 9h.01\"/>",
+  pausa: "<path d=\"M10 2v2\"/><path d=\"M14 2v2\"/><path d=\"M16 8a1 1 0 0 1 1 1v8a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1h14a4 4 0 1 1 0 8h-1\"/><path d=\"M6 2v2\"/>",
+  poeira: "<path d=\"M17.7 7.7a2.5 2.5 0 1 1 1.8 4.3H2\"/><path d=\"M9.6 4.6A2 2 0 1 1 11 8H2\"/><path d=\"M12.6 19.4A2 2 0 1 0 14 16H2\"/>",
+  vibracao: "<path d=\"M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2\"/>",
+  sol: "<circle cx=\"12\" cy=\"12\" r=\"4\"/><path d=\"M12 2v2\"/><path d=\"M12 20v2\"/><path d=\"m4.93 4.93 1.41 1.41\"/><path d=\"m17.66 17.66 1.41 1.41\"/><path d=\"M2 12h2\"/><path d=\"M20 12h2\"/><path d=\"m6.34 17.66-1.41 1.41\"/><path d=\"m19.07 4.93-1.41 1.41\"/>",
   estrela: "<path d=\"M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z\"/>",
 };
 
@@ -42,7 +85,7 @@ const vboSvgIcone = (nome, cor = '#FFFFFF', esp = 2) => `<svg xmlns="http://www.
 
 // Tipos de slide: campos que o editor mostra e que o gerador usa
 const VBO_TIPOS = {
-  capa: { nome: 'Capa', escuro: true, campos: [['rotulo', 'Rótulo (acima do título)'], ['titulo', 'Título'], ['subtitulo', 'Subtítulo'], ['rodape', 'Apresentador · área · data']] },
+  capa: { nome: 'Capa', escuro: true, campos: [['rotulo', 'Rótulo (acima do título)'], ['titulo', 'Título'], ['subtitulo', 'Subtítulo'], ['rodape', 'Apresentador · área · data'], ['imagem', 'Foto da capa (lado direito; sem foto = capa clássica)', 'imagem']] },
   agenda: { nome: 'Agenda', escuro: true, campos: [['titulo', 'Título'], ['itens', 'Itens (um por linha)', 'linhas']] },
   secao: { nome: 'Divisor de seção', escuro: true, campos: [['numero', 'Número'], ['titulo', 'Título'], ['texto', 'Texto curto', 'texto']] },
   conteudo: { nome: 'Texto e imagem', campos: [['titulo', 'Título'], ['texto', 'Texto (linhas com "- " viram tópicos)', 'texto'], ['imagem', 'Imagem', 'imagem'], ['legenda', 'Legenda da imagem']] },
@@ -53,6 +96,8 @@ const VBO_TIPOS = {
   etapas: { nome: 'Linha do tempo / etapas', campos: [['titulo', 'Título'], ['itens', 'Etapas (3 a 6)', 'etapas']] },
   tabela: { nome: 'Tabela', campos: [['titulo', 'Título'], ['tabela', 'Tabela', 'tabela'], ['nota', 'Nota de rodapé']] },
   citacao: { nome: 'Mensagem-chave', escuro: true, campos: [['texto', 'Mensagem', 'texto'], ['autor', 'Autor / fonte']] },
+  icones: { nome: 'Lista com ícones', campos: [['titulo', 'Título'], ['itens', 'Itens (2 a 6)', 'cards6'], ['imagem', 'Foto ao lado (opcional)', 'imagem']] },
+  regraouro: { nome: 'Regra de ouro', escuro: true, campos: [['rotulo', 'Rótulo'], ['texto', 'Regra (frase principal)', 'texto'], ['itens', 'Palavras-chave (até 4, uma por linha)', 'linhas'], ['autor', 'Assinatura / fonte']] },
   foto: { nome: 'Foto em destaque', escuro: true, campos: [['imagem', 'Foto (ocupa o slide inteiro)', 'imagem'], ['rotulo', 'Rótulo (acima do título)'], ['titulo', 'Título'], ['texto', 'Texto curto', 'texto']] },
   certoerrado: { nome: 'Certo × Errado', campos: [['titulo', 'Título'], ['errado', 'Errado (um por linha)', 'linhas'], ['imagem', 'Foto do lado errado', 'imagem'], ['certo', 'Certo (um por linha)', 'linhas'], ['imagem2', 'Foto do lado certo', 'imagem']] },
   quiz: { nome: 'Pergunta para a turma', escuro: true, campos: [['pergunta', 'Pergunta', 'texto'], ['alternativas', 'Alternativas (2 a 4, uma por linha)', 'linhas'], ['correta', 'Alternativa correta (A, B, C ou D)'], ['explicacao', 'Explicação da resposta', 'texto']] },
@@ -94,6 +139,13 @@ const VBO_MODELO = { titulo: 'Modelo padrão Verbo', slides: [
   { tipo: 'tabela', titulo: 'Plano de ação', tabela: { colunas: ['Ação', 'Responsável', 'Prazo', 'Situação'], linhas: [
       ['Revisar a rota da operação', 'Operação', '30/11', 'Em andamento'], ['Treinar a equipe nova', 'SSMA', '15/12', 'Aberta'], ['Renovar o contrato de manutenção', 'Compras', '20/12', 'Aberta'], ['Apresentar o resultado do trimestre', 'Diretoria', '10/01', 'Aberta']] },
     nota: 'Exemplo de tabela: até 8 linhas por slide.', notas: 'Tabela: use para planos de ação e comparativos curtos.' },
+  { tipo: 'icones', titulo: 'Lista com ícones', imagem: 'foto', itens: [
+      { icone: 'checklist', titulo: 'Um ícone por ideia', texto: 'Escolha o ícone que mais combina com o assunto do item.' },
+      { icone: 'olho', titulo: 'Título curto', texto: 'O texto explica o item com mais detalhe, sem pressa.' },
+      { icone: 'megafone', titulo: 'Até 6 itens', texto: 'Com foto ao lado, use até 4 itens; sem foto, até 6 em duas colunas.' }],
+    notas: 'Lista com ícones: substitui slides só de texto. Cada item tem ícone, título e texto.' },
+  { tipo: 'regraouro', rotulo: 'REGRA DE OURO', texto: 'Segurança vem antes da produtividade.', itens: ['Inspecionar', 'Comunicar', 'Respeitar'], autor: 'Verbo Logística',
+    notas: 'Regra de ouro: um slide de impacto para a regra mais importante do tema. As palavras-chave aparecem uma a uma.' },
   { tipo: 'foto', imagem: 'foto', rotulo: 'FOTO EM DESTAQUE', titulo: 'Uma imagem forte vale por um parágrafo', texto: 'Use uma foto real da operação para abrir um tema ou provocar a turma.',
     notas: 'Foto em destaque: a foto ocupa o slide inteiro, com o texto sobre uma faixa escura. Ótimo para abrir um assunto ou fazer uma pergunta.' },
   { tipo: 'certoerrado', titulo: 'Certo × Errado', errado: ['Improvisar ferramentas', 'Ficar perto da carga suspensa', 'Esconder uma falha'], certo: ['Usar a ferramenta adequada', 'Manter distância segura', 'Comunicar cedo a falha'],
@@ -206,7 +258,18 @@ async function vboGerarPptx(deck, opts) {
   for (const s of planos) {
     const m = { anim: [] }; meta.push(m); let sl;
     const passo = (nomes, atraso, tipo = 'fade', dur = 500) => m.anim.push({ nomes, atraso, tipo, dur });
-    if (s.tipo === 'capa') {
+    if (s.tipo === 'capa' && String(s.imagem || '').startsWith('image/')) {
+      sl = pres.addSlide(); sl.background = { color: VBO.verde };
+      sl.addImage({ data: s.imagem, x: 5.9, y: 0, w: VBO_W - 5.9, h: VBO_H, sizing: { type: 'cover', w: VBO_W - 5.9, h: VBO_H }, objectName: 'cf-img' });
+      sl.addShape(pres.shapes.RECTANGLE, { x: 5.9, y: 0, w: 0.12, h: VBO_H, fill: { color: VBO.ouro }, line: { type: 'none' }, objectName: 'cf-barra' });
+      sl.addShape(pres.shapes.ROUNDED_RECTANGLE, { x: 0.6, y: 0.6, w: 2.7, h: 0.95, rectRadius: 0.08, fill: { color: VBO.branco }, line: { type: 'none' }, objectName: 'cf-lbox' });
+      sl.addImage({ data: A.logoEscuro, x: 0.78, y: 0.72, w: 2.34, h: 2.34 * 123 / 418, objectName: 'cf-logo' });
+      if (s.rotulo) txt(sl, s.rotulo, { x: 0.6, y: 2.35, w: 5.0, h: 0.35, fontSize: 13, bold: true, color: VBO.ouro, charSpacing: 4, objectName: 'cp-rot' });
+      txt(sl, s.titulo || '', { x: 0.6, y: 2.75, w: 5.0, h: 2.2, fontSize: 36, bold: true, color: VBO.branco, valign: 'top', objectName: 'cp-tit' });
+      if (s.subtitulo) txt(sl, s.subtitulo, { x: 0.6, y: 5.0, w: 5.0, h: 0.8, fontSize: 18, bold: true, color: VBO.ouro, objectName: 'cp-sub' });
+      if (s.rodape) txt(sl, s.rodape, { x: 0.6, y: 6.6, w: 5.0, h: 0.5, fontSize: 11, color: 'CFE6DD', objectName: 'cp-rod' });
+      passo(['cp-rot'], 300); passo(['cp-tit'], 500); passo(['cp-sub'], 800); passo(['cp-rod'], 1100);
+    } else if (s.tipo === 'capa') {
       sl = pres.addSlide({ masterName: 'VERBO_CAPA' });
       chevron(sl, 8.4, 2.05, 4.35);
       if (s.rotulo) txt(sl, s.rotulo, { x: 0.75, y: 2.0, w: 7.4, h: 0.35, fontSize: 13, bold: true, color: VBO.ouro, charSpacing: 4, objectName: 'cp-rot' });
@@ -328,6 +391,37 @@ async function vboGerarPptx(deck, opts) {
       const colW = cols.map((_, j) => cols.length < 2 ? 12.13 : j === 0 ? 12.13 * 0.36 : 12.13 * 0.64 / (cols.length - 1));
       if (cols.length) sl.addTable(rows, { x: 0.6, y: 1.65, w: 12.13, colW, fontFace: F, rowH: 0.62, valign: 'middle', margin: [0.06, 0.15, 0.06, 0.15], border: [borda, { type: 'none' }, borda, { type: 'none' }], objectName: 'tb' });
       if (s.nota) txt(sl, s.nota, { x: 0.6, y: 6.45, w: 10, h: 0.3, fontSize: 11, color: VBO.cinza, objectName: 'tb-nota' });
+    } else if (s.tipo === 'icones') {
+      sl = pres.addSlide({ masterName: 'VERBO_CLARO' });
+      const im = s.imagem === 'foto' ? A.foto : String(s.imagem || '').startsWith('image/') ? s.imagem : null;
+      const it = (s.itens || []).slice(0, im ? 4 : 6); const n = Math.max(it.length, 1);
+      if (im) { sl.addImage({ data: im, x: 8.0, y: 0, w: VBO_W - 8.0, h: VBO_H, sizing: { type: 'cover', w: VBO_W - 8.0, h: VBO_H }, objectName: 'ic-img' });
+        sl.addShape(pres.shapes.RECTANGLE, { x: 8.0, y: 0, w: 0.09, h: VBO_H, fill: { color: VBO.ouro }, line: { type: 'none' }, objectName: 'ic-barra' }); }
+      txt(sl, s.titulo || '', { x: 0.6, y: 0.45, w: im ? 7.1 : 12.13, h: 0.85, fontSize: im ? 28 : 32, bold: true, color: VBO.texto, objectName: 'ic-tit' });
+      const cols = !im && n > 3 ? 2 : 1, rows = Math.ceil(n / cols), cw = im ? 7.0 : cols === 2 ? 5.9 : 12.13, rh = Math.min(1.55, 5.15 / rows);
+      it.forEach((c, i) => { const col = cols === 2 ? Math.floor(i / rows) : 0, row = cols === 2 ? i % rows : i; const x = 0.6 + col * 6.23, y = 1.6 + row * rh; const d = 0.66;
+        sl.addShape(pres.shapes.OVAL, { x, y: y + 0.05, w: d, h: d, fill: { color: i % 2 ? VBO.ouro : VBO.verde }, line: { type: 'none' }, objectName: `ic-c${i}` });
+        sl.addImage({ data: A.icone(c.icone || 'estrela', VBO.branco), x: x + 0.16, y: y + 0.21, w: 0.34, h: 0.34, objectName: `ic-i${i}` });
+        txt(sl, c.titulo || '', { x: x + 0.9, y, w: cw - 0.95, h: 0.4, fontSize: 17, bold: true, color: VBO.texto, objectName: `ic-t${i}` });
+        if (c.texto) txt(sl, c.texto, { x: x + 0.9, y: y + 0.4, w: cw - 0.95, h: rh - 0.5, fontSize: 13.5, color: VBO.cinza, objectName: `ic-x${i}` });
+        passo([`ic-c${i}`, `ic-i${i}`, `ic-t${i}`, `ic-x${i}`], 300 + i * 200, 'fade', 400); });
+    } else if (s.tipo === 'regraouro') {
+      sl = pres.addSlide({ masterName: 'VERBO_ESCURO' });
+      sl.addShape(pres.shapes.OVAL, { x: -1.2, y: -1.4, w: 8.4, h: 8.4, fill: { color: VBO.ouro, transparency: 90 }, line: { type: 'none' }, objectName: 'ro-brilho' });
+      sl.addShape(pres.shapes.OVAL, { x: 0.9, y: 1.55, w: 3.5, h: 3.5, fill: { color: VBO.esc2 }, line: { color: VBO.ouro, width: 6 }, objectName: 'ro-anel' });
+      sl.addShape(pres.shapes.OVAL, { x: 1.3, y: 1.95, w: 2.7, h: 2.7, fill: { color: VBO.ouro }, line: { type: 'none' }, objectName: 'ro-disco' });
+      sl.addImage({ data: A.icone('premio', VBO.branco), x: 1.95, y: 2.6, w: 1.4, h: 1.4, objectName: 'ro-ic' });
+      txt(sl, s.rotulo || 'REGRA DE OURO', { x: 5.0, y: 1.45, w: 7.7, h: 0.45, fontSize: 16, bold: true, color: VBO.ouro, charSpacing: 6, objectName: 'ro-rot' });
+      sl.addShape(pres.shapes.RECTANGLE, { x: 5.0, y: 1.98, w: 1.1, h: 0.07, fill: { color: VBO.ouro }, line: { type: 'none' }, objectName: 'ro-traco' });
+      txt(sl, s.texto || '', { x: 5.0, y: 2.2, w: 7.75, h: 2.7, fontSize: 34, bold: true, color: VBO.branco, valign: 'middle', objectName: 'ro-txt' });
+      const it = (s.itens || []).filter(Boolean).slice(0, 4); const cw = it.length ? Math.min(2.6, (7.75 - 0.2 * (it.length - 1)) / it.length) : 0;
+      it.forEach((t, i) => { const x = 5.0 + i * (cw + 0.2);
+        sl.addShape(pres.shapes.ROUNDED_RECTANGLE, { x, y: 5.15, w: cw, h: 0.62, rectRadius: 0.31, fill: { color: VBO.esc }, line: { color: VBO.ouro, width: 1.5 }, objectName: `ro-b${i}` });
+        txt(sl, String(t).toUpperCase(), { x, y: 5.15, w: cw, h: 0.62, fontSize: 14, bold: true, color: VBO.ouro, align: 'center', valign: 'middle', charSpacing: 2, objectName: `ro-t${i}` });
+        passo([`ro-b${i}`, `ro-t${i}`], 1100 + i * 300, 'zoom', 400); });
+      if (s.autor) txt(sl, '— ' + s.autor, { x: 5.0, y: 6.05, w: 7, h: 0.4, fontSize: 14, color: VBO.suave, objectName: 'ro-aut' });
+      chevron(sl, 11.3, 6.4, 1.4);
+      passo(['ro-anel', 'ro-disco', 'ro-ic'], 200, 'zoom', 600); passo(['ro-rot', 'ro-traco'], 500); passo(['ro-txt'], 750); passo(['ro-aut'], 1800);
     } else if (s.tipo === 'foto') {
       sl = pres.addSlide({ masterName: 'VERBO_ESCURO' });
       const img = s.imagem === 'foto' ? A.foto : s.imagem && String(s.imagem).startsWith('image/') ? s.imagem : A.foto;

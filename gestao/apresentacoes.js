@@ -71,6 +71,15 @@ function vboSlideHtml(s, n, A) {
   let h = ''; const an = (d, e) => [d, e];
   switch (s.tipo) {
     case 'capa':
+      if (String(s.imagem || '').startsWith('data:image')) {
+        h = `<div class="vb-bg" style="background:#${VBO.verde}"></div><div class="vb-img" style="${vbPos(5.9, 0, VBO_W - 5.9, VBO_H)};background-image:url(${s.imagem})"></div>`
+          + `<div class="vb-r" style="${vbPos(5.9, 0, 0.12, VBO_H)};background:#${VBO.ouro}"></div>`
+          + `<div class="vb-r" style="${vbPos(0.6, 0.6, 2.7, 0.95)};background:#fff;border-radius:8px"></div><img class="vb-logo" src="${A.logoEscuro}" style="${vbPos(0.78, 0.72, 2.34, 2.34 * 123 / 418)}" alt="">`
+          + (s.rotulo ? vbT(esc(s.rotulo), { x: 0.6, y: 2.35, w: 5.0, h: 0.35, fs: 13, bold: true, cor: VBO.ouro, ls: 5, an: an(300) }) : '')
+          + vbT(esc(s.titulo || ''), { x: 0.6, y: 2.75, w: 5.0, h: 2.2, fs: 36, bold: true, cor: VBO.branco, an: an(500) })
+          + (s.subtitulo ? vbT(esc(s.subtitulo), { x: 0.6, y: 5.0, w: 5.0, h: 0.8, fs: 18, bold: true, cor: VBO.ouro, an: an(800) }) : '')
+          + (s.rodape ? vbT(esc(s.rodape), { x: 0.6, y: 6.6, w: 5.0, h: 0.5, fs: 11, cor: 'CFE6DD', an: an(1100) }) : '');
+        break; }
       h = vbMolde('capa', s, n, A) + vbChevron(8.4, 2.05, 4.35)
         + (s.rotulo ? vbT(esc(s.rotulo), { x: 0.75, y: 2.0, w: 7.4, h: 0.35, fs: 13, bold: true, cor: VBO.ouro, ls: 5, an: an(300) }) : '')
         + vbT(esc(s.titulo || ''), { x: 0.75, y: 2.45, w: 7.6, h: 1.95, fs: 44, bold: true, cor: VBO.branco, valign: 'bottom', an: an(500) })
@@ -156,6 +165,34 @@ function vboSlideHtml(s, n, A) {
       if (cols.length) h += `<div class="vb-tab an" data-e="fade" style="${vbPos(0.6, 1.65, 12.13, 4.8)};--d:300ms"><table><colgroup>${cols.map((_, j) => `<col style="width:${cols.length < 2 ? 100 : j === 0 ? 36 : 64 / (cols.length - 1)}%">`).join('')}</colgroup>
         <thead><tr>${cols.map(c => `<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${ls.map(l => `<tr>${cols.map((_, j) => `<td>${esc(String(l[j] ?? ''))}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
       if (s.nota) h += vbT(esc(s.nota), { x: 0.6, y: 6.45, w: 10, h: 0.3, fs: 11, cor: VBO.cinza });
+      break; }
+    case 'icones': {
+      const im = s.imagem === 'foto' ? A.foto : String(s.imagem || '').startsWith('data:image') ? s.imagem : null;
+      const it = (s.itens || []).slice(0, im ? 4 : 6); const k = Math.max(it.length, 1);
+      h = `<div class="vb-bg" style="background:#fff"></div><img class="vb-logo" src="${A.logoEscuro}" style="${vbPos(0.6, 6.93, 1.15, 1.15 * 123 / 418)}" alt="">`
+        + (im ? `<div class="vb-img an" data-e="fade" style="${vbPos(8.0, 0, VBO_W - 8.0, VBO_H)};background-image:url(${im});--d:200ms"></div><div class="vb-r" style="${vbPos(8.0, 0, 0.09, VBO_H)};background:#${VBO.ouro}"></div>`
+          : vbT(String(n), { x: 12.2, y: 6.93, w: 0.53, h: 0.34, fs: 10, cor: VBO.cinza, align: 'right' }))
+        + vbT(esc(s.titulo || ''), { x: 0.6, y: 0.45, w: im ? 7.1 : 12.13, h: 0.85, fs: im ? 28 : 32, bold: true, cor: VBO.texto });
+      const cols = !im && k > 3 ? 2 : 1, rows = Math.ceil(k / cols), cw = im ? 7.0 : cols === 2 ? 5.9 : 12.13, rh = Math.min(1.55, 5.15 / rows);
+      it.forEach((c, i) => { const col = cols === 2 ? Math.floor(i / rows) : 0, row = cols === 2 ? i % rows : i; const x = 0.6 + col * 6.23, y = 1.6 + row * rh, a = an(300 + i * 200);
+        h += `<div class="vb-ic an" data-e="zoom" style="${vbPos(x, y + 0.05, 0.66, 0.66)};background:#${i % 2 ? VBO.ouro : VBO.verde};--d:${a[0]}ms">${vboSvgIcone(c.icone || 'estrela', '#fff')}</div>`
+          + vbT(esc(c.titulo || ''), { x: x + 0.9, y, w: cw - 0.95, h: 0.4, fs: 17, bold: true, cor: VBO.texto, an: a })
+          + (c.texto ? vbT(esc(c.texto), { x: x + 0.9, y: y + 0.4, w: cw - 0.95, h: rh - 0.5, fs: 13.5, cor: VBO.cinza, an: a }) : ''); });
+      break; }
+    case 'regraouro': {
+      h = vbMolde('escuro', { ...s, titulo: '' }, n, A)
+        + `<div class="vb-bg" style="background:radial-gradient(circle at 22% 42%,rgba(221,169,54,.22) 0,rgba(221,169,54,0) 42%)"></div>`
+        + `<div class="vb-b an" data-e="zoom" style="${vbPos(0.9, 1.55, 3.5, 3.5)};background:#${VBO.esc2};box-shadow:0 0 0 6px #${VBO.ouro},0 0 60px rgba(221,169,54,.45);--d:200ms"></div>`
+        + `<div class="vb-ic an" data-e="zoom" style="${vbPos(1.3, 1.95, 2.7, 2.7)};background:#${VBO.ouro};--d:350ms">${vboSvgIcone('premio', '#fff', 1.6)}</div>`
+        + vbT(esc(s.rotulo || 'REGRA DE OURO'), { x: 5.0, y: 1.45, w: 7.7, h: 0.45, fs: 16, bold: true, cor: VBO.ouro, ls: 7, an: an(500) })
+        + `<div class="vb-r an" data-e="fade" style="${vbPos(5.0, 1.98, 1.1, 0.07)};background:#${VBO.ouro};--d:500ms"></div>`
+        + vbT(esc(s.texto || ''), { x: 5.0, y: 2.2, w: 7.75, h: 2.7, fs: 34, bold: true, cor: VBO.branco, valign: 'middle', an: an(750) });
+      const it = (s.itens || []).filter(Boolean).slice(0, 4); const cw = it.length ? Math.min(2.6, (7.75 - 0.2 * (it.length - 1)) / it.length) : 0;
+      it.forEach((t, i) => { const x = 5.0 + i * (cw + 0.2), a = an(1100 + i * 300, 'zoom');
+        h += `<div class="vb-r an" data-e="zoom" style="${vbPos(x, 5.15, cw, 0.62)};background:#${VBO.esc};border:2px solid #${VBO.ouro};border-radius:40px;--d:${a[0]}ms"></div>`
+          + vbT(esc(String(t).toUpperCase()), { x, y: 5.15, w: cw, h: 0.62, fs: 14, bold: true, cor: VBO.ouro, align: 'center', valign: 'middle', ls: 2, an: a }); });
+      if (s.autor) h += vbT('— ' + esc(s.autor), { x: 5.0, y: 6.05, w: 7, h: 0.4, fs: 14, cor: VBO.suave, an: an(1800) });
+      h += vbChevron(11.3, 6.4, 1.4);
       break; }
     case 'foto': {
       const img = s.imagem === 'foto' || !s.imagem ? A.foto : String(s.imagem).startsWith('data:image') ? s.imagem : A.foto;
@@ -308,7 +345,7 @@ async function vboBaixarPptx(deck, nome, guia = false) {
     if (!window.JSZip) await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js');
     if (!window.PptxGenJS) await carregarScript('https://cdn.jsdelivr.net/npm/pptxgenjs@4.0.1/dist/pptxgen.bundle.js');
     const A = await vboAssetsNav(); const sem = u => String(u).replace(/^data:/, '');
-    const nomes = new Set(['estrela']); (deck.slides || []).forEach(s => s.tipo === 'cards' && (s.itens || []).forEach(c => nomes.add(c.icone || 'estrela')));
+    const nomes = new Set(['estrela']); nomes.add('premio'); (deck.slides || []).forEach(s => ['cards', 'icones'].includes(s.tipo) && (s.itens || []).forEach(c => nomes.add(c.icone || 'estrela')));
     const icones = {}; for (const n of nomes) icones[n] = sem(await vboIconePng(n));
     const d2 = { ...deck, slides: (deck.slides || []).map(s => { const o = { ...s }; for (const k of ['imagem', 'imagem2']) if (String(o[k] || '').startsWith('data:')) o[k] = sem(o[k]); return o; }) };
     const blob = await vboGerarPptx(d2, { PptxGenJS: window.PptxGenJS, JSZip: window.JSZip, geo: A.geo, guia, saida: 'blob',
@@ -341,7 +378,8 @@ async function vbResolverCidades(linhas) { // ["Cidade - UF"] → pontos
 // ---------- telas ----------
 const VB_ICONE_TXT = { seguranca: 'Segurança', pessoas: 'Pessoas', resultados: 'Resultados', sustentabilidade: 'Sustentabilidade', caminhao: 'Caminhão', alvo: 'Meta', check: 'Concluído', relogio: 'Prazo',
   local: 'Local', engrenagem: 'Processo', ideia: 'Ideia', bandeira: 'Marco', grafico: 'Gráfico', parceria: 'Parceria', manutencao: 'Manutenção', combustivel: 'Combustível', capacete: 'EPI',
-  premio: 'Prêmio', calendario: 'Calendário', dinheiro: 'Dinheiro', pacote: 'Carga', rota: 'Rota', alerta: 'Alerta', documento: 'Documento', escudo: 'Proteção', arvore: 'Floresta', fabrica: 'Fábrica', estrela: 'Destaque' };
+  premio: 'Prêmio', calendario: 'Calendário', dinheiro: 'Dinheiro', pacote: 'Carga', rota: 'Rota', alerta: 'Alerta', documento: 'Documento', escudo: 'Proteção', arvore: 'Floresta', fabrica: 'Fábrica', estrela: 'Destaque',
+  fogo: 'Fogo', extintor: 'Extintor', olho: 'Atenção', mao: 'Mãos', telefone: 'Telefone', email: 'E-mail', mensagem: 'Mensagem', cadeado: 'Bloqueio', saude: 'Saúde', refeicao: 'Refeição', onibus: 'Transporte', cama: 'Pernoite', cartao: 'Cartão', cracha: 'Crachá', velocidade: 'Velocidade', chuva: 'Chuva', eletrica: 'Eletricidade', gota: 'Fluidos', termometro: 'Temperatura', checklist: 'Checklist', megafone: 'Comunicar', placa: 'Sinalização', pneu: 'Pneu', oculos: 'Óculos', corrente: 'Amarração', casa: 'Casa', coracao: 'Cuidado', proibido: 'Proibido', noite: 'Noite / sono', treinamento: 'Treinamento', radio: 'Rádio', busca: 'Diagnóstico', lanterna: 'Lanterna', peso: 'Peso / carga', montanha: 'Aclive / declive', hospital: 'Atendimento médico', sirene: 'Emergência', balanca: 'Ética', sorriso: 'Boas-vindas', pausa: 'Pausa', poeira: 'Poeira / vento', vibracao: 'Vibração', sol: 'Calor / sol' };
 const vbClone = o => JSON.parse(JSON.stringify(o));
 const vbExemplo = tipo => vbClone(VBO_MODELO.slides.find(s => s.tipo === tipo) || { tipo });
 const vbPodeEditar = a => a.criado_por === estado.usuario.id || tem('administrador', 'diretoria');
@@ -448,6 +486,7 @@ rota('/apresentacoes/:id', async (tela, id) => {
         return `<div class="campo"><span>${rot}</span><select data-img="${k}" ${dis}><option value="foto" ${s[k] === 'foto' ? 'selected' : ''}>Foto padrão Verbo</option><option value="" ${!s[k] ? 'selected' : ''}>Sem imagem</option>${pr ? '<option value="propria" selected>Imagem enviada</option>' : ''}</select>
           ${pode ? `<label class="btn peq" style="margin-top:6px">Enviar imagem…<input type="file" accept="image/*" data-arqimg="${k}" hidden></label>` : ''}</div>`; }
       if (tipo === 'cards') return `<div class="campo"><span>${rot}</span>${rep('itens', s.itens, linhaCard, 4)}</div>`;
+      if (tipo === 'cards6') return `<div class="campo"><span>${rot}</span>${rep('itens', s.itens, linhaCard, 6)}</div>`;
       if (tipo === 'numeros') return `<div class="campo"><span>${rot}</span>${rep('itens', s.itens, linhaNum, 4)}</div>`;
       if (tipo === 'etapas') return `<div class="campo"><span>${rot}</span>${rep('itens', s.itens, linhaEt, 6)}</div>`;
       if (tipo === 'grafico') { const g = s.grafico || {};
