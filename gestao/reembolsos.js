@@ -289,13 +289,17 @@ rota('/financeiro/reembolsos', async tela => {
   const mapaF = { abertos: 'status=in.(aguardando_aprovacao,aprovado,em_pagamento,devolvido)', aprovado: 'status=eq.aprovado&forma_custeio=eq.reembolso',
                      pago: 'status=eq.pago', todos: 'status=neq.cancelado', cancelados: 'status=eq.cancelado' };
   const filtroSt = filtroOu(sts.map(s => mapaF[s] ?? mapaF.todos)) || mapaF.todos;
+  const tipo = estado.params.get('tipo') || '';   // RMB reembolso · DFF fundo fixo · PCA prestação de contas
+  const filtroTipo = { rmb: '&or=(forma_custeio.eq.reembolso,forma_custeio.is.null)', dff: '&forma_custeio=eq.fundo_fixo', pca: '&forma_custeio=eq.adiantamento' }[tipo] || '';
   const ini = estado.params.get('de') || '', fim = estado.params.get('ate') || '';
-  const linhas = await api.listar('reembolsos', `${SELECT_REEMB}&${filtroSt}${ini ? '&data_despesa=gte.' + ini : ''}${fim ? '&data_despesa=lte.' + fim : ''}&order=data_despesa.desc,numero.desc&limit=1000`);
+  const linhas = await api.listar('reembolsos', `${SELECT_REEMB}&${filtroSt}${filtroTipo}${ini ? '&data_despesa=gte.' + ini : ''}${fim ? '&data_despesa=lte.' + fim : ''}&order=data_despesa.desc,numero.desc&limit=1000`);
+  const abaTipo = (v, t) => { const p = new URLSearchParams(estado.params); if (v) p.set('tipo', v); else p.delete('tipo'); return `<a href="#/financeiro/reembolsos${p.toString() ? '?' + p : ''}" class="${tipo === v ? 'ativa' : ''}">${t}</a>`; };
   tela.innerHTML = `
     <div class="topo"><div><h1>Despesas e reembolsos</h1><p class="sub">RMB reembolso · DFF despesa do Fundo Fixo · PCA prestação de contas de adiantamento</p></div>
       <div class="acoes">${editaFin() ? (st === 'cancelados' ? '<button class="btn" id="reativar-sel" disabled>Reativar selecionados</button>' : '<button class="btn" id="mudar-custeio" disabled>Alterar forma de custeio</button><button class="btn ok" id="lote" disabled>Gerar pagamento dos selecionados</button>') : ''}
       <a class="btn prim" href="#/reembolsos/novo">+ Lançar</a></div></div>
-    <form class="filtros" id="filtros">
+    <div class="abas">${abaTipo('', 'Todos')}${abaTipo('rmb', 'Reembolsos (RMB)')}${abaTipo('dff', 'Despesas do Fundo Fixo (DFF)')}${abaTipo('pca', 'Prestações de contas (PCA)')}</div>
+    <form class="filtros" id="filtros">${tipo ? `<input type="hidden" name="tipo" value="${esc(tipo)}">` : ''}
       <select name="status">${[['abertos', 'Em andamento'], ['aprovado', 'Aprovados a pagar'], ['pago', 'Pagos'], ['todos', 'Todos'], ['cancelados', 'Cancelados']].map(([v, t]) => `<option value="${v}" ${v === st ? 'selected' : ''}>${t}</option>`).join('')}</select>
       <input type="date" name="de" value="${ini}" aria-label="De"><input type="date" name="ate" value="${fim}" aria-label="Até">
       <button class="btn">Filtrar</button>

@@ -450,7 +450,7 @@ const MENU = [
   ['Painel do financeiro', '#/financeiro/painel', P_FIN, 'painel', null, true],
   ['Contas a pagar', '#/financeiro/pagar', [...P_FIN, 'comprador'], 'cartao', 'sem_comprovante', true],
   ['Contas a receber', '#/financeiro/receber', P_FIN, 'receber', null, true],
-  ['Reembolsos', '#/financeiro/reembolsos', [...P_FIN, 'aprovador'], 'recibo', 'reembolsos_a_pagar', true],
+  ['Despesas e reembolsos', '#/financeiro/reembolsos', [...P_FIN, 'aprovador'], 'recibo', 'reembolsos_a_pagar', true],
   ['Adiantamentos', '#/financeiro/adiantamentos', P_FIN, 'dinheiro', 'prestacao_vencida', true],
   ['Fundo Fixo', '#/financeiro/fundo', P_FIN, 'moedas', null, true],
   ['A verificar', '#/financeiro/verificar', P_FIN, 'alerta', 'a_verificar', true],
@@ -998,7 +998,7 @@ rota('/inicio', async tela => {
     </section>
     <div class="inicio-kpis ik-pend-w" hidden><section class="ik-sec ik-pend" id="ik-pend"></section></div>
     ${blocoAgenda || blocoAcoes ? `<div class="ini-duo">${blocoAgenda}${blocoAcoes}</div>` : ''}${blocoDiarias}${typeof htmlChamadosInicio === 'function' ? htmlChamadosInicio(chamadosAb) : ''}
-    ${tem('administrador', 'diretoria', 'comprador') ? '<section class="vx-ini" id="vx-ini"><div class="vx-ini-cab"><h2>Visão executiva</h2></div><div class="pn-vazio">Carregando indicadores…</div></section>' : ''}
+    ${tem('administrador', 'diretoria', 'comprador') || (estado.usuario?.menus || []).includes('#/financeiro/painel') ? '<section class="vx-ini" id="vx-ini"><div class="vx-ini-cab"><h2>Visão executiva</h2></div><div class="pn-vazio">Carregando indicadores…</div></section>' : ''}
     ${blocoGestao}
     <div class="inicio-kpis">
       <a class="cartao kpi ${minhasReq.some(r => r.status === 'devolvida') ? 'alerta' : ''}" href="#${minhasReq.length ? '/inicio' : '/compras/requisicoes'}" ${minhasReq.length ? 'onclick="event.preventDefault();document.getElementById(\'minhas-req\').scrollIntoView({behavior:\'smooth\'})"' : ''}><div class="n">${minhasReq.length}</div><div class="r">minha(s) requisição(ões) de compra em andamento</div></a>
