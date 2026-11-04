@@ -168,16 +168,16 @@ function vboSlideHtml(s, n, A) {
       break; }
     case 'icones': {
       const im = s.imagem === 'foto' ? A.foto : String(s.imagem || '').startsWith('data:image') ? s.imagem : null;
-      const it = (s.itens || []).slice(0, im ? 4 : 6); const k = Math.max(it.length, 1);
+      const it = (s.itens || []).slice(0, 6); const k = Math.max(it.length, 1); const px = k > 4 ? 9.6 : 8.0;   // com foto e mais de 4 itens: foto mais estreita e 2 colunas
       h = `<div class="vb-bg" style="background:#fff"></div><img class="vb-logo" src="${A.logoEscuro}" style="${vbPos(0.6, 6.93, 1.15, 1.15 * 123 / 418)}" alt="">`
-        + (im ? `<div class="vb-img an" data-e="fade" style="${vbPos(8.0, 0, VBO_W - 8.0, VBO_H)};background-image:url(${im});--d:200ms"></div><div class="vb-r" style="${vbPos(8.0, 0, 0.09, VBO_H)};background:#${VBO.ouro}"></div>`
+        + (im ? `<div class="vb-img an" data-e="fade" style="${vbPos(px, 0, VBO_W - px, VBO_H)};background-image:url(${im});--d:200ms"></div><div class="vb-r" style="${vbPos(px, 0, 0.09, VBO_H)};background:#${VBO.ouro}"></div>`
           : vbT(String(n), { x: 12.2, y: 6.93, w: 0.53, h: 0.34, fs: 10, cor: VBO.cinza, align: 'right' }))
-        + vbT(esc(s.titulo || ''), { x: 0.6, y: 0.45, w: im ? 7.1 : 12.13, h: 0.85, fs: im ? 28 : 32, bold: true, cor: VBO.texto });
-      const cols = !im && k > 3 ? 2 : 1, rows = Math.ceil(k / cols), cw = im ? 7.0 : cols === 2 ? 5.9 : 12.13, rh = Math.min(1.55, 5.15 / rows);
-      it.forEach((c, i) => { const col = cols === 2 ? Math.floor(i / rows) : 0, row = cols === 2 ? i % rows : i; const x = 0.6 + col * 6.23, y = 1.6 + row * rh, a = an(300 + i * 200);
+        + vbT(esc(s.titulo || ''), { x: 0.6, y: 0.45, w: im ? px - 0.9 : 12.13, h: 0.85, fs: im ? 28 : 32, bold: true, cor: VBO.texto });
+      const cols = (im ? k > 4 : k > 3) ? 2 : 1, rows = Math.ceil(k / cols), cw = im ? (cols === 2 ? 4.3 : 7.0) : cols === 2 ? 5.9 : 12.13, rh = Math.min(1.55, 5.15 / rows), passoX = im ? 4.45 : 6.23, fsx = im && cols === 2 ? 12.5 : 13.5;
+      it.forEach((c, i) => { const col = cols === 2 ? Math.floor(i / rows) : 0, row = cols === 2 ? i % rows : i; const x = 0.6 + col * passoX, y = 1.6 + row * rh, a = an(300 + i * 200);
         h += `<div class="vb-ic an" data-e="zoom" style="${vbPos(x, y + 0.05, 0.66, 0.66)};background:#${i % 2 ? VBO.ouro : VBO.verde};--d:${a[0]}ms">${vboSvgIcone(c.icone || 'estrela', '#fff')}</div>`
           + vbT(esc(c.titulo || ''), { x: x + 0.9, y, w: cw - 0.95, h: 0.4, fs: 17, bold: true, cor: VBO.texto, an: a })
-          + (c.texto ? vbT(esc(c.texto), { x: x + 0.9, y: y + 0.4, w: cw - 0.95, h: rh - 0.5, fs: 13.5, cor: VBO.cinza, an: a }) : ''); });
+          + (c.texto ? vbT(esc(c.texto), { x: x + 0.9, y: y + 0.4, w: cw - 0.95, h: rh - 0.5, fs: fsx, cor: VBO.cinza, an: a }) : ''); });
       break; }
     case 'regraouro': {
       h = vbMolde('escuro', { ...s, titulo: '' }, n, A)
@@ -193,6 +193,22 @@ function vboSlideHtml(s, n, A) {
           + vbT(esc(String(t).toUpperCase()), { x, y: 5.15, w: cw, h: 0.62, fs: 14, bold: true, cor: VBO.ouro, align: 'center', valign: 'middle', ls: 2, an: a }); });
       if (s.autor) h += vbT('— ' + esc(s.autor), { x: 5.0, y: 6.05, w: 7, h: 0.4, fs: 14, cor: VBO.suave, an: an(1800) });
       h += vbChevron(11.3, 6.4, 1.4);
+      break; }
+    case 'video': {
+      const capa = String(s.imagem || '').startsWith('data:image') ? s.imagem : s.imagem === 'foto' ? A.foto : '';
+      h = vbMolde('escuro', { ...s, titulo: '' }, n, A)
+        + `<div class="vb-bg" style="background:radial-gradient(circle at 80% 18%,rgba(221,169,54,.18) 0,rgba(221,169,54,0) 45%)"></div>`
+        + `<div class="vb-r an" data-e="fade" style="${vbPos(0.75, 1.35, 1.95, 0.5)};background:#${VBO.esc};border:2px solid #${VBO.ouro};border-radius:40px;--d:200ms"></div>`
+        + `<div class="vb-ic an" data-e="fade" style="${vbPos(0.9, 1.43, 0.34, 0.34)};background:none;--d:200ms">${vboSvgIcone('play', '#' + VBO.ouro)}</div>`
+        + vbT('ASSISTA', { x: 1.3, y: 1.35, w: 1.35, h: 0.5, fs: 13, bold: true, cor: VBO.ouro, ls: 4, valign: 'middle', an: an(200) })
+        + (s.rotulo ? vbT(esc(s.rotulo), { x: 0.75, y: 2.15, w: 4.1, h: 0.4, fs: 13, bold: true, cor: VBO.ouro, ls: 4, an: an(400) }) : '')
+        + `<div class="vb-r an" data-e="fade" style="${vbPos(0.75, 2.62, 0.9, 0.07)};background:#${VBO.ouro};--d:400ms"></div>`
+        + vbT(esc(s.titulo || ''), { x: 0.75, y: 2.8, w: 4.1, h: 1.5, fs: 28, bold: true, cor: VBO.branco, an: an(600) })
+        + (s.texto ? vbT(esc(s.texto), { x: 0.75, y: 4.4, w: 4.1, h: 1.5, fs: 15, cor: 'C9D8D2', an: an(850) }) : '')
+        + `<div class="vb-r" style="${vbPos(5.2, 1.3, 7.45, 4.39)};background:#000;border:3px solid #${VBO.ouro};border-radius:12px;box-shadow:0 18px 50px rgba(0,0,0,.45)"></div>`
+        + (s.video ? `<video class="vb-video" data-arq="${esc(s.video)}" ${capa ? `poster="${capa}"` : ''} controls preload="none" playsinline style="position:absolute;${vbPos(5.3, 1.4, 7.25, 4.19)};background:#000;border-radius:6px;object-fit:contain"></video>`
+          : `<div class="vb-r" style="${vbPos(5.3, 1.4, 7.25, 4.19)};${capa ? `background:#000 url(${capa}) center/cover` : ''}"></div><div style="position:absolute;${vbPos(8.4, 2.95, 1.05, 1.05)};opacity:.85">${vboSvgIcone('play', '#fff', 1.5)}</div>`)
+        + vbChevron(11.3, 6.4, 1.4);
       break; }
     case 'foto': {
       const img = s.imagem === 'foto' || !s.imagem ? A.foto : String(s.imagem).startsWith('data:image') ? s.imagem : A.foto;
@@ -291,7 +307,7 @@ async function vboApresentar(deck, inicio = 0) {
   const ir = n => {
     if (n < 0 || n >= planos.length || n === i) return;
     const tmp = document.createElement('div'); tmp.innerHTML = vboSlideHtml(planos[n], n + 1, A); const novo = tmp.firstElementChild;
-    novo.classList.add('tocando'); palco.appendChild(novo);
+    novo.classList.add('tocando'); palco.appendChild(novo); vbVideos(novo); if (atual) atual.querySelectorAll('video').forEach(v => v.pause());
     if (atual) {
       const velho = atual; const mv = new Map([...velho.querySelectorAll('[data-m]')].map(e => [e.dataset.m, e]));
       novo.querySelectorAll('[data-m]').forEach(e => { const o = mv.get(e.dataset.m); if (!o) return;
@@ -338,6 +354,8 @@ async function vboPdf(deck) {
   setTimeout(() => window.print(), 150);
 }
 
+async function vbEnviarVideo(f) { const ext = (f.name.split('.').pop() || 'mp4').toLowerCase().replace(/[^a-z0-9]/g, '') || 'mp4';
+  const caminho = `apresentacoes/videos/${crypto.randomUUID()}.${ext}`; await api.enviarArquivo(caminho, f); return caminho; }
 // ---------- .pptx (mesmo gerador do modelo PowerPoint) ----------
 async function vboBaixarPptx(deck, nome, guia = false) {
   aviso('Gerando o PowerPoint…');
@@ -345,11 +363,14 @@ async function vboBaixarPptx(deck, nome, guia = false) {
     if (!window.JSZip) await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js');
     if (!window.PptxGenJS) await carregarScript('https://cdn.jsdelivr.net/npm/pptxgenjs@4.0.1/dist/pptxgen.bundle.js');
     const A = await vboAssetsNav(); const sem = u => String(u).replace(/^data:/, '');
-    const nomes = new Set(['estrela']); nomes.add('premio'); (deck.slides || []).forEach(s => ['cards', 'icones'].includes(s.tipo) && (s.itens || []).forEach(c => nomes.add(c.icone || 'estrela')));
+    const nomes = new Set(['estrela']); nomes.add('premio'); nomes.add('play'); (deck.slides || []).forEach(s => ['cards', 'icones'].includes(s.tipo) && (s.itens || []).forEach(c => nomes.add(c.icone || 'estrela')));
     const icones = {}; for (const n of nomes) icones[n] = sem(await vboIconePng(n));
     const d2 = { ...deck, slides: (deck.slides || []).map(s => { const o = { ...s }; for (const k of ['imagem', 'imagem2']) if (String(o[k] || '').startsWith('data:')) o[k] = sem(o[k]); return o; }) };
+    const vids = {}; for (const s of d2.slides) if (s.tipo === 'video' && s.video && !vids[s.video]) {
+      try { aviso('Baixando os vídeos para o PowerPoint…'); const b = await fetch(await api.linkArquivo(s.video)).then(r => r.blob());
+        vids[s.video] = await new Promise(r => { const fr = new FileReader(); fr.onload = () => r(String(fr.result).replace(/^data:/, '')); fr.readAsDataURL(b); }); } catch (e) { console.error(e); } }
     const blob = await vboGerarPptx(d2, { PptxGenJS: window.PptxGenJS, JSZip: window.JSZip, geo: A.geo, guia, saida: 'blob',
-      assets: { logoClaro: sem(A.logoClaro), logoEscuro: sem(A.logoEscuro), fundoCapa: sem(A.fundo), foto: sem(A.foto), icone: n => icones[n] || icones.estrela } });
+      assets: { logoClaro: sem(A.logoClaro), logoEscuro: sem(A.logoEscuro), fundoCapa: sem(A.fundo), foto: sem(A.foto), icone: n => icones[n] || icones.estrela, video: s => vids[s.video] ? { data: vids[s.video] } : null } });
     baixarArquivo(blob, (nome || 'Apresentação Verbo').replace(/[\\/:*?"<>|]+/g, '-') + '.pptx');
     aviso('PowerPoint gerado.');
   } catch (err) { falha(err); }
@@ -383,13 +404,17 @@ const VB_ICONE_TXT = { seguranca: 'Segurança', pessoas: 'Pessoas', resultados: 
 const vbClone = o => JSON.parse(JSON.stringify(o));
 const vbExemplo = tipo => vbClone(VBO_MODELO.slides.find(s => s.tipo === tipo) || { tipo });
 const vbPodeEditar = a => a.criado_por === estado.usuario.id || tem('administrador', 'diretoria');
+// vídeos do slide: o arquivo fica no Storage (apresentacoes/videos/…); o link assinado vale 1 h
+async function vbVideos(el) { for (const v of el.querySelectorAll('video[data-arq]')) { if (v.src) continue; const c = v.dataset.arq;
+  try { v.src = /^(https?:|blob:|data:)/.test(c) ? c : await api.linkArquivo(c); v.preload = 'metadata'; } catch (e) { console.error(e); } }
+  el.querySelectorAll('video').forEach(v => { v.addEventListener('click', e => e.stopPropagation()); v.addEventListener('keydown', e => e.stopPropagation()); }); }
 function vbMini(s, n, A, larg = 200) { return `<div class="vb-mini" style="width:${larg}px;height:${larg * 0.5625}px"><div style="transform:scale(${larg / 1333.33})">${vboSlideHtml(s, n, A)}</div></div>`; }
 
 rota('/apresentacoes', async tela => {
   tela.innerHTML = '<div class="carregando">Carregando…</div>';
   const [A, lista] = await Promise.all([vboAssetsNav(), api.listar('apresentacoes', 'ativo=eq.true&order=atualizado_em.desc.nullslast,criado_em.desc&select=id,numero,titulo,criado_por,criado_em,atualizado_em,capa:deck->slides->0,u:usuarios!apresentacoes_criado_por_fkey(nome)').catch(err => { falha(err); return []; })]);
   tela.innerHTML = `<div class="topo"><div><h1>Apresentações</h1><p class="muted">Monte apresentações no padrão Verbo: transições, mapa animado, PDF e PowerPoint.</p></div>
-      <div class="acoes">${tem('administrador', 'diretoria', 'qualidade') ? `<label class="btn" title="Importar apresentações de um arquivo .json">${ico('arquivo')} Importar<input type="file" accept=".json" id="vb-imp" hidden></label>` : ''}<button class="btn" id="vb-modelo">${ico('arquivo')} Baixar modelo PowerPoint</button><button class="btn prim" id="vb-nova">${ico('mais')} Nova apresentação</button></div></div>
+      <div class="acoes">${tem('administrador', 'diretoria', 'qualidade') ? `<label class="btn" title="Importar apresentações de um arquivo .json (selecione junto os vídeos .mp4, se houver)">${ico('arquivo')} Importar<input type="file" accept=".json,video/mp4" multiple id="vb-imp" hidden></label>` : ''}<button class="btn" id="vb-modelo">${ico('arquivo')} Baixar modelo PowerPoint</button><button class="btn prim" id="vb-nova">${ico('mais')} Nova apresentação</button></div></div>
     ${lista.length ? `<div class="vb-grade">${lista.map((a, i) => `<div class="cartao vb-card">
         <a href="#/apresentacoes/${a.id}" class="vb-card-img">${a.capa ? vbMini(a.capa, 1, A, 320) : '<div class="vb-mini vazio"></div>'}</a>
         <div class="vb-card-txt"><b>${esc(a.titulo)}</b><span class="muted">${esc(a.numero || '')} · ${esc(a.u?.nome || '')} · ${dataBR((a.atualizado_em || a.criado_em || '').slice(0, 10))}</span></div>
@@ -401,10 +426,22 @@ rota('/apresentacoes', async tela => {
     $$('.vb-card-img .vb-mini', tela).forEach(m => { const w = m.clientWidth; m.style.height = (w * 0.5625) + 'px'; m.firstElementChild.style.transform = `scale(${w / 1333.33})`; }); };
   ajustar(); new ResizeObserver(ajustar).observe(tela.querySelector('.vb-grade') || tela);
   $('#vb-modelo', tela).onclick = () => vboBaixarPptx(VBO_MODELO, 'Modelo padrão Verbo', true);
-  $('#vb-imp', tela)?.addEventListener('change', async e => { const f = e.target.files[0]; if (!f) return;
-    try { const B = JSON.parse(await f.text()); const aps = B.apresentacoes || (B.slides ? [B] : []); const tits = new Set(lista.map(a => a.titulo)); let n = 0;
-      for (const ap of aps) { if (!ap.titulo || !Array.isArray(ap.slides) || tits.has(ap.titulo)) continue; aviso('Importando ' + ap.titulo + '…'); await api.inserir('apresentacoes', { titulo: ap.titulo, deck: ap }); n++; }
-      aviso(n ? `${n} apresentação(ões) importada(s).` : 'Nada novo para importar (já existem com o mesmo título).'); navegar(); } catch (err) { falha(err); } });
+  $('#vb-imp', tela)?.addEventListener('change', async e => { const fs = [...e.target.files]; const fj = fs.find(f => /\.json$/i.test(f.name)); if (!fj) return aviso('Selecione o arquivo .json da apresentação.', true);
+    try { const B = JSON.parse(await fj.text()); const aps = B.apresentacoes || (B.slides ? [B] : []); let n = 0, pul = 0;
+      const vids = Object.fromEntries(fs.filter(f => f !== fj).map(f => [f.name, f])); const enviados = {};
+      for (const ap of aps) { if (!ap.titulo || !Array.isArray(ap.slides)) continue;
+        const atual = lista.filter(a => a.titulo === ap.titulo);
+        if (atual.length) { if (!await confirmar(`Já existe "${ap.titulo}". Substituir pela versão do arquivo? A atual sai da lista, mas não é apagada.`, { botao: 'Substituir' })) { pul++; continue; } }
+        // vídeos do pacote ("arquivo:nome.mp4") → Storage
+        const falt = [];
+        for (const sl of ap.slides) if (sl.tipo === 'video' && String(sl.video || '').startsWith('arquivo:')) { const nm = sl.video.slice(8);
+          if (!enviados[nm]) { if (!vids[nm]) { falt.push(nm); continue; } aviso(`Enviando o vídeo ${nm}…`); enviados[nm] = await vbEnviarVideo(vids[nm]); }
+          sl.video = enviados[nm]; }
+        if (falt.length) aviso(`Vídeo(s) não selecionado(s): ${falt.join(', ')}. O slide fica sem vídeo; envie depois pelo editor.`, true);
+        ap.slides.forEach(sl => { if (sl.tipo === 'video' && String(sl.video || '').startsWith('arquivo:')) delete sl.video; });
+        aviso('Importando ' + ap.titulo + '…'); await api.inserir('apresentacoes', { titulo: ap.titulo, deck: ap }); n++;
+        for (const a of atual) await api.alterar('apresentacoes', `id=eq.${a.id}`, { ativo: false }); }
+      aviso(n ? `${n} apresentação(ões) importada(s).` : pul ? 'Nada importado.' : 'Nada para importar.'); navegar(); } catch (err) { falha(err); } });
   $('#vb-nova', tela).onclick = async () => {
     const r = await modal(`<form><h2>Nova apresentação</h2><div class="form">
       <label class="campo largo">Título *<input name="titulo" required placeholder="Ex.: Resultados do 3º trimestre"></label>
@@ -456,7 +493,7 @@ rota('/apresentacoes/:id', async (tela, id) => {
   const desenharPalco = () => { const s = deck.slides[sel]; if (!s) { $p.innerHTML = '<div class="vazio">Sem slides.</div>'; return; }
     const w = $p.clientWidth || 800; const zoom = s.tipo === 'mapa' && s.zoom && (s.pontos || []).length;
     $p.innerHTML = `<div class="vb-prev" style="height:${w * 0.5625}px"><div style="transform:scale(${w / 1333.33})">${vboSlideHtml({ ...s, _vista: 'brasil' }, numero(sel), A)}</div></div>`
-      + (zoom ? `<p class="muted" style="margin:10px 0 6px">2º slide gerado automaticamente (zoom nas cidades):</p><div class="vb-prev" style="height:${w * 0.5625 * 0.5}px;width:50%"><div style="transform:scale(${w * 0.5 / 1333.33})">${vboSlideHtml({ ...s, _vista: 'zoom' }, numero(sel) + 1, A)}</div></div>` : ''); };
+      + (zoom ? `<p class="muted" style="margin:10px 0 6px">2º slide gerado automaticamente (zoom nas cidades):</p><div class="vb-prev" style="height:${w * 0.5625 * 0.5}px;width:50%"><div style="transform:scale(${w * 0.5 / 1333.33})">${vboSlideHtml({ ...s, _vista: 'zoom' }, numero(sel) + 1, A)}</div></div>` : ''); vbVideos($p); };
   const desenharLista = () => {
     $l.innerHTML = deck.slides.map((s, i) => `<button type="button" class="vb-th${i === sel ? ' sel' : ''}" data-i="${i}"><span class="vb-th-n">${i + 1}</span>${vbMini({ ...s, _vista: 'brasil' }, numero(i), A, 170)}<span class="vb-th-t">${esc(VBO_TIPOS[s.tipo]?.nome || s.tipo)}</span></button>`).join('')
       + (pode ? `<button type="button" class="btn peq vb-th-mais" data-novo>${ico('mais')} Slide</button>` : '');
@@ -485,6 +522,8 @@ rota('/apresentacoes/:id', async (tela, id) => {
       if (tipo === 'imagem') { const pr = String(s[k] || '').startsWith('data:');
         return `<div class="campo"><span>${rot}</span><select data-img="${k}" ${dis}><option value="foto" ${s[k] === 'foto' ? 'selected' : ''}>Foto padrão Verbo</option><option value="" ${!s[k] ? 'selected' : ''}>Sem imagem</option>${pr ? '<option value="propria" selected>Imagem enviada</option>' : ''}</select>
           ${pode ? `<label class="btn peq" style="margin-top:6px">Enviar imagem…<input type="file" accept="image/*" data-arqimg="${k}" hidden></label>` : ''}</div>`; }
+      if (tipo === 'video') return `<div class="campo"><span>${rot}</span><div class="muted">${s.video ? '✓ Vídeo enviado' : 'Nenhum vídeo enviado'}</div>
+          ${pode ? `<label class="btn peq" style="margin-top:6px">${s.video ? 'Trocar vídeo…' : 'Enviar vídeo…'}<input type="file" accept="video/mp4,video/webm" data-arqvid="${k}" hidden></label>` : ''}</div>`;
       if (tipo === 'cards') return `<div class="campo"><span>${rot}</span>${rep('itens', s.itens, linhaCard, 4)}</div>`;
       if (tipo === 'cards6') return `<div class="campo"><span>${rot}</span>${rep('itens', s.itens, linhaCard, 6)}</div>`;
       if (tipo === 'numeros') return `<div class="campo"><span>${rot}</span>${rep('itens', s.itens, linhaNum, 4)}</div>`;
@@ -529,6 +568,10 @@ rota('/apresentacoes/:id', async (tela, id) => {
     $$('[data-arqimg]', $f).forEach(el => el.addEventListener('change', async e => { const f = e.target.files[0]; if (!f) return; const ki = el.dataset.arqimg;
       try { const im = await vbImg(URL.createObjectURL(f)); const k = Math.min(1, 1600 / Math.max(im.naturalWidth, im.naturalHeight)); const [c, x] = vbCanvas(Math.round(im.naturalWidth * k), Math.round(im.naturalHeight * k));
         x.drawImage(im, 0, 0, c.width, c.height); s[ki] = c.toDataURL('image/jpeg', 0.82); desenharForm(); mudou(); } catch { aviso('Não foi possível ler a imagem.', true); } }));
+    // vídeo → Storage
+    $$('[data-arqvid]', $f).forEach(el => el.addEventListener('change', async e => { const f = e.target.files[0]; if (!f) return;
+      if (f.size > 50 * 1024 * 1024) return aviso('O vídeo passa de 50 MB. Comprima o arquivo e tente de novo.', true);
+      try { aviso('Enviando o vídeo…'); s[el.dataset.arqvid] = await vbEnviarVideo(f); desenharForm(); desenharPalco(); mudou(); aviso('Vídeo enviado.'); } catch (err) { falha(err); } }));
     // mapa
     let tPt; $('[data-pontos]', $f)?.addEventListener('input', e => { clearTimeout(tPt); const v = e.target.value;
       tPt = setTimeout(async () => { $('[data-ptst]', $f).textContent = 'Localizando as cidades…';

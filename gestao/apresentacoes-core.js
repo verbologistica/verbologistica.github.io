@@ -72,6 +72,8 @@ const VBO_ICONES = {
   vibracao: "<path d=\"M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2\"/>",
   sol: "<circle cx=\"12\" cy=\"12\" r=\"4\"/><path d=\"M12 2v2\"/><path d=\"M12 20v2\"/><path d=\"m4.93 4.93 1.41 1.41\"/><path d=\"m17.66 17.66 1.41 1.41\"/><path d=\"M2 12h2\"/><path d=\"M20 12h2\"/><path d=\"m6.34 17.66-1.41 1.41\"/><path d=\"m19.07 4.93-1.41 1.41\"/>",
   estrela: "<path d=\"M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z\"/>",
+  play: "<circle cx=\"12\" cy=\"12\" r=\"10\"/><polygon points=\"10 8 16 12 10 16 10 8\"/>",
+  video: "<path d=\"m16 13 5.22 3.48a.5.5 0 0 0 .78-.42V7.89a.5.5 0 0 0-.76-.43L16 10.5\"/><rect x=\"2\" y=\"6\" width=\"14\" height=\"12\" rx=\"2\"/>",
 };
 
 // Identidade Verbo
@@ -98,6 +100,7 @@ const VBO_TIPOS = {
   citacao: { nome: 'Mensagem-chave', escuro: true, campos: [['texto', 'Mensagem', 'texto'], ['autor', 'Autor / fonte']] },
   icones: { nome: 'Lista com ícones', campos: [['titulo', 'Título'], ['itens', 'Itens (2 a 6)', 'cards6'], ['imagem', 'Foto ao lado (opcional)', 'imagem']] },
   regraouro: { nome: 'Regra de ouro', escuro: true, campos: [['rotulo', 'Rótulo'], ['texto', 'Regra (frase principal)', 'texto'], ['itens', 'Palavras-chave (até 4, uma por linha)', 'linhas'], ['autor', 'Assinatura / fonte']] },
+  video: { nome: 'Vídeo', escuro: true, campos: [['rotulo', 'Rótulo (acima do título)'], ['titulo', 'Título'], ['texto', 'O que a turma deve observar', 'texto'], ['video', 'Vídeo (MP4, até 50 MB)', 'video'], ['imagem', 'Capa do vídeo (opcional)', 'imagem']] },
   foto: { nome: 'Foto em destaque', escuro: true, campos: [['imagem', 'Foto (ocupa o slide inteiro)', 'imagem'], ['rotulo', 'Rótulo (acima do título)'], ['titulo', 'Título'], ['texto', 'Texto curto', 'texto']] },
   certoerrado: { nome: 'Certo × Errado', campos: [['titulo', 'Título'], ['errado', 'Errado (um por linha)', 'linhas'], ['imagem', 'Foto do lado errado', 'imagem'], ['certo', 'Certo (um por linha)', 'linhas'], ['imagem2', 'Foto do lado certo', 'imagem']] },
   quiz: { nome: 'Pergunta para a turma', escuro: true, campos: [['pergunta', 'Pergunta', 'texto'], ['alternativas', 'Alternativas (2 a 4, uma por linha)', 'linhas'], ['correta', 'Alternativa correta (A, B, C ou D)'], ['explicacao', 'Explicação da resposta', 'texto']] },
@@ -142,10 +145,12 @@ const VBO_MODELO = { titulo: 'Modelo padrão Verbo', slides: [
   { tipo: 'icones', titulo: 'Lista com ícones', imagem: 'foto', itens: [
       { icone: 'checklist', titulo: 'Um ícone por ideia', texto: 'Escolha o ícone que mais combina com o assunto do item.' },
       { icone: 'olho', titulo: 'Título curto', texto: 'O texto explica o item com mais detalhe, sem pressa.' },
-      { icone: 'megafone', titulo: 'Até 6 itens', texto: 'Com foto ao lado, use até 4 itens; sem foto, até 6 em duas colunas.' }],
+      { icone: 'megafone', titulo: 'Até 6 itens', texto: 'Até 6 itens. Com foto e mais de 4 itens, a foto fica mais estreita e a lista vai para duas colunas.' }],
     notas: 'Lista com ícones: substitui slides só de texto. Cada item tem ícone, título e texto.' },
   { tipo: 'regraouro', rotulo: 'REGRA DE OURO', texto: 'Segurança vem antes da produtividade.', itens: ['Inspecionar', 'Comunicar', 'Respeitar'], autor: 'Verbo Logística',
     notas: 'Regra de ouro: um slide de impacto para a regra mais importante do tema. As palavras-chave aparecem uma a uma.' },
+  { tipo: 'video', rotulo: 'HORA DO VÍDEO', titulo: 'Título do vídeo', texto: 'Diga à turma o que observar antes de dar o play.',
+    notas: 'Vídeo: envie um arquivo MP4 (até 50 MB). No sistema ele toca dentro do slide; no PowerPoint baixado, o vídeo vai embutido.' },
   { tipo: 'foto', imagem: 'foto', rotulo: 'FOTO EM DESTAQUE', titulo: 'Uma imagem forte vale por um parágrafo', texto: 'Use uma foto real da operação para abrir um tema ou provocar a turma.',
     notas: 'Foto em destaque: a foto ocupa o slide inteiro, com o texto sobre uma faixa escura. Ótimo para abrir um assunto ou fazer uma pergunta.' },
   { tipo: 'certoerrado', titulo: 'Certo × Errado', errado: ['Improvisar ferramentas', 'Ficar perto da carga suspensa', 'Esconder uma falha'], certo: ['Usar a ferramenta adequada', 'Manter distância segura', 'Comunicar cedo a falha'],
@@ -394,16 +399,16 @@ async function vboGerarPptx(deck, opts) {
     } else if (s.tipo === 'icones') {
       sl = pres.addSlide({ masterName: 'VERBO_CLARO' });
       const im = s.imagem === 'foto' ? A.foto : String(s.imagem || '').startsWith('image/') ? s.imagem : null;
-      const it = (s.itens || []).slice(0, im ? 4 : 6); const n = Math.max(it.length, 1);
-      if (im) { sl.addImage({ data: im, x: 8.0, y: 0, w: VBO_W - 8.0, h: VBO_H, sizing: { type: 'cover', w: VBO_W - 8.0, h: VBO_H }, objectName: 'ic-img' });
-        sl.addShape(pres.shapes.RECTANGLE, { x: 8.0, y: 0, w: 0.09, h: VBO_H, fill: { color: VBO.ouro }, line: { type: 'none' }, objectName: 'ic-barra' }); }
-      txt(sl, s.titulo || '', { x: 0.6, y: 0.45, w: im ? 7.1 : 12.13, h: 0.85, fontSize: im ? 28 : 32, bold: true, color: VBO.texto, objectName: 'ic-tit' });
-      const cols = !im && n > 3 ? 2 : 1, rows = Math.ceil(n / cols), cw = im ? 7.0 : cols === 2 ? 5.9 : 12.13, rh = Math.min(1.55, 5.15 / rows);
-      it.forEach((c, i) => { const col = cols === 2 ? Math.floor(i / rows) : 0, row = cols === 2 ? i % rows : i; const x = 0.6 + col * 6.23, y = 1.6 + row * rh; const d = 0.66;
+      const it = (s.itens || []).slice(0, 6); const n = Math.max(it.length, 1); const px = n > 4 ? 9.6 : 8.0;
+      if (im) { sl.addImage({ data: im, x: px, y: 0, w: VBO_W - px, h: VBO_H, sizing: { type: 'cover', w: VBO_W - px, h: VBO_H }, objectName: 'ic-img' });
+        sl.addShape(pres.shapes.RECTANGLE, { x: px, y: 0, w: 0.09, h: VBO_H, fill: { color: VBO.ouro }, line: { type: 'none' }, objectName: 'ic-barra' }); }
+      txt(sl, s.titulo || '', { x: 0.6, y: 0.45, w: im ? px - 0.9 : 12.13, h: 0.85, fontSize: im ? 28 : 32, bold: true, color: VBO.texto, objectName: 'ic-tit' });
+      const cols = (im ? n > 4 : n > 3) ? 2 : 1, rows = Math.ceil(n / cols), cw = im ? (cols === 2 ? 4.3 : 7.0) : cols === 2 ? 5.9 : 12.13, rh = Math.min(1.55, 5.15 / rows), passoX = im ? 4.45 : 6.23, fsx = im && cols === 2 ? 12.5 : 13.5;
+      it.forEach((c, i) => { const col = cols === 2 ? Math.floor(i / rows) : 0, row = cols === 2 ? i % rows : i; const x = 0.6 + col * passoX, y = 1.6 + row * rh; const d = 0.66;
         sl.addShape(pres.shapes.OVAL, { x, y: y + 0.05, w: d, h: d, fill: { color: i % 2 ? VBO.ouro : VBO.verde }, line: { type: 'none' }, objectName: `ic-c${i}` });
         sl.addImage({ data: A.icone(c.icone || 'estrela', VBO.branco), x: x + 0.16, y: y + 0.21, w: 0.34, h: 0.34, objectName: `ic-i${i}` });
         txt(sl, c.titulo || '', { x: x + 0.9, y, w: cw - 0.95, h: 0.4, fontSize: 17, bold: true, color: VBO.texto, objectName: `ic-t${i}` });
-        if (c.texto) txt(sl, c.texto, { x: x + 0.9, y: y + 0.4, w: cw - 0.95, h: rh - 0.5, fontSize: 13.5, color: VBO.cinza, objectName: `ic-x${i}` });
+        if (c.texto) txt(sl, c.texto, { x: x + 0.9, y: y + 0.4, w: cw - 0.95, h: rh - 0.5, fontSize: fsx, color: VBO.cinza, objectName: `ic-x${i}` });
         passo([`ic-c${i}`, `ic-i${i}`, `ic-t${i}`, `ic-x${i}`], 300 + i * 200, 'fade', 400); });
     } else if (s.tipo === 'regraouro') {
       sl = pres.addSlide({ masterName: 'VERBO_ESCURO' });
@@ -422,6 +427,25 @@ async function vboGerarPptx(deck, opts) {
       if (s.autor) txt(sl, '— ' + s.autor, { x: 5.0, y: 6.05, w: 7, h: 0.4, fontSize: 14, color: VBO.suave, objectName: 'ro-aut' });
       chevron(sl, 11.3, 6.4, 1.4);
       passo(['ro-anel', 'ro-disco', 'ro-ic'], 200, 'zoom', 600); passo(['ro-rot', 'ro-traco'], 500); passo(['ro-txt'], 750); passo(['ro-aut'], 1800);
+    } else if (s.tipo === 'video') {
+      sl = pres.addSlide({ masterName: 'VERBO_ESCURO' });
+      sl.addShape(pres.shapes.OVAL, { x: 6.2, y: -2.6, w: 9.0, h: 9.0, fill: { color: VBO.ouro, transparency: 92 }, line: { type: 'none' }, objectName: 'vd-brilho' });
+      sl.addShape(pres.shapes.ROUNDED_RECTANGLE, { x: 0.75, y: 1.35, w: 1.95, h: 0.5, rectRadius: 0.25, fill: { color: VBO.esc }, line: { color: VBO.ouro, width: 1.5 }, objectName: 'vd-pill' });
+      sl.addImage({ data: A.icone('play', VBO.ouro), x: 0.9, y: 1.43, w: 0.34, h: 0.34, objectName: 'vd-pi' });
+      txt(sl, 'ASSISTA', { x: 1.3, y: 1.35, w: 1.35, h: 0.5, fontSize: 13, bold: true, color: VBO.ouro, charSpacing: 4, valign: 'middle', objectName: 'vd-pt' });
+      if (s.rotulo) txt(sl, s.rotulo, { x: 0.75, y: 2.15, w: 4.1, h: 0.4, fontSize: 13, bold: true, color: VBO.ouro, charSpacing: 4, objectName: 'vd-rot' });
+      sl.addShape(pres.shapes.RECTANGLE, { x: 0.75, y: 2.62, w: 0.9, h: 0.07, fill: { color: VBO.ouro }, line: { type: 'none' }, objectName: 'vd-traco' });
+      txt(sl, s.titulo || '', { x: 0.75, y: 2.8, w: 4.1, h: 1.5, fontSize: 28, bold: true, color: VBO.branco, valign: 'top', objectName: 'vd-tit' });
+      if (s.texto) txt(sl, s.texto, { x: 0.75, y: 4.4, w: 4.1, h: 1.5, fontSize: 15, color: 'C9D8D2', valign: 'top', objectName: 'vd-txt' });
+      sl.addShape(pres.shapes.ROUNDED_RECTANGLE, { x: 5.2, y: 1.3, w: 7.45, h: 4.39, rectRadius: 0.12, fill: { color: '000000' }, line: { color: VBO.ouro, width: 3 }, objectName: 'vd-mold' });
+      const capa = String(s.imagem || '').startsWith('image/') ? s.imagem : null; const md = A.video ? A.video(s) : null;
+      const pos = { x: 5.3, y: 1.4, w: 7.25, h: 4.19 };
+      if (md) sl.addMedia({ type: 'video', ...md, ...(capa ? { cover: capa } : {}), ...pos, objectName: 'vd-vid' });
+      else { if (capa) sl.addImage({ data: capa, ...pos, objectName: 'vd-capa' });
+        sl.addImage({ data: A.icone('play', VBO.branco), x: 8.4, y: 2.95, w: 1.05, h: 1.05, objectName: 'vd-play' });
+        txt(sl, 'Vídeo disponível na apresentação do sistema Verbo Gestão', { x: 5.3, y: 5.8, w: 7.25, h: 0.35, fontSize: 11, color: VBO.suave, align: 'center', objectName: 'vd-aviso' }); }
+      chevron(sl, 11.3, 6.4, 1.4);
+      passo(['vd-pill', 'vd-pi', 'vd-pt'], 200); passo(['vd-rot', 'vd-traco'], 400); passo(['vd-tit'], 600); passo(['vd-txt'], 850);
     } else if (s.tipo === 'foto') {
       sl = pres.addSlide({ masterName: 'VERBO_ESCURO' });
       const img = s.imagem === 'foto' ? A.foto : s.imagem && String(s.imagem).startsWith('image/') ? s.imagem : A.foto;
