@@ -111,7 +111,7 @@ function plHtml(fs, c, quando, per, sa = []) {
     </div><div class="pl-col">
       <div class="pl-c" style="--cor:#DDA936"><h3>${PL_IC.pino}Corredor operacional</h3><div class="pl-sub">${PL_PONTOS.map(p => esc(p[0])).join(' · ')}</div>
         <div class="pl-mapa" id="pl-mapa"></div>
-        <div class="pl-leg"><span><i style="background:#2BB673;border:2px solid #fff"></i>Ignição ligada</span><span><i style="background:#9AA5B1;border:2px solid #fff"></i>Ignição desligada</span><span><b style="color:#2BB673">━━</b> rastro carregado (indo descarregar)</span><span><b style="color:#56A8E8">┅┅</b> rastro vazio (indo carregar)</span></div>
+        <div class="pl-leg"><span><i style="background:#2BB673;border:2px solid #fff"></i>Ignição ligada</span><span><i style="background:#9AA5B1;border:2px solid #fff"></i>Ignição desligada</span><span><b style="color:#5F7A70">━━</b> rastro (cor da atividade)</span></div>
         <div class="pl-per" id="pl-mapa-info"></div></div>
       <div class="pl-c" style="--cor:#DDA936;flex:1"><h3>${PL_IC.pizza}Ocupação da frota</h3><div class="pl-sub">${per ? 'Horas por atividade no período' : 'Distribuição por atividade'}</div>${plDonut(dist)}</div>
     </div></div>${plFaixaSA(fs, sa)}</div>`;
@@ -119,10 +119,9 @@ function plHtml(fs, c, quando, per, sa = []) {
 const plH = h => { const m = Math.round((+h || 0) * 60); return `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}`; };
 const PL_SA_SIT = { em_aberto: ['Em aberto · aguardando apontamento', 'vermelho'], pendente: ['Encerrado · falta justificativa da torre', 'amarelo'], justificado: ['Justificado', 'verde'], curto: ['Curto', ''] };
 function plFaixaSA(fs, sa) {
-  const agora = fs.filter(f => f.posicao_em && plSemApont(f)).length, div = fs.filter(f => plConfere(f)[0] === 'div').length;
+  const agora = fs.filter(f => f.posicao_em && plSemApont(f)).length;
   const horas = sa.reduce((t, x) => t + (+x.horas || 0), 0), n = k => sa.filter(x => x.situacao === k).length;
-  const carga = fs.filter(f => plCarga(f).al.length).length;
-  return `<div class="pl-sa"><h4>APONTAMENTO MOTORISTA × TELEMETRIA</h4><span><b>${agora}</b>frota(s) sem apontamento agora</span><span><b>${div}</b>divergente(s)</span>${carga ? `<span><b>${carga}</b>carga apontada errada</span>` : ''}
+  return `<div class="pl-sa"><h4>APONTAMENTO DO MOTORISTA</h4><span><b>${agora}</b>frota(s) sem apontamento agora</span>
     <span><b>${plH(horas)}</b>sem apontamento (≥ 15 min)</span><span><b>${n('em_aberto')}</b>em aberto</span><span><b>${n('pendente')}</b>encerrado(s) sem justificativa</span><span><b>${n('justificado')}</b>justificado(s)</span></div>`;
 }
 
@@ -156,14 +155,8 @@ const plPonto = t => { const p = PL_PONTOS.find(x => x[3] === t); return p ? { n
 function plSentido(f, r) { const o = plPonto('origem'), d = plPonto('destino'); if (!o || !d || !r || r.length < 2 || f.lat == null) return null;
   const a = r[Math.max(0, r.length - 4)], b = [+f.lat, +f.lng], dv = plDistKm(b, o.ll) - plDistKm(a, o.ll); if (Math.abs(dv) < 3) return null;
   return dv < 0 ? { para: 'origem', nome: o.nome } : { para: 'destino', nome: d.nome }; }
-function plCarga(f) { const c = f.carga || {}, real = c.carregado == null ? null : c.carregado ? 'carregado' : 'vazio', s = f.sentido, al = [];
-  const op = `${real === 'carregado' ? 'carregou' : 'descarregou'} em ${dataHoraBR(c.op_em)}`,
-    tg = /vazio/i.test(f.grupo || '') ? 'vazio' : /carregad/i.test(f.grupo || '') ? 'carregado' : null;   // coluna "Telemetria" do Creare = último deslocamento apontado (1001/1002)
-  if (real && c.declarado && c.declarado !== real) al.push(`motorista apontando ${c.declarado.toUpperCase()}${c.declarado_cod ? ` (código ${c.declarado_cod})` : ''}, mas ${op}`);
-  else if (real && tg && tg !== real) al.push(`último deslocamento apontado pelo motorista: ${tg.toUpperCase()}, mas ${op}`);
-  if (real && s && plAndando(f) && ((real === 'carregado') !== (s.para === 'destino'))) al.push(`${real} indo para ${s.nome}: conferir`);
-  const txt = real ? `${real.toUpperCase()}${s && plAndando(f) ? ' → ' + s.nome : ''}` : '';
-  return { real, txt, al, cor: real === 'carregado' ? '#2BB673' : real === 'vazio' ? '#56A8E8' : '#9AA5B1', desde: c.op_em ? `${c.op === 'carregamento' ? 'carregou' : 'descarregou'} em ${dataHoraBR(c.op_em)}` : '' }; }
+// carga carregado/vazio inferida: desativada a pedido da Ana (10/11/2026) — gerava leitura duvidosa; volta só com regra validada pela operação
+function plCarga() { return { real: null, txt: '', al: [], cor: '#9AA5B1', desde: '' }; }
 const plMov = f => !(f.estado || f.ignicao) ? 'Sem leitura de ignição' : plLigado(f) ? (plAndando(f) ? `Ignição ligada · em movimento · ${Math.round(+f.vel || 0)} km/h` : 'Ignição ligada · parado') : 'Ignição desligada · parado';
 // frente de caminhão (cabine, para-brisa, grade, faróis, para-choque) + selo de ignição
 function plCaminhaoSvg(f, px = 38) {
@@ -187,7 +180,7 @@ const plLeitura = l => { if (!l || !l.lido_em) return '<span class="muted">Leitu
     : `<span class="muted">Leitura do Creare: <b>${hm}</b> · tela atualiza a cada 1 min</span>`; };
 const plDica = f => `<div class="pl-dica"><b>${esc(f.codigo)}</b> · ${esc(f.placa || '')}${f.motorista ? `<div>${PL_IC.pessoa}${esc(f.motorista)}</div>` : ''}
   <div class="pl-cmp"><small>Apontamento motorista</small><span><b>${esc(plApont(f))}</b>${f.apont_desde ? ` <span class="muted">desde ${dataHoraBR(f.apont_desde)}</span>` : ''}</span>
-    <small>Telemetria</small><span>${esc(f.grupo || '—')}</span><small>Confronto</small><span><span class="pl-sel ${plConfere(f)[0]}">${plConfere(f)[1]}</span></span></div>
+    <small>Telemetria</small><span>${esc(f.grupo || '—')}</span></div>
   <div><i style="background:${plLigado(f) ? '#2BB673' : '#9AA5B1'}"></i>${esc(plMov(f))}</div>
   <div>Atividade no painel: <b>${esc(f.atividade || '—')}</b></div>
   ${(k => k.real ? `<div>Carga: <b style="color:${k.cor}">${esc(k.txt)}</b> <span class="muted">(${esc(k.desde)})</span></div>${k.al.map(a => `<div style="color:#F2994A"><b>⚠ ${esc(a)}</b></div>`).join('')}` : '')(plCarga(f))}
@@ -288,8 +281,7 @@ async function plMapaImagem(m, escala = 2, W = 1000, H = 560) {
     for (let k = 0; k < 6 && usados.some(([a, c]) => Math.abs(a - x) < 46 && Math.abs(c - y) < 46); k++) x += 48;   // afasta caminhões no mesmo ponto
     usados.push([x, y]);
     const im = await carrega('data:image/svg+xml;charset=utf-8,' + encodeURIComponent(plCaminhaoSvg(f, 96))); if (im) g.drawImage(im, x - 24, y - 26, 48, 48);
-    const cf = plConfere(f)[0];
-    rot(f.codigo, x, y + 24, { ok: '#1E8E57', div: '#D9822B', nao: '#D64545', na: '#0B1F19' }[cf], '#fff');
+    rot(f.codigo, x, y + 24, plSemApont(f) ? '#D64545' : '#0B1F19', '#fff');
     const k = plCarga(f); if (k.real) rot((k.al.length ? '⚠ ' : '') + k.txt, x, y + 46, k.cor, '#fff', '700 12px Arial');
   }
   g.font = '11px Arial'; const at = 'Mapa: Esri · Telemetria: Creare'; const aw = g.measureText(at).width; g.fillStyle = 'rgba(255,255,255,.85)'; g.fillRect(W - aw - 10, H - 16, aw + 10, 16); g.fillStyle = '#333'; g.fillText(at, W - aw - 5, H - 5);
@@ -308,10 +300,10 @@ const plTabTratativa = (sa, rot) => { const td = 'padding:6px;background:transpa
 const plTabMapa = fs => { const c = fs.filter(f => f.posicao_em); if (!c.length) return '';
   const cor = { ok: '#2BB673', div: '#F2994A', nao: '#EB5757', na: '#9AA5B1' };
   return `<table style="width:100%;border-collapse:collapse;margin-top:10px;font:13px/1.35 Arial,sans-serif;color:#EAF2EE"><thead><tr style="color:#DDA936;font-size:11px;letter-spacing:1px;text-align:left;background:transparent">
-    <th style="padding:6px;background:transparent;color:#DDA936;border:0">FROTA</th><th style="padding:6px;background:transparent;color:#DDA936;border:0">MOTORISTA</th><th style="padding:6px;background:transparent;color:#DDA936;border:0">APONTAMENTO MOTORISTA</th><th style="padding:6px;background:transparent;color:#DDA936;border:0">TELEMETRIA</th><th style="padding:6px;background:transparent;color:#DDA936;border:0">CONFRONTO</th><th style="padding:6px;background:transparent;color:#DDA936;border:0">IGNIÇÃO / MOVIMENTO</th></tr></thead><tbody>
+    <th style="padding:6px;background:transparent;color:#DDA936;border:0">FROTA</th><th style="padding:6px;background:transparent;color:#DDA936;border:0">MOTORISTA</th><th style="padding:6px;background:transparent;color:#DDA936;border:0">APONTAMENTO MOTORISTA</th><th style="padding:6px;background:transparent;color:#DDA936;border:0">TELEMETRIA</th><th style="padding:6px;background:transparent;color:#DDA936;border:0">IGNIÇÃO / MOVIMENTO</th></tr></thead><tbody>
     ${c.map(f => { const [k, t] = plConfere(f); return `<tr style="border-top:1px solid rgba(255,255,255,.12)"><td style="padding:6px;background:transparent;color:#EAF2EE;border:0"><b>${esc(f.codigo)}</b><br><span style="color:#9FB8AE">${esc(f.placa || '')}</span></td><td style="padding:6px;background:transparent;color:#EAF2EE;border:0">${esc(f.motorista || '—')}</td>
       <td style="padding:6px;background:transparent;color:#EAF2EE;border:0"><b>${esc(plApont(f))}</b>${f.apont_desde ? `<br><span style="color:#9FB8AE">desde ${dataHoraBR(f.apont_desde)}</span>` : ''}</td><td style="padding:6px;background:transparent;color:#EAF2EE;border:0">${esc(f.grupo || '—')}</td>
-      <td style="padding:6px;background:transparent;color:#EAF2EE;border:0"><span style="background:${cor[k]};color:#fff;border-radius:9px;padding:2px 8px;font-weight:700;font-size:11px;white-space:nowrap">${t}</span>${(q => q.real ? `<div style="margin-top:5px"><span style="background:${q.cor};color:#fff;border-radius:9px;padding:2px 8px;font-weight:700;font-size:11px;white-space:nowrap">${esc(q.txt)}</span></div>${q.al.map(x => `<div style="color:#F2994A;font-weight:700;margin-top:3px">⚠ ${esc(x)}</div>`).join('')}` : '')(plCarga(f))}</td><td style="padding:6px;background:transparent;color:#EAF2EE;border:0">${esc(plMov(f))}<br><span style="color:#9FB8AE">${esc(f.endereco || f.local_creare || '')}</span></td></tr>`; }).join('')}</tbody></table>`; };
+      <td style="padding:6px;background:transparent;color:#EAF2EE;border:0">${esc(plMov(f))}<br><span style="color:#9FB8AE">${esc(f.endereco || f.local_creare || '')}</span></td></tr>`; }).join('')}</tbody></table>`; };
 
 // ---------- abas Cavalos e Carretas: situação montada de cadastros + engates + OS + motivo informado pela torre ----------
 const PL_SIT = { operacao: ['Em operação', '#2BB673'], manutencao_atrelado: ['Manutenção · atrelado', '#F2994A'], manutencao: ['Manutenção', '#EB5757'],
@@ -381,27 +373,44 @@ const plAbas = aba => { const k = { '': 'logistico' }[aba] ?? aba;
     <button type="button" class="btn prim" data-hubexp title="Gera todos os painéis de uma vez: um PDF, imagens ou envio pelo WhatsApp">Exportar / enviar painéis</button></div>`; };
 document.addEventListener('click', e => { if (e.target.closest('[data-hubexp]')) plHubExportar(); });
 const plEspera = (cond, ms = 60000) => new Promise((ok, er) => { const t0 = Date.now(); const f = () => cond() ? ok() : Date.now() - t0 > ms ? er(new Error('O painel demorou para carregar.')) : setTimeout(f, 300); f(); });
+// rodapé com a referência de tempo de cada painel (cada um pode ser de um momento ou de um período diferente)
+function plCarimbo(cv, txt) { const h = Math.round(cv.width * 0.03), c = document.createElement('canvas'); c.width = cv.width; c.height = cv.height + h;
+  const g = c.getContext('2d'); g.drawImage(cv, 0, 0); g.fillStyle = '#0B1F19'; g.fillRect(0, cv.height, c.width, h); g.fillStyle = '#DDA936'; g.fillRect(0, cv.height, c.width, Math.max(2, h * 0.06));
+  g.fillStyle = '#EAF2EE'; g.font = `600 ${Math.round(h * 0.42)}px Arial`; g.textBaseline = 'middle'; g.fillText('Referência: ' + txt, h * 0.6, cv.height + h * 0.55); return c; }
+// capa do PDF: lista os painéis e a referência de tempo de cada um
+function plCapa(imgs, geradoEm) { const W = 2400, H = 1500, c = document.createElement('canvas'); c.width = W; c.height = H; const g = c.getContext('2d');
+  const gr = g.createLinearGradient(0, 0, W, H); gr.addColorStop(0, '#0B2A22'); gr.addColorStop(1, '#123B30'); g.fillStyle = gr; g.fillRect(0, 0, W, H);
+  g.fillStyle = '#DDA936'; g.fillRect(140, 200, 10, 190); g.fillStyle = '#FFFFFF'; g.font = '800 96px Arial'; g.fillText('PAINÉIS VERBO', 190, 290);
+  g.fillStyle = '#9FB8AE'; g.font = '400 44px Arial'; g.fillText(`Gerado em ${geradoEm} por ${(estado.usuario?.nome || '').split(' ')[0] || 'Verbo Gestão'}`, 190, 365);
+  g.font = '700 34px Arial'; g.fillStyle = '#DDA936'; g.fillText('PÁGINA', 190, 520); g.fillText('PAINEL', 380, 520); g.fillText('REFERÊNCIA DE TEMPO', 1180, 520);
+  imgs.forEach((x, i) => { const y = 600 + i * 110; g.fillStyle = 'rgba(255,255,255,.12)'; g.fillRect(190, y - 70, W - 380, 2);
+    g.fillStyle = '#FFFFFF'; g.font = '700 46px Arial'; g.fillText(String(i + 2), 190, y); g.fillText(x.titulo, 380, y); g.font = '400 42px Arial'; g.fillStyle = '#EAF2EE'; g.fillText(x.ref, 1180, y); });
+  g.fillStyle = '#9FB8AE'; g.font = '400 32px Arial'; g.fillText('Painéis de momento mostram a situação naquele instante; painéis de período somam o intervalo em dias inteiros (00:00 a 23:59).', 190, H - 110); return c; }
 const plCanvasFile = (cv, nome) => new Promise(ok => cv.toBlob(b => ok(new File([b], nome.replace(/[\\/:*?"<>|]/g, '-') + '.png', { type: 'image/png' })), 'image/png'));
 async function plHubExportar() {
   const hj = hojeISO(), d7 = new Date(Date.now() - 6 * 864e5).toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' }), qs = new URLSearchParams(location.hash.split('?')[1] || '');
   const ks = PL_HUB.filter(h => h[3] && plHubOk(h[0]));
-  const r = await modal(`<form><h2>Exportar / enviar painéis</h2><p class="muted">Gera os painéis escolhidos, um depois do outro, e junta tudo no formato escolhido. O Status da frota sai com a situação de agora (com os cards de cavalos e carretas); os demais usam o período abaixo.</p><div class="form">
+  const r = await modal(`<form><h2>Exportar / enviar painéis</h2><p class="muted">Gera os painéis escolhidos, um depois do outro, e junta tudo no formato escolhido. Cada painel sai com a sua referência de tempo escrita no rodapé, e o PDF ganha uma capa com a referência de cada um.</p><div class="form">
     <div class="campo largo"><span>Painéis</span>${ks.map(h => `<label class="pl-chk"><input type="checkbox" name="k_${h[0]}" checked> ${h[1]}</label>`).join('')}</div>
     <label class="campo">De<input type="date" name="de" value="${qs.get('de') || d7}" required></label><label class="campo">Até<input type="date" name="ate" value="${qs.get('ate') || hj}" required></label>
+    <div class="campo largo"><span>Status da frota (é uma foto de um momento)</span><label class="pl-chk"><input type="radio" name="st" value="agora" checked> Situação de agora</label><label class="pl-chk"><input type="radio" name="st" value="fim"> Situação no fim do período (dia "Até", 23:59)</label></div>
+    <p class="muted largo" style="margin:0">Viagens e meta, Gestão operacional e Segurança na condução usam o período em dias inteiros: do dia "De" às 00:00 até o dia "Até" às 23:59.</p>
     <div class="campo largo"><span>Formato</span><label class="pl-chk"><input type="radio" name="fmt" value="whats" checked> Enviar pelo WhatsApp (imagens)</label><label class="pl-chk"><input type="radio" name="fmt" value="pdf"> PDF único (uma página por painel)</label><label class="pl-chk"><input type="radio" name="fmt" value="png"> Imagens PNG (arquivo .zip)</label></div></div>
     <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Gerar</button></div></form>`);
   if (!r) return; const sel = ks.filter(h => r['k_' + h[0]]); if (!sel.length) return aviso('Escolha ao menos um painel.', true);
   const volta = location.hash, ov = document.createElement('div'); ov.className = 'pl-gerando'; document.body.append(ov); const imgs = [];
   try { for (const [i, [k, t, h]] of sel.entries()) { ov.innerHTML = `<div><b>Gerando ${i + 1} de ${sel.length}</b><span>${t}</span></div>`;
-      window.PL_CAP = null; const url = k === 'logistico' ? h : `${h}?de=${r.de}&ate=${r.ate}`;
+      window.PL_CAP = null; const fimSt = k === 'logistico' && r.st === 'fim' && r.ate < hj;
+      const url = k === 'logistico' ? (fimSt ? `${h}?modo=em&em=${r.ate}T23:59` : h) : `${h}?de=${r.de}&ate=${r.ate}`;
+      const ref = k === 'logistico' ? `Situação em ${fimSt ? dataBR(r.ate) + ' 23:59' : dataHoraBR(new Date().toISOString())}` : `Período: ${dataBR(r.de)} 00:00 a ${dataBR(r.ate)} 23:59`;
       if (location.hash === url) navegar(); else location.hash = url;
       await plEspera(() => window.PL_CAP && window.PL_CAP.k === k); await new Promise(ok => setTimeout(ok, k === 'logistico' ? 3000 : 800));
-      imgs.push({ nome: window.PL_CAP.nome, cv: await window.PL_CAP.imagem() }); }
+      imgs.push({ nome: window.PL_CAP.nome, titulo: t, ref, cv: plCarimbo(await window.PL_CAP.imagem(), `${t} · ${ref}`) }); }
   } catch (err) { ov.remove(); location.hash = volta; return falha(err); }
   ov.remove(); location.hash = volta;
-  const per = `${dataBR(r.de)} a ${dataBR(r.ate)}`, titulo = `Painéis Verbo · ${per}`;
+  const geradoEm = dataHoraBR(new Date().toISOString()), titulo = `Painéis Verbo · gerado em ${geradoEm.replace(',', '')}`;
   if (r.fmt === 'pdf') { await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'); let pdf;
-    imgs.forEach(({ cv }, i) => { const f = [cv.width, cv.height], o = cv.width > cv.height ? 'landscape' : 'portrait';
+    [{ cv: plCapa(imgs, geradoEm) }, ...imgs].forEach(({ cv }, i) => { const f = [cv.width, cv.height], o = cv.width > cv.height ? 'landscape' : 'portrait';
       if (!i) pdf = new jspdf.jsPDF({ orientation: o, unit: 'px', format: f }); else pdf.addPage(f, o); pdf.addImage(cv.toDataURL('image/jpeg', 0.9), 'JPEG', 0, 0, cv.width, cv.height); });
     pdf.save(titulo.replace(/\//g, '-') + '.pdf'); return; }
   const files = await Promise.all(imgs.map(x => plCanvasFile(x.cv, x.nome)));
@@ -444,7 +453,7 @@ rota('/operacao/painel', async tela => {
   const saFim = modo === 'periodo' && fim ? new Date(fim) : modo === 'em' && em ? new Date(em) : new Date();
   const saRot = `${dataHoraBR(saIni.toISOString())} → ${modo === 'agora' ? 'agora' : dataHoraBR(saFim.toISOString())}`;
   const [saTodos, carga, rastros] = await Promise.all([api.rpc('apontamentos_sem_registro', { p_ini: saIni.toISOString(), p_fim: saFim.toISOString() }).catch(() => []),
-    modo === 'agora' ? api.rpc('frota_estado_carga', {}).catch(() => ({})) : Promise.resolve({}), plRastros(modo, em, ini, fim).catch(() => ({}))]);
+    Promise.resolve({}), plRastros(modo, em, ini, fim).catch(() => ({}))]);
   const sa = (saTodos || []).filter(x => x.exige !== false), saCurto = (saTodos || []).filter(x => x.exige === false);
   fs.forEach(f => { f.carga = (carga || {})[f.id]; f.sentido = plSentido(f, (rastros || {})[f.id]); });
   const leit = modo === 'agora' ? await api.rpc('tlm_leitura', {}).catch(() => null) : null;
@@ -472,13 +481,13 @@ rota('/operacao/painel', async tela => {
       ${Object.entries(per.por_status || {}).map(([k, v]) => `<tr><td>${esc(PL_ST[k] || k)}</td><td>${v.toLocaleString('pt-BR')}</td><td>${plPct(v, per.horas_total)}%</td></tr>`).join('')}</tbody></table></div>
       <p class="muted">Base: ${per.fotos} foto(s) da frota no período (coletas do Creare e ajustes da torre). Cada foto vale até a seguinte.</p></div>` : ''}
     <div class="cartao"><h2>Frotas ${modo === 'agora' ? '' : '<span class="muted">(situação em ' + esc(modo === 'periodo' ? dataHoraBR(new Date(fim).toISOString()) : quando) + ')</span>'}</h2>
-      <div class="tabela-wrap"><table class="tabela compacta pl-tab"><thead><tr><th>Frota</th><th>Placa</th><th>Status</th><th>Atividade</th><th>Local</th><th>Motorista</th><th>Observação</th><th>Apontamento motorista</th><th>Telemetria</th><th>Confronto</th><th>Ignição / posição</th>${ed && modo === 'agora' ? '<th></th>' : ''}</tr></thead><tbody>
+      <div class="tabela-wrap"><table class="tabela compacta pl-tab"><thead><tr><th>Frota</th><th>Placa</th><th>Status</th><th>Atividade</th><th>Local</th><th>Motorista</th><th>Observação</th><th>Apontamento motorista</th><th>Telemetria</th><th>Ignição / posição</th>${ed && modo === 'agora' ? '<th></th>' : ''}</tr></thead><tbody>
       ${fs.map(f => `<tr><td data-r="Frota"><b>${esc(f.codigo)}</b><div class="muted">${esc(f.modelo || '')}</div></td><td data-r="Placa">${esc(f.placa || '')}</td>
         <td data-r="Status"><span class="tag ${f.status === 'disponivel' ? 'verde' : f.status === 'manutencao' ? 'vermelho' : 'amarelo'}">${PL_ST[f.status] || f.status}</span>${f.travado ? '<div class="pl-trava">🔒 torre</div>' : ''}</td>
         <td data-r="Atividade"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${PL_COR[f.atividade] || '#5F7A70'};margin-right:5px"></span>${esc(f.atividade || '—')}</td>
         <td data-r="Local">${esc(f.local || '')}</td><td data-r="Motorista">${esc(f.motorista || '')}</td><td data-r="Observação">${esc(f.observacao || '')}</td>
         <td data-r="Apontamento motorista">${f.posicao_em ? `<b>${esc(plApont(f))}</b>${f.apont_desde ? `<div class="muted">desde ${dataHoraBR(f.apont_desde)}</div>` : ''}` : ''}</td>
-        <td data-r="Telemetria">${esc(f.grupo || '')}</td><td data-r="Confronto">${f.posicao_em ? `<span class="pl-sel ${plConfere(f)[0]}">${plConfere(f)[1]}</span>` : ''}${(k => k.real ? `<div style="margin-top:4px"><span class="pl-sel" style="background:${k.cor}">${esc(k.txt)}</span></div>${k.al.map(a => `<div class="tag amarelo" style="margin-top:3px;white-space:normal">⚠ ${esc(a)}</div>`).join('')}` : '')(plCarga(f))}</td>
+        <td data-r="Telemetria">${esc(f.grupo || '')}</td>
         <td data-r="Ignição / posição" class="muted">${f.posicao_em ? `<span style="color:${plLigado(f) ? '#1E8E57' : 'inherit'}">${esc(plMov(f))}</span>${f.endereco || f.local_creare ? '<br>' + esc(f.endereco || f.local_creare) : ''}<br>Leitura ${dataHoraBR(f.posicao_em)}` : ''}</td>
         ${ed && modo === 'agora' ? `<td><button class="btn peq" data-ed="${f.id}">Ajustar</button></td>` : ''}</tr>`).join('')}</tbody></table></div>
       <p class="muted">Sem a trava 🔒, a atividade acompanha o apontamento do motorista no Creare a cada coleta. Com a trava, vale o que a torre definiu até ela destravar.</p></div></div>`;
@@ -573,15 +582,15 @@ rota('/operacao/painel', async tela => {
     else if (t === 'pdf') { const cv = await imagem(); await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
       const pdf = new jspdf.jsPDF({ orientation: 'landscape', unit: 'px', format: [cv.width, cv.height] }); pdf.addImage(cv.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, cv.width, cv.height); pdf.save(nomeBase + '.pdf'); }
     else if (t === 'html') { const cv = await imagem(); const img = cv.toDataURL('image/png');
-      const linhas = fs.map(x => `<tr><td>${esc(x.codigo)}</td><td>${esc(x.placa || '')}</td><td>${PL_ST[x.status] || ''}</td><td>${esc(x.atividade || '')}</td><td>${esc(x.local || '')}</td><td>${esc(x.motorista || '')}</td><td>${x.posicao_em ? esc(plApont(x)) : ''}</td><td>${esc(x.grupo || '')}</td><td>${x.posicao_em ? plConfere(x)[1] : ''}</td><td>${x.posicao_em ? esc(plMov(x)) : ''}</td><td>${esc(x.observacao || '')}</td></tr>`).join('');
-      baixarArquivo(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(nomeBase)}</title><style>body{margin:0;background:#0B1F19;color:#EAF2EE;font-family:Arial,sans-serif;padding:16px}img{max-width:100%;border-radius:12px;display:block;margin:0 auto 16px}table{border-collapse:collapse;width:100%;background:#fff;color:#1d2b27;font-size:13px}th,td{border:1px solid #d9e2de;padding:6px 8px;text-align:left}th{background:#02654D;color:#fff}</style></head><body><img src="${img}" alt="Painel logístico"><table><thead><tr><th>Frota</th><th>Placa</th><th>Status</th><th>Atividade</th><th>Local</th><th>Motorista</th><th>Apontamento motorista</th><th>Telemetria</th><th>Confronto</th><th>Ignição / movimento</th><th>Observação</th></tr></thead><tbody>${linhas}</tbody></table></body></html>`, nomeBase + '.html', 'text/html'); }
+      const linhas = fs.map(x => `<tr><td>${esc(x.codigo)}</td><td>${esc(x.placa || '')}</td><td>${PL_ST[x.status] || ''}</td><td>${esc(x.atividade || '')}</td><td>${esc(x.local || '')}</td><td>${esc(x.motorista || '')}</td><td>${x.posicao_em ? esc(plApont(x)) : ''}</td><td>${esc(x.grupo || '')}</td><td>${x.posicao_em ? esc(plMov(x)) : ''}</td><td>${esc(x.observacao || '')}</td></tr>`).join('');
+      baixarArquivo(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(nomeBase)}</title><style>body{margin:0;background:#0B1F19;color:#EAF2EE;font-family:Arial,sans-serif;padding:16px}img{max-width:100%;border-radius:12px;display:block;margin:0 auto 16px}table{border-collapse:collapse;width:100%;background:#fff;color:#1d2b27;font-size:13px}th,td{border:1px solid #d9e2de;padding:6px 8px;text-align:left}th{background:#02654D;color:#fff}</style></head><body><img src="${img}" alt="Painel logístico"><table><thead><tr><th>Frota</th><th>Placa</th><th>Status</th><th>Atividade</th><th>Local</th><th>Motorista</th><th>Apontamento motorista</th><th>Telemetria</th><th>Ignição / movimento</th><th>Observação</th></tr></thead><tbody>${linhas}</tbody></table></body></html>`, nomeBase + '.html', 'text/html'); }
     else if (t === 'xlsx') { await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'); const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Painel logístico · status da frota'], [per ? 'Período' : 'Situação em', quando], [],
         ['Indicador', 'Frotas', '% da frota'], ...[['Total de frotas operacionais', c.total], ['Frotas disponíveis', c.disp], ['Em trânsito carregado', c.carregado], ['Em trânsito vazio', c.vazio], ['No horto', c.horto], ['Na fábrica', c.fabrica],
           ['Corretiva', c.corretiva], ['Preventiva', c.preventiva], ['Inspeção', c.inspecao], ['SOS', c.sos], ['Aguardando nota', c.nota], ['Sem motorista', c.semMot], ['Sem composição', c.semComp], ['Sem cavalo', c.semCav],
           ['Operando', c.operando], ['Manutenção', c.man], ['Disponível', c.disp], ['Indisponível', c.indisp]].map(([k, v]) => [k, v, plPct(v, c.total) / 100])]), 'Indicadores');
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(fs.map(x => ({ Frota: x.codigo, Placa: x.placa, Modelo: x.modelo, Status: PL_ST[x.status] || x.status, Atividade: x.atividade, Local: x.local, Motorista: x.motorista,
-        'Observação': x.observacao, 'Apontamento motorista': x.apontamento, 'Telemetria': x.grupo, 'Confronto': x.posicao_em ? plConfere(x)[1] : '', 'Apontado em': x.apont_desde ? dataHoraBR(x.apont_desde) : '', 'Ignição / movimento': x.posicao_em ? plMov(x) : '', 'Velocidade (km/h)': x.vel, 'Endereço (Creare)': x.endereco || x.local_creare, Latitude: x.lat, Longitude: x.lng, 'Leitura': x.posicao_em ? dataHoraBR(x.posicao_em) : '', 'Travado pela torre': x.travado ? 'Sim' : '' }))), 'Frotas');
+        'Observação': x.observacao, 'Apontamento motorista': x.apontamento, 'Telemetria': x.grupo, 'Apontado em': x.apont_desde ? dataHoraBR(x.apont_desde) : '', 'Ignição / movimento': x.posicao_em ? plMov(x) : '', 'Velocidade (km/h)': x.vel, 'Endereço (Creare)': x.endereco || x.local_creare, Latitude: x.lat, Longitude: x.lng, 'Leitura': x.posicao_em ? dataHoraBR(x.posicao_em) : '', 'Travado pela torre': x.travado ? 'Sim' : '' }))), 'Frotas');
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sa.length ? sa.map(x => ({ Frota: x.codigo, Placa: x.placa, Motorista: x.motorista, 'Início': dataHoraBR(x.inicio), Fim: x.em_aberto ? 'em aberto' : dataHoraBR(x.fim), Horas: +x.horas,
         Responsabilidade: x.justificativa ? PL_RESP[x.justificativa.responsabilidade] : 'PENDENTE', 'Contato com motorista': x.justificativa ? (x.justificativa.contato_motorista ? 'Sim' : 'Não') : '', 'Chamado Creare': x.justificativa?.chamado_creare || '', 'Explicação': x.justificativa?.explicacao || '' })) : [{ Aviso: 'Nenhum período sem apontamento' }]), 'Sem apontamento');
       if (per) XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Atividade', 'Horas'], ...Object.entries(per.por_atividade || {}), [], ['Status', 'Horas'], ...Object.entries(per.por_status || {}).map(([k, v]) => [PL_ST[k] || k, v])]), 'Horas no período');
