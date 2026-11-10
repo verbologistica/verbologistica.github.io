@@ -64,7 +64,7 @@ rota('/rh/colaboradores', async tela => {
   const [cs, ss, cgs] = await Promise.all([api.listar('colaboradores', `select=id,matricula,nome,cpf,status,setor_id,cargo_id,telefone,data_admissao,gestor,gestores_extra,usuario_id&ativo=eq.true&${filtro}${setores.length ? '&setor_id=in.(' + setores.join(',') + ')' : ''}&order=nome`), setoresL(), cargosL()]);
   const ls = cs.filter(c => !q || [c.nome, c.matricula, c.cpf].join(' ').toLowerCase().includes(q.replace(/[.\-]/g, '')) || c.nome.toLowerCase().includes(q));
   tela.innerHTML = `
-    <div class="topo"><div><h1>Colaboradores</h1><p class="sub">${ls.length} pessoa(s)</p></div>${editaRH() ? '<a class="btn prim" href="#/rh/colaboradores/novo">+ Colaborador</a>' : ''}</div>
+    <div class="topo"><div><h1>Colaboradores</h1><p class="sub">${ls.length} pessoa(s)</p></div><div class="acoes"><button type="button" class="btn" id="col-exp">⬇ Exportar lista</button>${editaRH() ? '<a class="btn prim" href="#/rh/colaboradores/novo">+ Colaborador</a>' : ''}</div></div>
     <form class="filtros" id="filtros"><select name="status">${[['quadro', 'Quadro atual'], ['candidatos', 'Candidatos'], ['desligados', 'Desligados'], ['todos', 'Todos']].map(([v, t]) => `<option value="${v}" ${v === st ? 'selected' : ''}>${t}</option>`).join('')}</select>
       <select name="setor"><option value="">Todos os setores</option>${ss.map(s => `<option value="${s.id}" ${s.id === setor ? 'selected' : ''}>${esc(s.nome)}</option>`).join('')}</select>
       <input name="q" value="${esc(estado.params.get('q') || '')}" placeholder="Nome, matrícula ou CPF"><button class="btn">Filtrar</button></form>
@@ -76,7 +76,67 @@ rota('/rh/colaboradores', async tela => {
         <td data-r="Superior imediato">${esc([c.gestor, ...(c.gestores_extra || [])].filter(g => g?.nome).map(g => g.nome).join(', ')) || '<span class="muted">não definido</span>'}</td>
         <td data-r="Situação">${tagColab(c.status)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="vazio">Nenhum colaborador encontrado.</div>'}</div>`;
   $('#filtros').onsubmit = e => { e.preventDefault(); location.hash = '#/rh/colaboradores?' + new URLSearchParams(Object.entries(formDados(e.target)).filter(([, v]) => v)); };
+  $('#col-exp').onclick = () => exportarColaboradores(ls.map(c => c.id), ss, cgs);
 });
+
+// ---------- Exportar lista de colaboradores: a pessoa escolhe as informações e o formato ----------
+// grupos sensíveis (documentos, banco/PIX, salário) só aparecem para RH/DP/administrador
+const COL_EXP = [
+  ['Identificação', false, [['matricula', 'Matrícula', 1], ['numero_registro', 'Nº ficha de registro'], ['nome', 'Nome', 1], ['nome_social', 'Nome social'], ['apelido', 'Apelido'], ['status', 'Situação', 1]]],
+  ['Contrato', false, [['cargo', 'Cargo', 1], ['cbo', 'CBO'], ['setor', 'Setor', 1], ['centro_custo', 'Centro de custo'], ['tipo_contrato', 'Tipo de contrato'], ['data_admissao', 'Admissão', 1], ['experiencia_fim1', 'Fim da experiência (1º)'], ['experiencia_fim2', 'Fim da experiência (2º)'],
+    ['jornada', 'Jornada'], ['escala', 'Escala'], ['horario_trabalho', 'Horário de trabalho'], ['horario_intervalo', 'Intervalo'], ['gestor', 'Superior imediato', 1], ['data_desligamento', 'Desligamento'], ['motivo_desligamento', 'Motivo do desligamento']]],
+  ['Contato', false, [['telefone', 'Telefone', 1], ['telefone2', 'Telefone 2'], ['email', 'E-mail pessoal'], ['email_corporativo', 'E-mail corporativo'], ['emergencia_nome', 'Contato de emergência'], ['emergencia_parentesco', 'Parentesco (emergência)'], ['emergencia_telefone', 'Telefone de emergência']]],
+  ['Endereço', false, [['cep', 'CEP'], ['logradouro', 'Logradouro'], ['numero', 'Número'], ['complemento', 'Complemento'], ['bairro', 'Bairro'], ['cidade', 'Cidade'], ['uf', 'UF']]],
+  ['Dados pessoais', true, [['cpf', 'CPF'], ['data_nascimento', 'Nascimento'], ['idade', 'Idade'], ['sexo', 'Sexo'], ['estado_civil', 'Estado civil'], ['escolaridade', 'Escolaridade'], ['nacionalidade', 'Nacionalidade'], ['naturalidade', 'Naturalidade'],
+    ['nome_mae', 'Nome da mãe'], ['nome_pai', 'Nome do pai'], ['raca_cor', 'Raça/cor'], ['pcd', 'PcD'], ['pcd_tipo', 'Tipo de deficiência']]],
+  ['Documentos', true, [['rg', 'RG'], ['rg_orgao', 'Órgão emissor'], ['rg_uf', 'UF do RG'], ['rg_emissao', 'Emissão do RG'], ['pis', 'PIS'], ['ctps_numero', 'CTPS nº'], ['ctps_serie', 'CTPS série'], ['ctps_uf', 'CTPS UF'], ['titulo_eleitor', 'Título de eleitor'], ['titulo_zona', 'Zona'], ['titulo_secao', 'Seção'], ['reservista', 'Reservista']]],
+  ['CNH, cursos e segurança', false, [['cnh_numero', 'CNH nº'], ['cnh_categoria', 'CNH categoria'], ['cnh_validade', 'CNH validade'], ['cnh_ear', 'CNH com EAR'], ['curso_mopp', 'MOPP'], ['curso_mopp_validade', 'MOPP validade'], ['curso_indivisiveis', 'Cargas indivisíveis'], ['curso_indivisiveis_validade', 'Indivisíveis validade'],
+    ['tipo_sanguineo', 'Tipo sanguíneo'], ['brigadista', 'Brigadista'], ['cipeiro', 'CIPA'], ['cipa_funcao', 'Função na CIPA']]],
+  ['Bancário', true, [['banco', 'Banco'], ['agencia', 'Agência'], ['conta', 'Conta'], ['tipo_conta', 'Tipo de conta'], ['pix_tipo', 'Tipo de PIX'], ['pix_chave', 'Chave PIX']]],
+  ['Remuneração', true, [['salario', 'Salário']]],
+];
+async function exportarColaboradores(idsTela, ss, cgs) {
+  const rhv = editaRH(), grupos = COL_EXP.filter(g => !g[1] || rhv);
+  let lembra = null; try { lembra = JSON.parse(localStorage.getItem('col-exp') || 'null'); } catch (e) { }
+  const marc = k => lembra?.campos ? lembra.campos.includes(k) : !!grupos.flatMap(g => g[2]).find(c => c[0] === k)?.[2];
+  const r = await modal(`<form><h2>Exportar lista de colaboradores</h2><div class="form">
+    <label class="campo">Quem entra<select name="quem"><option value="ativos" ${lembra?.quem !== 'tela' && lembra?.quem !== 'quadro' ? 'selected' : ''}>Somente ativos</option><option value="quadro" ${lembra?.quem === 'quadro' ? 'selected' : ''}>Quadro atual (ativos, férias, afastados, aviso prévio, em admissão)</option><option value="tela" ${lembra?.quem === 'tela' ? 'selected' : ''}>Exatamente a lista da tela (${idsTela.length})</option></select></label>
+    <label class="campo">Formato<select name="fmt">${[['xlsx', 'Excel (.xlsx)'], ['pdf', 'PDF'], ['csv', 'CSV (separado por ;)']].map(([v, t]) => `<option value="${v}" ${lembra?.fmt === v ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+    <div class="campo largo"><span>Informações <button type="button" class="btn peq" data-cx="1">Marcar tudo</button> <button type="button" class="btn peq" data-cx="0">Desmarcar tudo</button></span>
+      ${grupos.map(([g, sens, cs]) => `<div style="margin:8px 0"><b>${g}</b>${sens ? ' <span class="tag amarelo" title="Dado pessoal sensível (LGPD): só RH/DP/administrador veem esta opção">sensível</span>' : ''}<div style="display:flex;flex-wrap:wrap;gap:4px 16px;margin-top:4px">
+        ${cs.map(([k, t]) => `<label class="check"><input type="checkbox" name="c_${k}" ${marc(k) ? 'checked' : ''}> ${t}</label>`).join('')}</div></div>`).join('')}</div></div>
+    <p class="muted">Dados pessoais e bancários só devem ser enviados a quem precisa deles (LGPD). As escolhas ficam lembradas para a próxima vez.</p>
+    <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Exportar</button></div></form>`,
+    { aoAbrir: m => $$('[data-cx]', m).forEach(b => b.onclick = () => $$('input[name^=c_]', m).forEach(c => (c.checked = b.dataset.cx === '1'))) });
+  if (!r) return;
+  const campos = grupos.flatMap(g => g[2]).filter(([k]) => r['c_' + k]); if (!campos.length) return aviso('Marque ao menos uma informação.', true);
+  try { localStorage.setItem('col-exp', JSON.stringify({ quem: r.quem, fmt: r.fmt, campos: campos.map(c => c[0]) })); } catch (e) { }
+  const filtro = r.quem === 'tela' ? `id=in.(${idsTela.join(',') || '00000000-0000-0000-0000-000000000000'})` : r.quem === 'ativos' ? 'status=eq.ativo' : 'status=in.(em_admissao,ativo,ferias,afastado,aviso_previo)';
+  const [cs, ccs] = await Promise.all([api.listar('colaboradores', `select=*&ativo=eq.true&${filtro}&order=nome&limit=5000`), centros().catch(() => [])]);
+  const cpf = c => { c = soDigitos(c || ''); return c.length === 11 ? `${c.slice(0, 3)}.${c.slice(3, 6)}.${c.slice(6, 9)}-${c.slice(9)}` : c; };
+  const sn = v => v == null ? '' : v ? 'Sim' : 'Não', dts = new Set(['data_admissao', 'experiencia_fim1', 'experiencia_fim2', 'data_desligamento', 'data_nascimento', 'rg_emissao', 'cnh_validade', 'curso_mopp_validade', 'curso_indivisiveis_validade']);
+  const val = (c, k) => { const cg = cgs.find(x => x.id === c.cargo_id);
+    switch (k) { case 'status': return (STATUS_COLAB[c.status] || [c.status])[0]; case 'cargo': return cg?.nome || ''; case 'cbo': return cg?.cbo || ''; case 'setor': return ss.find(x => x.id === c.setor_id)?.nome || '';
+      case 'centro_custo': return ccs.find(x => x.id === c.centro_custo_id)?.nome || ''; case 'tipo_contrato': return TIPOS_CONTRATO[c.tipo_contrato] || c.tipo_contrato || '';
+      case 'gestor': return [c.gestor, ...(c.gestores_extra || [])].filter(g => g?.nome).map(g => g.nome).join(', '); case 'cpf': return cpf(c.cpf);
+      case 'idade': { if (!c.data_nascimento) return ''; const n = new Date(c.data_nascimento + 'T12:00:00'), h = new Date(); let i = h.getFullYear() - n.getFullYear(); if (h < new Date(h.getFullYear(), n.getMonth(), n.getDate())) i--; return i; }
+      case 'salario': return c.salario != null ? Number(c.salario) : '';
+      case 'pcd': case 'cnh_ear': case 'curso_mopp': case 'curso_indivisiveis': case 'brigadista': case 'cipeiro': return sn(c[k]);
+      default: return dts.has(k) ? (c[k] ? dataBR(c[k]) : '') : (c[k] ?? ''); } };
+  const linhas = cs.map(c => campos.map(([k]) => val(c, k))), cab = campos.map(c => c[1]);
+  const quem = { ativos: 'ativos', quadro: 'quadro atual', tela: 'lista filtrada' }[r.quem], nome = `Colaboradores ${quem} ${hojeISO()}`;
+  if (r.fmt === 'xlsx') { await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'); const ws = XLSX.utils.aoa_to_sheet([cab, ...linhas]);
+    ws['!cols'] = cab.map((t, i) => ({ wch: Math.min(45, Math.max(t.length, ...linhas.map(l => String(l[i] ?? '').length)) + 2) })); ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: linhas.length, c: cab.length - 1 } }) };
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Colaboradores'); XLSX.writeFile(wb, nome + '.xlsx'); }
+  else if (r.fmt === 'csv') { const q = v => { v = String(v ?? ''); return /[";\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+    baixarArquivo('\ufeff' + [cab, ...linhas.map(l => l.map(v => typeof v === 'number' ? String(v).replace('.', ',') : v))].map(l => l.map(q).join(';')).join('\r\n'), nome + '.csv', 'text/csv;charset=utf-8'); }
+  else { await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'); await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js');
+    const pdf = new jspdf.jsPDF({ orientation: cab.length > 5 ? 'landscape' : 'portrait', unit: 'pt', format: 'a4' });
+    pdf.setFontSize(13); pdf.text(`Verbo Logística · Colaboradores (${quem}) · ${cs.length} pessoa(s)`, 30, 32); pdf.setFontSize(8); pdf.text(`Gerado em ${dataHoraBR(new Date().toISOString())} por ${estado.usuario?.nome || ''}`, 30, 46);
+    pdf.autoTable({ head: [cab], body: linhas.map(l => l.map(v => typeof v === 'number' && cab.includes('Salário') ? v.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : String(v ?? ''))), startY: 56, styles: { fontSize: cab.length > 12 ? 6 : cab.length > 8 ? 7 : 8, cellPadding: 3 }, headStyles: { fillColor: [11, 107, 79] }, margin: { left: 30, right: 30 } });
+    pdf.save(nome + '.pdf'); }
+  aviso(`${cs.length} colaborador(es) exportado(s).`);
+}
 
 // ---------- Formulário ----------
 rota('/rh/colaboradores/novo', tela => formColaborador(tela));
