@@ -134,14 +134,14 @@ const PL_RESP = { motorista: 'Motorista (não apontou)', creare: 'Problema no Cr
 const PL_CERCA_COR = { cerca: '#2F80ED', fazenda: '#2BB673', fabrica: '#56A8E8', posto: '#F2994A', apoio: '#DDA936', outro: '#9B7BEA' };
 const plLigado = f => /LIGADO/i.test(f.estado || f.ignicao || '') && !/DESLIGADO/i.test(f.estado || f.ignicao || '');
 const plAndando = f => /ANDANDO/i.test(f.estado || '') || (+f.vel || 0) > 3;
-const plAtivTxt = t => { t = String(t || ''); return !t || /n[ãa]o apontado/i.test(t) ? null : /desloc.*vazio|vazio/i.test(t) ? 'Trânsito Vazio' : /desloc.*carreg|carregado/i.test(t) ? 'Trânsito Carregado'
+const plAtivTxt = t => { t = String(t || ''); return !t || /n[ãa]o apontado/i.test(t) ? null : /desloc.*vazio|vazio/i.test(t) ? 'Trânsito Vazio' : /desloc.*carreg|carregado/i.test(t) ? 'Trânsito Carregado' : /desloc|tr[aâ]nsito|viagem/i.test(t) ? 'Deslocamento'
   : /aguard.*nota|nota fiscal/i.test(t) ? 'Aguardando Nota' : /fila/i.test(t) ? 'Fila' : /carregamento|carregando/i.test(t) ? 'Carregando' : /descarga|descarreg/i.test(t) ? 'Descarga'
   : /manuten|corretiv|preventiv|mec[aâ]nic|pneu|socorro/i.test(t) ? 'Manutenção' : /parad|refei|almo|descanso|pernoite|turno/i.test(t) ? 'Parada' : null; };
 const plSemApont = f => !String(f.apontamento || '').trim() || /n[ãa]o apontado/i.test(f.apontamento);
 const plConfere = f => { if (!f.posicao_em) return ['na', 'Sem leitura'];
   if (plSemApont(f)) return ['nao', 'Não apontado'];
   const a = plAtivTxt(f.apontamento), t = plAtivTxt(f.grupo);
-  return !a || !t ? ['na', 'Conferir'] : a === t ? ['ok', 'Confere'] : ['div', 'Divergente']; };
+  return !a || !t ? ['na', 'Conferir'] : a === t || (a === 'Deslocamento' && /^Trânsito/.test(t)) || (t === 'Deslocamento' && /^Trânsito/.test(a)) ? ['ok', 'Confere'] : ['div', 'Divergente']; };
 const plCorFrota = f => PL_COR[f.atividade] || '#5F7A70';
 const plApont = f => { const a = (f.apontamento || '').trim().replace(/\s*-\s*$/, ''); return !a ? 'Sem apontamento' : /^\d+$/.test(a) ? `Código ${a} (sem descrição no Creare)` : a; };
 const plMov = f => !(f.estado || f.ignicao) ? 'Sem leitura de ignição' : plLigado(f) ? (plAndando(f) ? `Ignição ligada · em movimento · ${Math.round(+f.vel || 0)} km/h` : 'Ignição ligada · parado') : 'Ignição desligada · parado';
