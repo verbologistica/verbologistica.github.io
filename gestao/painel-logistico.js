@@ -575,7 +575,7 @@ rota('/operacao/viagens/painel', async tela => {
   const imagemV = async () => { if (!window.html2canvas) await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js');
     return html2canvas($('#vp-exp'), { scale: 2, useCORS: true, backgroundColor: '#F3F5F4', logging: false, windowWidth: 1700, width: 1600,
       onclone: d => { const el = d.getElementById('vp-exp'); if (!el) return; el.style.width = '1600px'; el.style.padding = '16px'; el.style.background = '#F3F5F4';
-        el.querySelectorAll('.exportar').forEach(x => x.remove());
+        el.querySelectorAll('.exportar,.hbar').forEach(x => x.remove());
         el.querySelectorAll('svg[viewBox]').forEach(sv => { const [, , w, h] = sv.getAttribute('viewBox').split(' ').map(Number); if (w > 300) { sv.setAttribute('width', 1520); sv.setAttribute('height', Math.round(1520 * h / w)); sv.style.width = '1520px'; sv.style.height = Math.round(1520 * h / w) + 'px'; } }); } }); };
   $$('[data-vexp]', tela).forEach(b => b.onclick = () => ocupado(b, async () => { try { const t = b.dataset.vexp, cv = await imagemV();
     if (t === 'png') cv.toBlob(bl => baixarArquivo(bl, nomeV + '.png'), 'image/png');
