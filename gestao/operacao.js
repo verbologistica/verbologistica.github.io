@@ -2,7 +2,7 @@
 'use strict';
 
 const editaOp = () => tem('administrador', 'operacao');
-const ST_VIA = { planejada: ['Planejada', 'azul'], em_transito: ['Em trânsito', 'amarelo'], entregue: ['Entregue', 'verde'], cancelada: ['Cancelada', ''] };
+const ST_VIA = { planejada: ['Programada', 'azul'], em_transito: ['Em trânsito', 'amarelo'], entregue: ['Entregue', 'verde'], cancelada: ['Cancelada', ''] };
 const EV_JOR = { inicio_jornada: ['Início da jornada', '🟢'], direcao: ['Direção', '🚚'], descanso: ['Descanso', '☕'], refeicao: ['Refeição', '🍽️'], espera: ['Espera (carga/descarga)', '⏳'], trabalho: ['Outro trabalho', '🔧'], fim_jornada: ['Fim da jornada', '🔴'] };
 const TIPO_OCO = { atraso: 'Atraso', avaria_carga: 'Avaria de carga', falta_carga: 'Falta de carga', quebra_veiculo: 'Quebra do veículo', sinistro: 'Sinistro / colisão', roubo: 'Roubo / furto', reclamacao_cliente: 'Reclamação do cliente', multa: 'Multa de trânsito' };
 const ST_OCO = { aberta: ['Aberta', 'amarelo'], em_tratativa: ['Em tratativa', 'azul'], encerrada: ['Encerrada', 'verde'] };
@@ -48,17 +48,49 @@ rota('/operacao', async tela => {
       <a class="cartao kpi ${p.ocorrencias_abertas ? 'alerta' : ''}" href="#/operacao/ocorrencias"><div class="n">${p.ocorrencias_abertas || 0}</div><div class="r">ocorrências abertas</div></a>
     </div>
     <div class="grade" style="grid-template-columns:repeat(auto-fit,minmax(340px,1fr))">
+      <div class="cartao"><h2>Programadas · aguardando início</h2>${plan.length ? `<ul class="lista-simples">${plan.map(v => `<li class="clicavel" onclick="location.hash='#/operacao/viagens/ver/${v.id}'"><span><b>${esc(v.numero)}</b> ${esc(v.eq?.codigo_frota || '')} · ${esc(v.m?.nome || 'sem motorista')}
+        <div class="muted">${esc(v.origem)} → ${esc(v.destino)}${v.saida_prevista ? ' · saída prevista ' + dataHoraBR(v.saida_prevista) : ''}</div></span>${botaoAcaoViagem(v, editaOp())}</li>`).join('')}</ul>` : '<div class="vazio">Nenhuma viagem programada.</div>'}</div>
       <div class="cartao"><h2>Em trânsito</h2>${transito.length ? `<ul class="lista-simples">${transito.map(v => `<li class="clicavel" onclick="location.hash='#/operacao/viagens/ver/${v.id}'"><span><b>${esc(v.numero)}</b> ${esc(v.eq?.codigo_frota || '')} · ${esc(v.m?.nome || '')}
-        <div class="muted">${esc(v.origem)} → ${esc(v.destino)} · saiu ${dataHoraBR(v.saida_em)}</div></span>${v.chegada_prevista && new Date(v.chegada_prevista) < new Date() ? '<span class="tag vermelho">Atrasada</span>' : `<span class="muted">${v.chegada_prevista ? 'prev. ' + dataHoraBR(v.chegada_prevista) : ''}</span>`}</li>`).join('')}</ul>` : '<div class="vazio">Nenhuma viagem em trânsito.</div>'}</div>
+        <div class="muted">${esc(v.origem)} → ${esc(v.destino)} · saiu ${dataHoraBR(v.saida_em)}</div></span>${botaoAcaoViagem(v, editaOp())}${v.chegada_prevista && new Date(v.chegada_prevista) < new Date() ? '<span class="tag vermelho">Atrasada</span>' : `<span class="muted">${v.chegada_prevista ? 'prev. ' + dataHoraBR(v.chegada_prevista) : ''}</span>`}</li>`).join('')}</ul>` : '<div class="vazio">Nenhuma viagem em trânsito.</div>'}</div>
       <div class="cartao"><h2>Motoristas agora</h2>${ativos.length ? `<ul class="lista-simples">${ativos.map(s => { const h = (Date.now() - new Date(s.desde)) / 36e5;
         return `<li><span><b>${esc(s.nome)}</b> ${EV_JOR[s.estado][1]} ${EV_JOR[s.estado][0]}<div class="muted">desde ${dataHoraBR(s.desde)}${s.viagem ? ' · ' + esc(s.viagem) : ''}</div></span>${s.estado === 'direcao' && h > 5.5 ? `<span class="tag vermelho">${hh(h)} dirigindo</span>` : `<span class="muted">${hh(h)}</span>`}</li>`; }).join('')}</ul>` : '<div class="vazio">Nenhum motorista com jornada aberta.</div>'}</div>
       ${alertas.length ? `<div class="cartao"><h2>Alertas de jornada</h2><ul class="lista-simples">${alertas.slice(0, 15).map(({ j, a }) => `<li><span><b>${esc(j.nome)}</b> · ${dataBR(j.inicio)}<div class="muted">${a.map(esc).join(' · ')}</div></span></li>`).join('')}</ul></div>` : ''}
       ${ocs.length ? `<div class="cartao"><h2>Ocorrências abertas</h2><ul class="lista-simples">${ocs.map(o => `<li class="clicavel" onclick="location.hash='#/operacao/ocorrencias/ver/${o.id}'"><span><b>${esc(o.numero)}</b> ${esc(TIPO_OCO[o.tipo] || o.tipo)}<div class="muted">${esc((o.descricao || '').slice(0, 80))}${o.m ? ' · ' + esc(o.m.nome) : ''}</div></span>${tagSt(ST_OCO, o.status)}</li>`).join('')}</ul></div>` : ''}
     </div>
     ${avisoLei('jornada')}`;
+  ligarAcoesViagem(tela, vs);
 });
 
 // ===================== Viagens =====================
+// ações da viagem (usadas na lista, no detalhe e no painel do CCO)
+async function viagemIniciar(v) {
+  const eq = v.equipamento_id ? await api.um('equipamentos', `id=eq.${v.equipamento_id}&select=km_atual`).catch(() => null) : null;
+  const r = await modal(`<form><h2>▶ Iniciar ${esc(v.numero)}</h2><p class="muted">${esc(v.origem)} → ${esc(v.destino)}</p><div class="form"><label class="campo">Km de saída<input name="km" inputmode="numeric" value="${eq?.km_atual ?? ''}"></label><label class="campo">Saída<input type="datetime-local" name="quando" value="${dtLocal(new Date().toISOString())}"></label></div>
+    <p class="muted">O sistema confere: equipamento sem OS que o pare, ASO do motorista e CNH válida. Lembre o motorista de fazer o checklist pré-uso.</p>
+    <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Iniciar viagem</button></div></form>`);
+  if (!r) return false;
+  await api.alterar('viagens', `id=eq.${v.id}`, { status: 'em_transito', km_saida: r.km ? Number(soDigitos(r.km)) : null, saida_em: r.quando ? new Date(r.quando).toISOString() : null });
+  aviso('Viagem iniciada.'); return true;
+}
+async function viagemEntregar(v) {
+  const ids = [v.motorista_id, ...(v.motoristas_apoio || [])].filter(Boolean);
+  const ms = ids.length ? await api.listar('colaboradores', `id=in.(${ids.join(',')})&select=id,nome`).catch(() => []) : [];
+  const outros = (await motoristas().catch(() => [])).filter(m => m.motorista && !ids.includes(m.id));
+  const r = await modal(`<form><h2>✓ Entrega de ${esc(v.numero)}</h2><p class="muted">${esc(v.origem)} → ${esc(v.destino)}</p><div class="form"><label class="campo">Km de chegada<input name="km" inputmode="numeric"></label><label class="campo">Chegada<input type="datetime-local" name="quando" value="${dtLocal(new Date().toISOString())}"></label>
+    <label class="campo largo">Motorista que fez a entrega<select name="mot_entrega">${ms.map(m => `<option value="${m.id}" ${m.id === v.motorista_id ? 'selected' : ''}>${esc(m.nome)}${m.id === v.motorista_id ? ' (saiu com a viagem)' : ''}</option>`).join('')}${outros.length ? `<optgroup label="Outro motorista">${outros.map(m => `<option value="${m.id}">${esc(m.nome)}</option>`).join('')}</optgroup>` : ''}</select></label>
+    <label class="campo largo">Canhoto / comprovante de entrega (pode enviar vários)<input type="file" name="arquivos" multiple accept="image/*,application/pdf"></label></div>
+    <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Registrar entrega</button></div></form>`);
+  if (!r) return false;
+  const me = r.mot_entrega || v.motorista_id, apoio = [...new Set([...(v.motoristas_apoio || []), ...(me && me !== v.motorista_id ? [me] : [])])];
+  await api.alterar('viagens', `id=eq.${v.id}`, { status: 'entregue', km_chegada: r.km ? Number(soDigitos(r.km)) : null, chegada_em: r.quando ? new Date(r.quando).toISOString() : null, motorista_entrega_id: me || null, motoristas_apoio: apoio });
+  if (r.arquivos?.length) await anexar('viagem', v.id, r.arquivos, 'Comprovante de entrega'); aviso('Entrega registrada.'); return true;
+}
+const botaoAcaoViagem = (v, ok) => !ok ? '' : v.status === 'planejada' ? `<button class="btn prim peq" data-via-ini="${v.id}">▶ Iniciar viagem</button>` : v.status === 'em_transito' ? `<button class="btn ok peq" data-via-ent="${v.id}">✓ Registrar entrega</button>` : '';
+function ligarAcoesViagem(el, vs) {
+  $$('[data-via-ini],[data-via-ent]', el).forEach(b => b.addEventListener('click', async e => { e.stopPropagation(); const v = vs.find(x => x.id === (b.dataset.viaIni || b.dataset.viaEnt));
+    try { if (await (b.dataset.viaIni ? viagemIniciar(v) : viagemEntregar(v))) navegar(); } catch (err) { falha(err); } }));
+}
+
 rota('/operacao/viagens', async tela => {
   const sts = pLista('status', 'todas'), st = sts[0], q = (estado.params.get('q') || '').toLowerCase();
   const fV = temTodos(sts) ? '' : filtroOu(sts.map(s => s === 'abertas' ? 'status=in.(planejada,em_transito)' : 'status=eq.' + s));
@@ -66,13 +98,16 @@ rota('/operacao/viagens', async tela => {
   if (q) vs = vs.filter(v => [v.numero, v.origem, v.destino, v.cl?.nome, v.m?.nome, v.eq?.codigo_frota, v.documentos].join(' ').toLowerCase().includes(q));
   tela.innerHTML = `
     <div class="topo"><div><h1>Viagens</h1><p class="sub">${vs.length} viagem(ns) · frete ${brl(vs.reduce((a, v) => a + Number(v.valor_frete || 0), 0))}</p></div>${editaOp() ? '<a class="btn prim" href="#/operacao/viagens/nova">+ Nova viagem</a>' : ''}</div>
+    <div class="cartao" style="padding:10px 14px"><b>Como funciona:</b> <span class="tag azul">Programada</span> → <b>▶ Iniciar viagem</b> → <span class="tag amarelo">Em trânsito</span> → <b>✓ Registrar entrega</b> → <span class="tag verde">Entregue</span>
+      ${(() => { const p = vs.filter(v => v.status === 'planejada').length, t = vs.filter(v => v.status === 'em_transito').length; return p || t ? `<span class="muted"> · ${p} aguardando início · ${t} em trânsito</span>` : ''; })()}</div>
     <form class="filtros" id="filtros"><select name="status"><option value="abertas">Programadas e em trânsito</option>${Object.entries(ST_VIA).map(([k, [t]]) => `<option value="${k}" ${k === st ? 'selected' : ''}>${t}</option>`).join('')}<option value="todas" ${st === 'todas' ? 'selected' : ''}>Todas</option></select>
       <input name="q" value="${esc(estado.params.get('q') || '')}" placeholder="Nº, cliente, cidade, motorista, CT-e"><button class="btn">Filtrar</button></form>
-    <div class="cartao">${vs.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Nº</th><th>Cliente</th><th>Rota</th><th>Equipamento</th><th>Motorista</th><th>Saída</th><th>Chegada</th><th class="num">Km</th><th class="num">Frete</th><th>Situação</th></tr></thead><tbody>
+    <div class="cartao">${vs.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Nº</th><th>Cliente</th><th>Rota</th><th>Equipamento</th><th>Motorista</th><th>Saída</th><th>Chegada</th><th class="num">Km</th><th class="num">Frete</th><th>Situação</th><th>Próximo passo</th></tr></thead><tbody>
       ${vs.map(v => `<tr class="clicavel" onclick="location.hash='#/operacao/viagens/ver/${v.id}'"><td data-r="Nº" class="mono"><b>${esc(v.numero)}</b></td><td data-r="Cliente">${esc(v.cl?.nome || '—')}</td><td data-r="Rota">${esc(v.origem)} → ${esc(v.destino)}</td>
-        <td data-r="Equipamento">${esc(v.eq?.codigo_frota || '—')}</td><td data-r="Motorista">${esc(v.m?.nome || '—')}</td><td data-r="Saída">${dataHoraBR(v.saida_em || v.saida_prevista) || '—'}</td><td data-r="Chegada">${dataHoraBR(v.chegada_em || v.chegada_prevista) || '—'}</td>
+        <td data-r="Equipamento">${esc(v.eq?.codigo_frota || '—')}</td><td data-r="Motorista">${esc(v.m?.nome || '—')}${(v.motoristas_apoio || []).length ? ` <span class="muted">+${v.motoristas_apoio.length}</span>` : ''}</td><td data-r="Saída">${dataHoraBR(v.saida_em || v.saida_prevista) || '—'}</td><td data-r="Chegada">${dataHoraBR(v.chegada_em || v.chegada_prevista) || '—'}</td>
         <td data-r="Km" class="num">${v.km_chegada && v.km_saida ? (v.km_chegada - v.km_saida).toLocaleString('pt-BR') : '—'}</td><td data-r="Frete" class="num">${v.valor_frete ? brl(v.valor_frete) : '—'}</td>
-        <td data-r="Situação">${tagSt(ST_VIA, v.status)}${v.status === 'em_transito' && v.chegada_prevista && new Date(v.chegada_prevista) < new Date() ? ' <span class="tag vermelho">atrasada</span>' : ''}</td></tr>`).join('')}</tbody></table></div>` : '<div class="vazio">Nenhuma viagem.</div>'}</div>`;
+        <td data-r="Situação">${tagSt(ST_VIA, v.status)}${v.status === 'em_transito' && v.chegada_prevista && new Date(v.chegada_prevista) < new Date() ? ' <span class="tag vermelho">atrasada</span>' : ''}</td><td data-r="Próximo passo">${botaoAcaoViagem(v, editaOp()) || '—'}</td></tr>`).join('')}</tbody></table></div>` : '<div class="vazio">Nenhuma viagem.</div>'}</div>`;
+  ligarAcoesViagem(tela, vs);
   $('#filtros').onsubmit = e => { e.preventDefault(); const d = formDados(e.target); location.hash = '#/operacao/viagens?' + new URLSearchParams(Object.entries(d).filter(([, v]) => v)); };
 });
 async function formViagem(tela, v = null) {
@@ -87,6 +122,7 @@ async function formViagem(tela, v = null) {
       <label class="campo">Equipamento<select name="equipamento_id"><option value="">A definir</option>${eqs.map(e => `<option value="${e.id}" ${e.id === v?.equipamento_id ? 'selected' : ''} ${e.situacao === 'manutencao' ? 'disabled' : ''}>${esc(rotuloEq(e))}${e.situacao === 'manutencao' ? ' (em manutenção)' : ''}</option>`).join('')}</select></label>
       <label class="campo">Motorista<select name="motorista_id"><option value="">A definir</option>${mot.map(m => { const venc = m.cnh_validade && m.cnh_validade < hojeISO();
         return `<option value="${m.id}" ${m.id === v?.motorista_id ? 'selected' : ''} ${venc ? 'disabled' : ''}>${esc(m.nome)}${m.cnh_categoria ? ' · CNH ' + esc(m.cnh_categoria) : ''}${venc ? ' (CNH vencida)' : ''}</option>`; }).join('')}</select></label>
+      <div class="campo largo"><span>Outros motoristas da viagem (revezamento / quem pode entregar)</span><div class="vb-chk" style="display:flex;flex-wrap:wrap;gap:6px 14px;max-height:140px;overflow:auto">${mot.filter(m => m.id !== v?.motorista_id).map(m => `<label class="check"><input type="checkbox" name="apoio" value="${m.id}" ${(v?.motoristas_apoio || []).includes(m.id) ? 'checked' : ''}> ${esc(m.nome)}</label>`).join('')}</div></div>
       <label class="campo largo">Carga<input name="carga" value="${esc(v?.carga || '')}" placeholder="Ex.: eucalipto em toras, celulose"></label>
       <label class="campo">Peso (t)<input name="peso_t" inputmode="decimal" value="${v?.peso_t ?? ''}"></label><label class="campo">Valor do frete (R$)<input name="valor_frete" inputmode="decimal" value="${v?.valor_frete ?? ''}"></label>
       <label class="campo">Centro de custo<select name="centro_custo_id">${opcoes(ccs.filter(c => c.ativo), null, c => c.nome, v?.centro_custo_id, '—')}</select></label>
@@ -106,6 +142,7 @@ async function formViagem(tela, v = null) {
     const arqNf = [...(e.target.arq_nf?.files || [])], arqCte = [...(e.target.arq_cte?.files || [])];
     const dados = { cliente_id: d.cliente_id || null, origem: d.origem, destino: d.destino, saida_prevista: d.saida_prevista ? new Date(d.saida_prevista).toISOString() : null, chegada_prevista: d.chegada_prevista ? new Date(d.chegada_prevista).toISOString() : null,
       equipamento_id: d.equipamento_id || null, motorista_id: d.motorista_id || null, carga: d.carga || null, peso_t: num(d.peso_t), valor_frete: num(d.valor_frete), documentos: d.documentos || null, centro_custo_id: d.centro_custo_id || null, observacao: d.observacao || null,
+      motoristas_apoio: [...e.target.querySelectorAll('input[name=apoio]:checked')].map(x => x.value).filter(x => x !== (d.motorista_id || null)),
       nf_numero: (d.nf_numero || '').trim() || null, cte_numero: (d.cte_numero || '').trim() || null, cte_chave: chave || null, mdfe_numero: (d.mdfe_numero || '').trim() || null };
     await ocupado(e.submitter, async () => { try { let id = v?.id; if (v) await api.alterar('viagens', `id=eq.${id}`, dados); else [{ id }] = await api.inserir('viagens', dados);
       if (arqNf.length) await anexar('viagem', id, arqNf, 'Nota fiscal'); if (arqCte.length) await anexar('viagem', id, arqCte, 'CT-e');
@@ -117,13 +154,19 @@ rota('/operacao/viagens/ver/:id', async (tela, id) => {
   const v = await api.um('viagens', `id=eq.${id}&select=*,cl:clientes(nome),eq:equipamentos(id,codigo_frota,tipo,tipo_outro,marca,modelo,km_atual),m:colaboradores(id,nome),cc:centros_custo(nome)`);
   if (!v) { tela.innerHTML = '<div class="cartao vazio">Viagem não encontrada.</div>'; return; }
   const [ocs, evs] = await Promise.all([api.listar('ocorrencias_operacionais', `viagem_id=eq.${id}&ativo=eq.true&order=data_hora`).catch(() => []), api.listar('jornada_eventos', `viagem_id=eq.${id}&ativo=eq.true&order=data_hora`).catch(() => [])]);
-  const ed = editaOp(), souMot = v.motorista_id && v.motorista_id === await api.rpc('meu_colaborador').catch(() => null);
+  const meuCol = await api.rpc('meu_colaborador').catch(() => null);
+  const ed = editaOp(), souMot = !!meuCol && (v.motorista_id === meuCol || (v.motoristas_apoio || []).includes(meuCol));
+  const idsMot = [...new Set([...(v.motoristas_apoio || []), v.motorista_entrega_id].filter(Boolean))];
+  const nomesMot = idsMot.length ? Object.fromEntries((await api.listar('colaboradores', `id=in.(${idsMot.join(',')})&select=id,nome`).catch(() => [])).map(c => [c.id, c.nome])) : {};
+  const passo = v.status === 'planejada' ? ['azul', 'Viagem programada', 'Quando o caminhão sair, clique em ▶ Iniciar viagem.', (ed || souMot) ? '<button class="btn prim" id="via-sair2">▶ Iniciar viagem</button>' : '']
+    : v.status === 'em_transito' ? ['amarelo', 'Viagem em trânsito', 'Ao descarregar, clique em ✓ Registrar entrega (informe quem entregou e anexe o canhoto).', (ed || souMot) ? '<button class="btn ok" id="chegar2">✓ Registrar entrega</button>' : ''] : null;
   tela.innerHTML = `
     <div class="topo"><div><h1>${esc(v.numero)} · ${esc(v.origem)} → ${esc(v.destino)}</h1><p class="sub">${tagSt(ST_VIA, v.status)} · ${esc(v.cl?.nome || 'sem cliente')}</p></div>
       <div class="acoes">${(ed || souMot) && v.status === 'planejada' ? '<button class="btn prim" id="via-sair">Iniciar viagem</button>' : ''}${(ed || souMot) && v.status === 'em_transito' ? '<button class="btn prim" id="chegar">Registrar entrega</button>' : ''}
         ${ed && ['planejada', 'em_transito'].includes(v.status) ? `<a class="btn" href="#/operacao/viagens/editar/${id}">Editar</a><button class="btn perigo" id="cancelar">Cancelar</button>` : ''}
         <button class="btn" id="ordem">Ordem de viagem</button><a class="btn" href="#/operacao/ocorrencias/nova?viagem=${id}">+ Ocorrência</a><a class="btn" href="#/operacao/viagens">Voltar</a></div></div>
-    <div class="cartao"><div class="form">${[['Equipamento', v.eq && rotuloEq(v.eq)], ['Motorista', v.m?.nome], ['Saída prevista', dataHoraBR(v.saida_prevista)], ['Chegada prevista', dataHoraBR(v.chegada_prevista)],
+    ${passo ? `<div class="cartao" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;border-left:5px solid var(--${passo[0] === 'azul' ? 'azul, #2F80ED' : 'ouro, #DDA936'})"><div style="flex:1;min-width:220px"><b style="font-size:16px">${passo[1]}</b><div class="muted">${passo[2]}</div></div>${passo[3]}</div>` : ''}
+    <div class="cartao"><div class="form">${[['Equipamento', v.eq && rotuloEq(v.eq)], ['Motorista', v.m?.nome], ['Outros motoristas', (v.motoristas_apoio || []).map(i => nomesMot[i]).filter(Boolean).join(', ') || null], ['Entregue por', v.motorista_entrega_id ? nomesMot[v.motorista_entrega_id] : null], ['Saída prevista', dataHoraBR(v.saida_prevista)], ['Chegada prevista', dataHoraBR(v.chegada_prevista)],
       ['Saiu em', dataHoraBR(v.saida_em)], ['Chegou em', dataHoraBR(v.chegada_em)], ['Km', [v.km_saida != null && 'saída ' + v.km_saida.toLocaleString('pt-BR'), v.km_chegada != null && 'chegada ' + v.km_chegada.toLocaleString('pt-BR'), v.km_chegada && v.km_saida && '= ' + (v.km_chegada - v.km_saida).toLocaleString('pt-BR') + ' km'].filter(Boolean).join(' · ')],
       ['Carga', [v.carga, v.peso_t && v.peso_t + ' t'].filter(Boolean).join(' · ')], ['Nota fiscal', v.nf_numero], ['CT-e', v.cte_numero], ['Chave do CT-e', v.cte_chave], ['MDF-e', v.mdfe_numero], ['Outros documentos', v.documentos], ['Frete', v.valor_frete && brl(v.valor_frete)], ['Centro de custo', v.cc?.nome], ['Observações', v.observacao], ['Cancelamento', v.motivo_cancelamento]]
       .filter(([, x]) => x !== null && x !== undefined).map(([k, x]) => `<div><div class="muted">${k}</div><b>${x ? esc(x) : '—'}</b></div>`).join('')}<div class="largo" id="anx-via"></div></div></div>
@@ -133,19 +176,10 @@ rota('/operacao/viagens/ver/:id', async (tela, id) => {
     + (ed ? `<div class="acoes" style="justify-content:flex-start;margin-top:8px"><label class="btn peq">Anexar nota fiscal<input type="file" data-anxvia="Nota fiscal" multiple accept=".pdf,.xml,image/*" hidden></label><label class="btn peq">Anexar CT-e<input type="file" data-anxvia="CT-e" multiple accept=".pdf,.xml,image/*" hidden></label></div>` : '');
   $$('[data-anxvia]', tela).forEach(i => i.addEventListener('change', async () => { if (!i.files.length) return;
     try { aviso('Enviando…'); await anexar('viagem', id, [...i.files], i.dataset.anxvia); aviso(i.dataset.anxvia + ' anexado(a).'); navegar(); } catch (err) { falha(err); } }));
-  $("#via-sair")?.addEventListener('click', async () => {
-    const r = await modal(`<form><h2>Iniciar ${esc(v.numero)}</h2><div class="form"><label class="campo">Km de saída<input name="km" inputmode="numeric" value="${v.eq?.km_atual ?? ''}"></label><label class="campo">Saída<input type="datetime-local" name="quando" value="${dtLocal(new Date().toISOString())}"></label></div>
-      <p class="muted">O sistema confere: equipamento sem OS que o pare, ASO do motorista e CNH válida. Lembre o motorista de fazer o checklist pré-uso.</p>
-      <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Iniciar</button></div></form>`);
-    if (!r) return;
-    try { await api.alterar('viagens', `id=eq.${id}`, { status: 'em_transito', km_saida: r.km ? Number(soDigitos(r.km)) : null, saida_em: r.quando ? new Date(r.quando).toISOString() : null }); aviso('Viagem iniciada.'); navegar(); } catch (err) { falha(err); } });
-  $('#chegar')?.addEventListener('click', async () => {
-    const r = await modal(`<form><h2>Entrega de ${esc(v.numero)}</h2><div class="form"><label class="campo">Km de chegada<input name="km" inputmode="numeric"></label><label class="campo">Chegada<input type="datetime-local" name="quando" value="${dtLocal(new Date().toISOString())}"></label>
-      <label class="campo largo">Canhoto / comprovante de entrega<input type="file" name="arquivos" multiple accept="image/*,application/pdf"></label></div>
-      <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Registrar entrega</button></div></form>`);
-    if (!r) return;
-    try { await api.alterar('viagens', `id=eq.${id}`, { status: 'entregue', km_chegada: r.km ? Number(soDigitos(r.km)) : null, chegada_em: r.quando ? new Date(r.quando).toISOString() : null });
-      if (r.arquivos?.length) await anexar('viagem', id, r.arquivos); aviso('Entrega registrada.'); navegar(); } catch (err) { falha(err); } });
+  $('#via-sair')?.addEventListener('click', async () => { try { if (await viagemIniciar(v)) navegar(); } catch (err) { falha(err); } });
+  $('#via-sair2')?.addEventListener('click', async () => { try { if (await viagemIniciar(v)) navegar(); } catch (err) { falha(err); } });
+  $('#chegar2')?.addEventListener('click', async () => { try { if (await viagemEntregar(v)) navegar(); } catch (err) { falha(err); } });
+  $('#chegar')?.addEventListener('click', async () => { try { if (await viagemEntregar(v)) navegar(); } catch (err) { falha(err); } });
   $('#cancelar')?.addEventListener('click', async () => { const m = await confirmar('Cancelar esta viagem?', { comMotivo: true, botao: 'Cancelar viagem' }); if (!m) return;
     try { await api.alterar('viagens', `id=eq.${id}`, { status: 'cancelada', motivo_cancelamento: m }); navegar(); } catch (err) { falha(err); } });
   $('#ordem').onclick = async () => { const m = await modeloPorCodigo('OPE-VIA-001'); if (!m) return aviso('Modelo não encontrado.', true);
