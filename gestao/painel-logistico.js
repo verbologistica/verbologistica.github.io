@@ -176,6 +176,11 @@ function plCaminhaoSvg(f, px = 38) {
     ${anda ? '<path d="M29.6 5.4 34.8 8l-5.2 2.6z" fill="#fff"/>' : on ? '<circle cx="32" cy="8" r="2" fill="#fff"/>' : '<path d="M29.8 8h4.4" stroke="#fff" stroke-width="1.8"/>'}
   </svg>`;
 }
+// hora da última leitura do Creare (relé minuto a minuto na aba do Creare + coletas agendadas)
+const plLeitura = l => { if (!l || !l.lido_em) return '<span class="muted">Leitura do Creare: —</span>';
+  const d = new Date(l.lido_em), min = Math.round((Date.now() - d) / 60000), hm = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  return min > 5 ? `<b style="color:#C0392B">⚠ Leitura do Creare: ${hm} (há ${min} min) — verifique se o Creare está logado no navegador do Claude</b>`
+    : `<span class="muted">Leitura do Creare: <b>${hm}</b> · tela atualiza a cada 1 min</span>`; };
 const plDica = f => `<div class="pl-dica"><b>${esc(f.codigo)}</b> · ${esc(f.placa || '')}${f.motorista ? `<div>${PL_IC.pessoa}${esc(f.motorista)}</div>` : ''}
   <div class="pl-cmp"><small>Apontamento motorista</small><span><b>${esc(plApont(f))}</b>${f.apont_desde ? ` <span class="muted">desde ${dataHoraBR(f.apont_desde)}</span>` : ''}</span>
     <small>Telemetria</small><span>${esc(f.grupo || '—')}</span><small>Confronto</small><span><span class="pl-sel ${plConfere(f)[0]}">${plConfere(f)[1]}</span></span></div>
@@ -438,15 +443,16 @@ rota('/operacao/painel', async tela => {
     modo === 'agora' ? api.rpc('frota_estado_carga', {}).catch(() => ({})) : Promise.resolve({}), plRastros(modo, em, ini, fim).catch(() => ({}))]);
   const sa = (saTodos || []).filter(x => x.exige !== false), saCurto = (saTodos || []).filter(x => x.exige === false);
   fs.forEach(f => { f.carga = (carga || {})[f.id]; f.sentido = plSentido(f, (rastros || {})[f.id]); });
+  const leit = modo === 'agora' ? await api.rpc('tlm_leitura', {}).catch(() => null) : null;
   const agoraLocal = dtLocal(new Date().toISOString()), ontemLocal = dtLocal(new Date(Date.now() - 864e5).toISOString());
   tela.innerHTML = `<div class="pl-wrap">
-    <div class="topo"><div><h1>Painel logístico</h1><p class="sub">Status da frota hora a hora · telemetria Creare + ajustes da torre</p></div>
+    <div class="topo"><div><h1>Painel logístico</h1><p class="sub">Status da frota · telemetria Creare a cada minuto + ajustes da torre</p></div>
       <div class="acoes">${ed ? '<button class="btn" id="pl-pontos" title="Origem (fazenda), apoio e destino do mapa">Pontos do mapa</button>' : ''}<button class="btn" data-exp="png">Imagem (PNG)</button><button class="btn" data-exp="pdf">PDF</button><button class="btn" data-exp="html">HTML</button><button class="btn" data-exp="xlsx">Excel</button>${ed ? '<button class="btn" id="pl-kml" title="Importar cercas/áreas de um arquivo KML (Creare, Google Earth)">Cercas (KML)</button>' : ''}</div></div>
     ${plAbas('logistico')}
     <form class="filtros pl-barra" id="pl-f"><div class="pl-modo"><select name="modo"><option value="agora" ${modo === 'agora' ? 'selected' : ''}>Agora</option><option value="em" ${modo === 'em' ? 'selected' : ''}>Em uma data e hora</option><option value="periodo" ${modo === 'periodo' ? 'selected' : ''}>Período (de… até…)</option></select></div>
       <input type="datetime-local" name="em" value="${esc(em || agoraLocal)}" ${modo === 'em' ? '' : 'hidden'} aria-label="Data e hora">
       <input type="datetime-local" name="de" value="${esc(ini || ontemLocal)}" ${modo === 'periodo' ? '' : 'hidden'} aria-label="De"><input type="datetime-local" name="ate" value="${esc(fim || agoraLocal)}" ${modo === 'periodo' ? '' : 'hidden'} aria-label="Até">
-      <button class="btn prim">Ver</button>${modo === 'agora' ? '<span class="muted" id="pl-auto">Atualiza sozinho a cada 5 min</span>' : ''}</form>
+      <button class="btn prim">Ver</button>${modo === 'agora' ? `<span id="pl-auto">${plLeitura(leit)}</span>` : ''}</form>
     ${plHtml(fs, c, quando, per, sa)}
     <div class="cartao"><h2>Tempo sem apontamento do motorista <span class="muted">· ${esc(saRot)}</span></h2>
       <p class="muted">Abre quando o motorista fica em "NÃO APONTADO" no Creare e fecha no próximo apontamento dele. A partir de 15 minutos a torre precisa justificar. Encerrado sem justificativa não some: fica "falta justificativa da torre" até ser justificado. Lacunas menores que 15 min (troca entre apontamentos) só somam no total.</p>
@@ -478,8 +484,9 @@ rota('/operacao/painel', async tela => {
     if (d.modo === 'em') p.set('em', d.em); if (d.modo === 'periodo') { p.set('de', d.de); p.set('ate', d.ate); } location.hash = '#/operacao/painel?' + p; };
   const cercas = await api.listar('mapa_cercas', 'ativo=is.true&select=id,nome,tipo,cor,poligonos').catch(() => []);
   let mapa = null; try { mapa = await plMapa($('#pl-mapa'), fs, cercas, rastros); } catch (e) { $('#pl-mapa-info').textContent = 'Não foi possível carregar o mapa.'; }
-  if (modo === 'agora') { const t = setTimeout(() => { if (location.hash.startsWith('#/operacao/painel') && !(new URLSearchParams(location.hash.split('?')[1] || '').get('modo') || '').match(/em|periodo/)) navegar(); }, 300000);
-    window.addEventListener('hashchange', () => clearTimeout(t), { once: true }); }
+  if (modo === 'agora') { let t; const tick = () => { if (!location.hash.startsWith('#/operacao/painel') || (new URLSearchParams(location.hash.split('?')[1] || '').get('modo') || '').match(/em|periodo/)) return;
+      if (!$('#modal').hidden || document.hidden) { t = setTimeout(tick, 60000); return; } navegar(); };   // não recarrega com janela aberta
+    t = setTimeout(tick, 60000); window.addEventListener('hashchange', () => clearTimeout(t), { once: true }); }
   $$('[data-ed]', tela).forEach(b => b.onclick = async () => { const x = fs.find(y => y.id === b.dataset.ed);
     const r = await modal(`<form><h2>Ajustar ${esc(x.codigo)} · ${esc(x.placa || '')}</h2><div class="form">
       <label class="campo">Status<select name="status">${Object.entries(PL_ST).map(([k, t]) => `<option value="${k}" ${k === x.status ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
