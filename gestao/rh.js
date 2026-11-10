@@ -121,6 +121,8 @@ async function exportarColaboradores(idsTela, ss, cgs) {
       case 'gestor': return [c.gestor, ...(c.gestores_extra || [])].filter(g => g?.nome).map(g => g.nome).join(', '); case 'cpf': return cpf(c.cpf);
       case 'idade': { if (!c.data_nascimento) return ''; const n = new Date(c.data_nascimento + 'T12:00:00'), h = new Date(); let i = h.getFullYear() - n.getFullYear(); if (h < new Date(h.getFullYear(), n.getMonth(), n.getDate())) i--; return i; }
       case 'salario': return c.salario != null ? Number(c.salario) : '';
+      case 'telefone': case 'telefone2': case 'emergencia_telefone': return typeof fmtTel === 'function' ? fmtTel(c[k] || '') : (c[k] || '');
+      case 'cep': { const d = soDigitos(c.cep || ''); return d.length === 8 ? d.slice(0, 5) + '-' + d.slice(5) : d; }
       case 'pcd': case 'cnh_ear': case 'curso_mopp': case 'curso_indivisiveis': case 'brigadista': case 'cipeiro': return sn(c[k]);
       default: return dts.has(k) ? (c[k] ? dataBR(c[k]) : '') : (c[k] ?? ''); } };
   const linhas = cs.map(c => campos.map(([k]) => val(c, k))), cab = campos.map(c => c[1]);
