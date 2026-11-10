@@ -271,11 +271,11 @@ async function plMapaImagem(m, escala = 2, W = 1000, H = 560) {
 // tabela que acompanha o mapa na imagem/PDF
 const plTabMapa = fs => { const c = fs.filter(f => f.posicao_em); if (!c.length) return '';
   const cor = { ok: '#2BB673', div: '#F2994A', nao: '#EB5757', na: '#9AA5B1' };
-  return `<table style="width:100%;border-collapse:collapse;margin-top:10px;font:13px/1.35 Arial,sans-serif;color:#EAF2EE"><thead><tr style="color:#DDA936;font-size:11px;letter-spacing:1px;text-align:left">
-    <th style="padding:6px">FROTA</th><th style="padding:6px">MOTORISTA</th><th style="padding:6px">APONTAMENTO MOTORISTA</th><th style="padding:6px">TELEMETRIA</th><th style="padding:6px">CONFRONTO</th><th style="padding:6px">IGNIÇÃO / MOVIMENTO</th></tr></thead><tbody>
-    ${c.map(f => { const [k, t] = plConfere(f); return `<tr style="border-top:1px solid rgba(255,255,255,.12)"><td style="padding:6px"><b>${esc(f.codigo)}</b><br><span style="color:#9FB8AE">${esc(f.placa || '')}</span></td><td style="padding:6px">${esc(f.motorista || '—')}</td>
-      <td style="padding:6px"><b>${esc(plApont(f))}</b>${f.apont_desde ? `<br><span style="color:#9FB8AE">desde ${dataHoraBR(f.apont_desde)}</span>` : ''}</td><td style="padding:6px">${esc(f.grupo || '—')}</td>
-      <td style="padding:6px"><span style="background:${cor[k]};color:#fff;border-radius:9px;padding:2px 8px;font-weight:700;font-size:11px;white-space:nowrap">${t}</span></td><td style="padding:6px">${esc(plMov(f))}<br><span style="color:#9FB8AE">${esc(f.endereco || f.local_creare || '')}</span></td></tr>`; }).join('')}</tbody></table>`; };
+  return `<table style="width:100%;border-collapse:collapse;margin-top:10px;font:13px/1.35 Arial,sans-serif;color:#EAF2EE"><thead><tr style="color:#DDA936;font-size:11px;letter-spacing:1px;text-align:left;background:transparent">
+    <th style="padding:6px;background:transparent;color:#DDA936;border:0">FROTA</th><th style="padding:6px;background:transparent;color:#DDA936;border:0">MOTORISTA</th><th style="padding:6px;background:transparent;color:#DDA936;border:0">APONTAMENTO MOTORISTA</th><th style="padding:6px;background:transparent;color:#DDA936;border:0">TELEMETRIA</th><th style="padding:6px;background:transparent;color:#DDA936;border:0">CONFRONTO</th><th style="padding:6px;background:transparent;color:#DDA936;border:0">IGNIÇÃO / MOVIMENTO</th></tr></thead><tbody>
+    ${c.map(f => { const [k, t] = plConfere(f); return `<tr style="border-top:1px solid rgba(255,255,255,.12)"><td style="padding:6px;background:transparent;color:#EAF2EE;border:0"><b>${esc(f.codigo)}</b><br><span style="color:#9FB8AE">${esc(f.placa || '')}</span></td><td style="padding:6px;background:transparent;color:#EAF2EE;border:0">${esc(f.motorista || '—')}</td>
+      <td style="padding:6px;background:transparent;color:#EAF2EE;border:0"><b>${esc(plApont(f))}</b>${f.apont_desde ? `<br><span style="color:#9FB8AE">desde ${dataHoraBR(f.apont_desde)}</span>` : ''}</td><td style="padding:6px;background:transparent;color:#EAF2EE;border:0">${esc(f.grupo || '—')}</td>
+      <td style="padding:6px;background:transparent;color:#EAF2EE;border:0"><span style="background:${cor[k]};color:#fff;border-radius:9px;padding:2px 8px;font-weight:700;font-size:11px;white-space:nowrap">${t}</span></td><td style="padding:6px;background:transparent;color:#EAF2EE;border:0">${esc(plMov(f))}<br><span style="color:#9FB8AE">${esc(f.endereco || f.local_creare || '')}</span></td></tr>`; }).join('')}</tbody></table>`; };
 
 rota('/operacao/painel', async tela => {
   if (!document.getElementById('pl-css')) document.head.insertAdjacentHTML('beforeend', plCss);
@@ -378,11 +378,13 @@ rota('/operacao/painel', async tela => {
   // exportações
   const nomeBase = `Painel logístico ${quando.replace(/[\/:]/g, '-').replace(/\s+/g, ' ')}`;
   const imagem = async () => { if (!window.html2canvas) await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js');
-    let foto = null; if (mapa) { try { foto = await plMapaImagem(mapa, 2); } catch (e) { console.warn('mapa', e); } }
+    let foto = null; if (mapa) { try { foto = await plMapaImagem(mapa, 2, 1500, 620); } catch (e) { console.warn('mapa', e); } }
     return html2canvas($('#pl-painel'), { scale: 2.5, useCORS: true, backgroundColor: '#0B1F19', logging: false,
       windowWidth: 1700, width: 1600,
       onclone: d => { const pn = d.getElementById('pl-painel'); if (pn) { pn.style.width = '1600px'; pn.style.maxWidth = 'none'; }
-        const el = d.getElementById('pl-mapa'); if (el && foto) { el.outerHTML = `<img src="${foto}" alt="Mapa" style="width:100%;height:auto;display:block;border-radius:12px;margin-top:10px">${plTabMapa(fs)}`; } } }); };
+        const el = d.getElementById('pl-mapa'); if (el && foto) { const card = el.closest('.pl-c'), gr = pn && pn.querySelector('.pl-grade');
+          el.outerHTML = `<img src="${foto}" alt="Mapa" style="width:100%;height:auto;display:block;border-radius:12px;margin-top:10px">${plTabMapa(fs)}`;
+          if (card && gr) { gr.after(card); card.style.marginTop = '16px'; } } } }); };
   $$('[data-exp]', tela).forEach(b => b.onclick = () => ocupado(b, async () => { try {
     const t = b.dataset.exp;
     if (t === 'png') { const cv = await imagem(); cv.toBlob(bl => baixarArquivo(bl, nomeBase + '.png'), 'image/png'); }
