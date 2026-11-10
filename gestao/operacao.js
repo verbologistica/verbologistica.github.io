@@ -29,7 +29,7 @@ Object.assign(LEI, {
 
 // ===================== Painel do CCO =====================
 rota('/operacao', async tela => {
-  const [vs, st, js, ocs, pend] = await Promise.all([api.listar('viagens', 'ativo=eq.true&status=in.(planejada,em_transito)&select=*,cl:clientes(nome),eq:equipamentos(codigo_frota),m:colaboradores(nome)&order=saida_prevista.nullslast'),
+  const [vs, st, js, ocs, pend] = await Promise.all([api.listar('viagens', 'ativo=eq.true&status=in.(planejada,em_transito)&select=*,cl:clientes(nome),eq:equipamentos(codigo_frota),m:colaboradores!viagens_motorista_id_fkey(nome)&order=saida_prevista.nullslast'),
     api.listar('v_motoristas_status', 'order=nome').catch(() => []), api.listar('v_jornadas', `inicio=gte.${somaDias(hojeISO(), -7)}&order=inicio.desc`).catch(() => []),
     api.listar('ocorrencias_operacionais', 'ativo=eq.true&status=neq.encerrada&select=*,m:colaboradores(nome)&order=data_hora.desc&limit=20').catch(() => []), api.rpc('pendencias_operacao').catch(() => [])]);
   const p = Object.fromEntries(pend.map(x => [x.tipo, Number(x.quantidade)]));
@@ -94,7 +94,7 @@ function ligarAcoesViagem(el, vs) {
 rota('/operacao/viagens', async tela => {
   const sts = pLista('status', 'todas'), st = sts[0], q = (estado.params.get('q') || '').toLowerCase();
   const fV = temTodos(sts) ? '' : filtroOu(sts.map(s => s === 'abertas' ? 'status=in.(planejada,em_transito)' : 'status=eq.' + s));
-  let vs = await api.listar('viagens', `ativo=eq.true${fV ? '&' + fV : ''}&select=*,cl:clientes(nome),eq:equipamentos(codigo_frota),m:colaboradores(nome)&order=saida_prevista.desc.nullslast,criado_em.desc&limit=400`);
+  let vs = await api.listar('viagens', `ativo=eq.true${fV ? '&' + fV : ''}&select=*,cl:clientes(nome),eq:equipamentos(codigo_frota),m:colaboradores!viagens_motorista_id_fkey(nome)&order=saida_prevista.desc.nullslast,criado_em.desc&limit=400`);
   if (q) vs = vs.filter(v => [v.numero, v.origem, v.destino, v.cl?.nome, v.m?.nome, v.eq?.codigo_frota, v.documentos].join(' ').toLowerCase().includes(q));
   tela.innerHTML = `
     <div class="topo"><div><h1>Viagens</h1><p class="sub">${vs.length} viagem(ns) · frete ${brl(vs.reduce((a, v) => a + Number(v.valor_frete || 0), 0))}</p></div>${editaOp() ? '<a class="btn prim" href="#/operacao/viagens/nova">+ Nova viagem</a>' : ''}</div>
@@ -166,7 +166,7 @@ async function formViagem(tela, v = null) {
 rota('/operacao/viagens/nova', tela => formViagem(tela));
 rota('/operacao/viagens/editar/:id', async (tela, id) => formViagem(tela, await api.um('viagens', `id=eq.${id}`)));
 rota('/operacao/viagens/ver/:id', async (tela, id) => {
-  const v = await api.um('viagens', `id=eq.${id}&select=*,cl:clientes(nome),eq:equipamentos(id,codigo_frota,tipo,tipo_outro,marca,modelo,km_atual),m:colaboradores(id,nome),cc:centros_custo(nome)`);
+  const v = await api.um('viagens', `id=eq.${id}&select=*,cl:clientes(nome),eq:equipamentos(id,codigo_frota,tipo,tipo_outro,marca,modelo,km_atual),m:colaboradores!viagens_motorista_id_fkey(id,nome),cc:centros_custo(nome)`);
   if (!v) { tela.innerHTML = '<div class="cartao vazio">Viagem não encontrada.</div>'; return; }
   const [ocs, evs] = await Promise.all([api.listar('ocorrencias_operacionais', `viagem_id=eq.${id}&ativo=eq.true&order=data_hora`).catch(() => []), api.listar('jornada_eventos', `viagem_id=eq.${id}&ativo=eq.true&order=data_hora`).catch(() => [])]);
   const meuCol = await api.rpc('meu_colaborador').catch(() => null);
