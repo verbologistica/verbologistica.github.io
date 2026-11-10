@@ -541,14 +541,16 @@ rota('/operacao/viagens/painel', async tela => {
     <text x="${pl}" y="${H - 8}" font-size="11.5" fill="#DCE8E3">▮ realizadas no dia (verde = bateu a meta · vermelho = abaixo)   ━ meta do dia   ● atingimento acumulado (escala à direita)</text></svg>`;
   const porFrota = Object.values(feitas.reduce((o, v) => { const k = v.eq?.codigo_frota || '—'; (o[k] ||= { frota: k, n: 0, fat: 0 }); o[k].n++; o[k].fat += Number(v.valor_frete || 0); return o; }, {})).sort((a, b) => b.n - a.n);
   const diasMeta = ateHoje.length * (+((dias || [])[0]?.meta && 1) || 1);
-  const card = (cor, t, v, sub = '') => `<div class="pl-c" style="--cor:${cor}"><h3>${t}</h3><div class="pl-n" style="font-size:40px">${v}</div>${sub ? `<div class="pl-pct" style="letter-spacing:.5px">${sub}</div>` : ''}</div>`;
+  const card = (cor, t, v, sub = '') => `<div class="pl-c" style="--cor:${cor}"><h3>${t}</h3><div class="pl-n" style="font-size:clamp(22px,2vw,34px);white-space:nowrap;letter-spacing:-.5px">${v}</div>${sub ? `<div class="pl-pct" style="letter-spacing:.3px;text-transform:none">${sub}</div>` : ''}</div>`;
   tela.innerHTML = `<div class="pl-wrap">
     <div class="topo"><div><h1>Painel de viagens</h1><p class="sub">Faturamento e meta · 1 viagem por caminhão em operação por dia · viagem conta no dia da entrega</p></div>
-      <div class="acoes"><a class="btn" href="#/operacao/viagens">← Viagens</a><button class="btn" id="vp-xls">Excel</button></div></div>
+      <div class="acoes"><a class="btn" href="#/operacao/viagens">← Viagens</a><button class="btn" data-vexp="png">Imagem (PNG)</button><button class="btn" data-vexp="pdf">PDF</button><button class="btn" data-vexp="html">HTML</button><button class="btn" id="vp-xls">Excel</button></div></div>
     <form class="filtros pl-barra" id="vp-f"><label>De <input type="date" name="de" value="${ini}"></label><label>Até <input type="date" name="ate" value="${fim}"></label><button class="btn prim">Ver</button>
       <button type="button" class="btn" data-per="mes">Este mês</button><button type="button" class="btn" data-per="7">Últimos 7 dias</button></form>
-    <div class="pl-painel">
-      <div class="pl-l4" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr))">
+    <div id="vp-exp"><div class="pl-painel">
+      <div class="pl-topo" style="margin-bottom:14px"><img src="logo.png" alt="Verbo"><div class="pl-tit"><h1>PAINEL DE <b>VIAGENS</b> · <em>FATURAMENTO E META</em></h1><p>1 VIAGEM POR CAMINHÃO EM OPERAÇÃO POR DIA</p></div>
+        <div class="pl-hora"><small>PERÍODO</small>${dataBR(ini)} a ${dataBR(fim)}</div></div>
+      <div class="pl-l4" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
         ${card('#2BB673', 'Faturamento realizado', brl(fat), `${feitas.length} viagem(ns) entregue(s)`)}${card('#56A8E8', 'Em aberto', brl(fatAberto), `${abertas.length} viagem(ns) programada(s) / em trânsito`)}
         ${card(ating >= 100 ? '#2BB673' : ating >= 80 ? '#DDA936' : '#EB5757', 'Atingimento da meta', ating + '%', `${feitas.length} de ${metaAteHoje} viagens até hoje`)}
         ${card('#DDA936', 'Meta do período', metaPeriodo, `${porDia.length} dia(s) · caminhões em operação × 1`)}${card('#9B7BEA', 'Ticket médio', brl(ticket), 'por viagem entregue')}</div>
@@ -556,7 +558,7 @@ rota('/operacao/viagens/painel', async tela => {
     <div class="cartao"><h2>Por dia</h2><div class="tabela-wrap"><table class="tabela compacta"><thead><tr><th>Dia</th><th>Caminhões em operação</th><th>Meta</th><th>Realizadas</th><th>% do dia</th><th>Acumulado</th><th>Faturamento</th></tr></thead><tbody>
       ${porDia.map(d => `<tr${d.dia > hoje ? ' class="muted"' : ''}><td>${dataBR(d.dia)}</td><td>${d.caminhoes} <span class="muted" title="Fonte">${d.fonte === 'cadastro atual' ? '*' : ''}</span></td><td>${d.meta}</td><td><b>${d.feitas}</b></td>
         <td>${+d.meta ? `<span class="tag ${d.feitas >= d.meta ? 'verde' : 'vermelho'}">${Math.round(d.feitas * 100 / d.meta)}%</span>` : '—'}</td><td>${d.acum != null ? `${d.acum} / ${d.acumMeta} (${d.pct}%)` : ''}</td><td>${brl(d.fat)}</td></tr>`).join('')}</tbody></table></div>
-      <p class="muted">* Dia sem histórico do Painel logístico: usa os cavalos atrelados e em operação hoje. A partir de agora o histórico é gravado a cada hora.</p></div>
+      <p class="muted">* Dia sem histórico do Painel logístico: usa os cavalos atrelados e em operação hoje. A partir de agora o histórico é gravado a cada hora.</p></div></div>
     <div class="cartao"><h2>Por caminhão</h2>${porFrota.length ? `<div class="tabela-wrap"><table class="tabela compacta"><thead><tr><th>Frota</th><th>Viagens entregues</th><th>Faturamento</th></tr></thead><tbody>
       ${porFrota.map(f => `<tr><td><b>${esc(f.frota)}</b></td><td>${f.n}</td><td>${brl(f.fat)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="vazio">Nenhuma viagem entregue no período.</div>'}</div>
     <div class="cartao"><h2>Viagens do período (${vs.length})</h2><div class="tabela-wrap"><table class="tabela compacta"><thead><tr><th>Viagem</th><th>Situação</th><th>Frota</th><th>Motorista</th><th>Origem → destino</th><th>Saída</th><th>Entrega</th><th>NF / CT-e</th><th>Valor</th></tr></thead><tbody>
@@ -569,6 +571,16 @@ rota('/operacao/viagens/painel', async tela => {
   $$('[data-per]', f).forEach(b => b.onclick = () => { const h = hojeISO(); const de = b.dataset.per === 'mes' ? h.slice(0, 8) + '01' : new Date(Date.now() - 6 * 864e5).toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
     location.hash = `#/operacao/viagens/painel?de=${de}&ate=${h}`; });
   $$('[data-v]', tela).forEach(tr => tr.onclick = () => { location.hash = '#/operacao/viagens/ver/' + tr.dataset.v; });
+  const nomeV = `Painel de viagens ${dataBR(ini).replace(/\//g, '-')} a ${dataBR(fim).replace(/\//g, '-')}`;
+  const imagemV = async () => { if (!window.html2canvas) await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js');
+    return html2canvas($('#vp-exp'), { scale: 2, useCORS: true, backgroundColor: '#F3F5F4', logging: false, windowWidth: 1700, width: 1600,
+      onclone: d => { const el = d.getElementById('vp-exp'); if (el) { el.style.width = '1600px'; el.style.padding = '16px'; el.style.background = '#F3F5F4'; } } }); };
+  $$('[data-vexp]', tela).forEach(b => b.onclick = () => ocupado(b, async () => { try { const t = b.dataset.vexp, cv = await imagemV();
+    if (t === 'png') cv.toBlob(bl => baixarArquivo(bl, nomeV + '.png'), 'image/png');
+    else if (t === 'pdf') { await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'); const pdf = new jspdf.jsPDF({ orientation: cv.width > cv.height ? 'landscape' : 'portrait', unit: 'px', format: [cv.width, cv.height] });
+      pdf.addImage(cv.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, cv.width, cv.height); pdf.save(nomeV + '.pdf'); }
+    else baixarArquivo(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(nomeV)}</title><style>body{margin:0;background:#F3F5F4;padding:16px}img{max-width:100%;display:block;margin:0 auto}</style></head><body><img src="${cv.toDataURL('image/png')}" alt="Painel de viagens"></body></html>`, nomeV + '.html', 'text/html');
+  } catch (err) { falha(err); } }));
   $('#vp-xls').onclick = () => ocupado($('#vp-xls'), async () => { await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'); const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Painel de viagens', `${dataBR(ini)} a ${dataBR(fim)}`], [], ['Faturamento realizado', fat], ['Em aberto', fatAberto], ['Viagens entregues', feitas.length], ['Meta até hoje', metaAteHoje], ['Atingimento', ating / 100], ['Meta do período', metaPeriodo], ['Ticket médio', ticket]]), 'Resumo');
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(porDia.map(d => ({ Dia: dataBR(d.dia), 'Caminhões em operação': d.caminhoes, Meta: d.meta, Realizadas: d.feitas, '% do dia': d.meta ? d.feitas / d.meta : '', 'Acumulado realizado': d.acum ?? '', 'Acumulado meta': d.acumMeta ?? '', Faturamento: d.fat }))), 'Por dia');
