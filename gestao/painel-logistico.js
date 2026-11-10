@@ -57,6 +57,9 @@ const plCss = `<style id="pl-css">
 .pl-donut{display:flex;align-items:center;gap:14px;margin-top:10px;flex-wrap:wrap}.pl-donut svg{width:150px;height:150px;flex:none}.pl-donut ul{list-style:none;margin:0;padding:0;font-size:12px;flex:1;min-width:140px}
 .pl-donut li{display:flex;align-items:center;gap:6px;margin:3px 0}.pl-donut li i{width:10px;height:10px;border-radius:3px;flex:none}.pl-donut li b{margin-left:auto}
 body.pl-largo .conteudo{max-width:none}.pl-abas{margin:4px 0 12px}
+.pl-hub{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin:4px 0 12px}.pl-hub .pl-abas{margin:0;flex:1;min-width:0}
+.pl-chk{display:flex;align-items:center;gap:8px;font-weight:600;margin:6px 0;cursor:pointer}.pl-chk input{width:18px;height:18px;min-height:0;margin:0;flex:none;accent-color:#0b6b4f}
+.pl-gerando{position:fixed;inset:0;z-index:9999;background:rgba(6,20,16,.72);display:flex;align-items:center;justify-content:center}.pl-gerando div{background:#fff;border-radius:14px;padding:22px 28px;display:flex;flex-direction:column;gap:6px;min-width:260px;text-align:center;box-shadow:0 10px 40px rgba(0,0,0,.3)}.pl-gerando b{font-size:17px}.pl-gerando span{color:#5F7A70}
 .pl-cam{position:relative}.pl-cam svg{display:block;filter:drop-shadow(0 2px 3px rgba(0,0,0,.35))}.pl-cam .pl-rot{position:absolute;top:40px;left:50%;transform:translateX(-50%)}
 .pl-tt{padding:0;border-radius:10px;border:0;box-shadow:0 6px 18px rgba(0,0,0,.25)}.pl-dica{padding:9px 11px;font:12px/1.45 Arial,sans-serif;color:#1d2b27;min-width:220px;max-width:300px;white-space:normal}.pl-dica b{color:#0B1F19}.pl-dica svg{width:12px;height:12px;vertical-align:-2px;margin-right:4px}.pl-dica i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px}.pl-dica-ap{margin:5px 0;padding:5px 7px;background:#F3F6F4;border-left:3px solid #DDA936;border-radius:4px}.pl-dica-ap small{display:block;font-size:10px;color:#5F7A70;text-transform:uppercase;letter-spacing:.4px}.pl-dica-ap span{color:#5F7A70;font-size:11px}
 .pl-rot{background:#0B1F19;border:1px solid var(--pl-ouro);color:#fff;font-weight:700;font-size:11px;padding:2px 6px;border-radius:6px;white-space:nowrap}
@@ -335,8 +338,53 @@ async function plComposicao(tela, grupo, ed) {
     if (!r) return; try { await api.rpc('frota_motivo_salvar', { p_eq: x.id, p_motivo: r.motivo_outro || r.motivo, p_obs: r.obs }); aviso('Motivo salvo.'); navegar(); } catch (err) { falha(err); } });
 }
 
-const plAbas = aba => `<div class="abas pl-abas">${[['', 'Conjuntos · status da frota'], ['cavalos', 'Cavalos'], ['carretas', 'Carretas']].map(([k, t]) =>
-  `<a href="#/operacao/painel${k ? '?aba=' + k : ''}" class="${aba === k ? 'ativa' : ''}">${t}</a>`).join('')}</div>`;
+// ---------- Central de painéis: todos os painéis num menu só, cada um na sua guia; exportação/envio de todos juntos ----------
+const PL_HUB = [['logistico', 'Status da frota', '#/operacao/painel', 1], ['cavalos', 'Cavalos', '#/operacao/painel?aba=cavalos', 0], ['carretas', 'Carretas', '#/operacao/painel?aba=carretas', 0],
+  ['viagens', 'Viagens e meta', '#/operacao/viagens/painel', 1], ['operacional', 'Gestão operacional', '#/operacao/gestao', 1], ['seguranca', 'Segurança na condução', '#/operacao/seguranca', 1]];
+const plLargo = () => { document.body.classList.add('pl-largo'); window.addEventListener('hashchange', () => { if (!/^#\/operacao\/(painel|gestao|seguranca|viagens\/painel)/.test(location.hash)) document.body.classList.remove('pl-largo'); }, { once: true }); };
+const plHubOk = k => k !== 'seguranca' || typeof ROTAS['/operacao/seguranca'] === 'function';
+const plAbas = aba => { const k = { '': 'logistico' }[aba] ?? aba;
+  return `<div class="pl-hub"><div class="abas pl-abas">${PL_HUB.filter(h => plHubOk(h[0])).map(([c, t, h]) => `<a href="${h}" class="${k === c ? 'ativa' : ''}">${t}</a>`).join('')}</div>
+    <button type="button" class="btn prim" data-hubexp title="Gera todos os painéis de uma vez: um PDF, imagens ou envio pelo WhatsApp">Exportar / enviar painéis</button></div>`; };
+document.addEventListener('click', e => { if (e.target.closest('[data-hubexp]')) plHubExportar(); });
+const plEspera = (cond, ms = 60000) => new Promise((ok, er) => { const t0 = Date.now(); const f = () => cond() ? ok() : Date.now() - t0 > ms ? er(new Error('O painel demorou para carregar.')) : setTimeout(f, 300); f(); });
+const plCanvasFile = (cv, nome) => new Promise(ok => cv.toBlob(b => ok(new File([b], nome.replace(/[\\/:*?"<>|]/g, '-') + '.png', { type: 'image/png' })), 'image/png'));
+async function plHubExportar() {
+  const hj = hojeISO(), d7 = new Date(Date.now() - 6 * 864e5).toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' }), qs = new URLSearchParams(location.hash.split('?')[1] || '');
+  const ks = PL_HUB.filter(h => h[3] && plHubOk(h[0]));
+  const r = await modal(`<form><h2>Exportar / enviar painéis</h2><p class="muted">Gera os painéis escolhidos, um depois do outro, e junta tudo no formato escolhido. O Status da frota sai com a situação de agora (com os cards de cavalos e carretas); os demais usam o período abaixo.</p><div class="form">
+    <div class="campo largo"><span>Painéis</span>${ks.map(h => `<label class="pl-chk"><input type="checkbox" name="k_${h[0]}" checked> ${h[1]}</label>`).join('')}</div>
+    <label class="campo">De<input type="date" name="de" value="${qs.get('de') || d7}" required></label><label class="campo">Até<input type="date" name="ate" value="${qs.get('ate') || hj}" required></label>
+    <div class="campo largo"><span>Formato</span><label class="pl-chk"><input type="radio" name="fmt" value="whats" checked> Enviar pelo WhatsApp (imagens)</label><label class="pl-chk"><input type="radio" name="fmt" value="pdf"> PDF único (uma página por painel)</label><label class="pl-chk"><input type="radio" name="fmt" value="png"> Imagens PNG (arquivo .zip)</label></div></div>
+    <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Gerar</button></div></form>`);
+  if (!r) return; const sel = ks.filter(h => r['k_' + h[0]]); if (!sel.length) return aviso('Escolha ao menos um painel.', true);
+  const volta = location.hash, ov = document.createElement('div'); ov.className = 'pl-gerando'; document.body.append(ov); const imgs = [];
+  try { for (const [i, [k, t, h]] of sel.entries()) { ov.innerHTML = `<div><b>Gerando ${i + 1} de ${sel.length}</b><span>${t}</span></div>`;
+      window.PL_CAP = null; const url = k === 'logistico' ? h : `${h}?de=${r.de}&ate=${r.ate}`;
+      if (location.hash === url) navegar(); else location.hash = url;
+      await plEspera(() => window.PL_CAP && window.PL_CAP.k === k); await new Promise(ok => setTimeout(ok, k === 'logistico' ? 3000 : 800));
+      imgs.push({ nome: window.PL_CAP.nome, cv: await window.PL_CAP.imagem() }); }
+  } catch (err) { ov.remove(); location.hash = volta; return falha(err); }
+  ov.remove(); location.hash = volta;
+  const per = `${dataBR(r.de)} a ${dataBR(r.ate)}`, titulo = `Painéis Verbo · ${per}`;
+  if (r.fmt === 'pdf') { await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'); let pdf;
+    imgs.forEach(({ cv }, i) => { const f = [cv.width, cv.height], o = cv.width > cv.height ? 'landscape' : 'portrait';
+      if (!i) pdf = new jspdf.jsPDF({ orientation: o, unit: 'px', format: f }); else pdf.addPage(f, o); pdf.addImage(cv.toDataURL('image/jpeg', 0.9), 'JPEG', 0, 0, cv.width, cv.height); });
+    pdf.save(titulo.replace(/\//g, '-') + '.pdf'); return; }
+  const files = await Promise.all(imgs.map(x => plCanvasFile(x.cv, x.nome)));
+  const zip = async () => { await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js'); const z = new JSZip(); files.forEach(f => z.file(f.name, f));
+    baixarArquivo(await z.generateAsync({ type: 'blob' }), titulo.replace(/\//g, '-') + '.zip'); };
+  if (r.fmt === 'png') return zip();
+  const pode = navigator.canShare && navigator.canShare({ files });
+  const r2 = await modal(`<form><h2>Painéis prontos</h2><p>${files.length} ${files.length > 1 ? 'imagens geradas' : 'imagem gerada'}: ${imgs.map(x => esc(x.nome)).join(' · ')}.</p>
+    <p class="muted">${pode ? 'Clique em Enviar e escolha o WhatsApp e o contato ou grupo na janela de compartilhamento.' : 'Este navegador não deixa o sistema entregar imagens direto ao WhatsApp. Vou baixar as imagens (.zip) e abrir o WhatsApp com a mensagem pronta; é só anexar as imagens.'}</p>
+    <div class="rodape"><button type="button" class="btn" data-fechar>Fechar</button><button type="button" class="btn" value="zip">Só baixar</button><button class="btn prim" value="enviar">${pode ? 'Enviar' : 'Baixar e abrir o WhatsApp'}</button></div></form>`,
+    { aoAbrir: m => { $$('button[value]', m).forEach(b => b.onclick = async e => { e.preventDefault();
+      if (b.value === 'zip') return zip();
+      if (pode) { try { await navigator.share({ files, title: titulo, text: titulo }); } catch (er) { if (er.name !== 'AbortError') falha(er); } return; }
+      await zip(); window.open('https://wa.me/?text=' + encodeURIComponent(titulo + ' (imagens em anexo)'), '_blank', 'noopener'); }); } });
+  void r2;
+}
 async function plCarregarPontos() {
   const ps = await api.listar('mapa_pontos', 'ativo=is.true&order=ordem,nome').catch(() => null);
   if (ps && ps.length) PL_PONTOS.splice(0, PL_PONTOS.length, ...ps.map(x => [x.nome, +x.lat, +x.lng, x.tipo, x.id]));
@@ -344,7 +392,7 @@ async function plCarregarPontos() {
 }
 rota('/operacao/painel', async tela => {
   if (!document.getElementById('pl-css')) document.head.insertAdjacentHTML('beforeend', plCss);
-  document.body.classList.add('pl-largo'); window.addEventListener('hashchange', () => { if (!location.hash.startsWith('#/operacao/painel')) document.body.classList.remove('pl-largo'); }, { once: true });
+  plLargo();
   const P = estado.params, modo = P.get('modo') || 'agora', em = P.get('em') || '', ini = P.get('de') || '', fim = P.get('ate') || '';
   const ed = tem('administrador', 'operacao'), aba = P.get('aba') || '';
   if (aba === 'cavalos' || aba === 'carretas') return plComposicao(tela, aba === 'cavalos' ? 'cavalo' : 'carreta', ed);
@@ -367,7 +415,7 @@ rota('/operacao/painel', async tela => {
   tela.innerHTML = `<div class="pl-wrap">
     <div class="topo"><div><h1>Painel logístico</h1><p class="sub">Status da frota hora a hora · telemetria Creare + ajustes da torre</p></div>
       <div class="acoes">${ed ? '<button class="btn" id="pl-pontos" title="Origem (fazenda), apoio e destino do mapa">Pontos do mapa</button>' : ''}<button class="btn" data-exp="png">Imagem (PNG)</button><button class="btn" data-exp="pdf">PDF</button><button class="btn" data-exp="html">HTML</button><button class="btn" data-exp="xlsx">Excel</button>${ed ? '<button class="btn" id="pl-kml" title="Importar cercas/áreas de um arquivo KML (Creare, Google Earth)">Cercas (KML)</button>' : ''}</div></div>
-    ${plAbas('')}
+    ${plAbas('logistico')}
     <form class="filtros pl-barra" id="pl-f"><div class="pl-modo"><select name="modo"><option value="agora" ${modo === 'agora' ? 'selected' : ''}>Agora</option><option value="em" ${modo === 'em' ? 'selected' : ''}>Em uma data e hora</option><option value="periodo" ${modo === 'periodo' ? 'selected' : ''}>Período (de… até…)</option></select></div>
       <input type="datetime-local" name="em" value="${esc(em || agoraLocal)}" ${modo === 'em' ? '' : 'hidden'} aria-label="Data e hora">
       <input type="datetime-local" name="de" value="${esc(ini || ontemLocal)}" ${modo === 'periodo' ? '' : 'hidden'} aria-label="De"><input type="datetime-local" name="ate" value="${esc(fim || agoraLocal)}" ${modo === 'periodo' ? '' : 'hidden'} aria-label="Até">
@@ -479,6 +527,7 @@ rota('/operacao/painel', async tela => {
           el.outerHTML = `<img src="${foto}" alt="Mapa" style="width:100%;height:auto;display:block;border-radius:12px;margin-top:10px">${plTabMapa(fs)}`;
           if (card && gr) { gr.after(card); card.style.marginTop = '16px'; } }
         if (pn && comp) pn.insertAdjacentHTML('beforeend', comp); } }); };
+  window.PL_CAP = { k: 'logistico', nome: nomeBase, imagem };
   $$('[data-exp]', tela).forEach(b => b.onclick = () => ocupado(b, async () => { try {
     const t = b.dataset.exp;
     if (t === 'png') { const cv = await imagem(); cv.toBlob(bl => baixarArquivo(bl, nomeBase + '.png'), 'image/png'); }
@@ -542,11 +591,13 @@ rota('/operacao/viagens/painel', async tela => {
   const porFrota = Object.values(feitas.reduce((o, v) => { const k = v.eq?.codigo_frota || '—'; (o[k] ||= { frota: k, n: 0, fat: 0 }); o[k].n++; o[k].fat += Number(v.valor_frete || 0); return o; }, {})).sort((a, b) => b.n - a.n);
   const diasMeta = ateHoje.length * (+((dias || [])[0]?.meta && 1) || 1);
   const card = (cor, t, v, sub = '') => `<div class="pl-c" style="--cor:${cor}"><h3>${t}</h3><div class="pl-n" style="font-size:clamp(22px,2vw,34px);white-space:nowrap;letter-spacing:-.5px">${v}</div>${sub ? `<div class="pl-pct" style="letter-spacing:.3px;text-transform:none">${sub}</div>` : ''}</div>`;
+  plLargo();
   tela.innerHTML = `<div class="pl-wrap">
     <div class="topo"><div><h1>Painel de viagens</h1><p class="sub">Faturamento e meta · 1 viagem por caminhão em operação por dia · viagem conta no dia da entrega</p></div>
       <div class="acoes"><a class="btn" href="#/operacao/viagens">← Viagens</a><button class="btn" data-vexp="png">Imagem (PNG)</button><button class="btn" data-vexp="pdf">PDF</button><button class="btn" data-vexp="html">HTML</button><button class="btn" id="vp-xls">Excel</button></div></div>
     <form class="filtros pl-barra" id="vp-f"><label>De <input type="date" name="de" value="${ini}"></label><label>Até <input type="date" name="ate" value="${fim}"></label><button class="btn prim">Ver</button>
       <button type="button" class="btn" data-per="mes">Este mês</button><button type="button" class="btn" data-per="7">Últimos 7 dias</button></form>
+    ${plAbas('viagens')}
     <div id="vp-exp"><div class="pl-painel">
       <div class="pl-topo" style="margin-bottom:14px"><img src="logo.png" alt="Verbo"><div class="pl-tit"><h1>PAINEL DE <b>VIAGENS</b></h1><p>FATURAMENTO E META · 1 VIAGEM POR CAMINHÃO/DIA</p></div>
         <div class="pl-hora"><small>PERÍODO</small>${dataBR(ini)} a ${dataBR(fim)}</div></div>
@@ -577,6 +628,7 @@ rota('/operacao/viagens/painel', async tela => {
       onclone: d => { const el = d.getElementById('vp-exp'); if (!el) return; el.style.width = '1600px'; el.style.padding = '16px'; el.style.background = '#F3F5F4';
         el.querySelectorAll('.exportar,.hbar').forEach(x => x.remove());
         el.querySelectorAll('svg[viewBox]').forEach(sv => { const [, , w, h] = sv.getAttribute('viewBox').split(' ').map(Number); if (w > 300) { sv.setAttribute('width', 1520); sv.setAttribute('height', Math.round(1520 * h / w)); sv.style.width = '1520px'; sv.style.height = Math.round(1520 * h / w) + 'px'; } }); } }); };
+  window.PL_CAP = { k: 'viagens', nome: nomeV, imagem: imagemV };
   $$('[data-vexp]', tela).forEach(b => b.onclick = () => ocupado(b, async () => { try { const t = b.dataset.vexp, cv = await imagemV();
     if (t === 'png') cv.toBlob(bl => baixarArquivo(bl, nomeV + '.png'), 'image/png');
     else if (t === 'pdf') { await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'); const pdf = new jspdf.jsPDF({ orientation: cv.width > cv.height ? 'landscape' : 'portrait', unit: 'px', format: [cv.width, cv.height] });
@@ -600,12 +652,12 @@ const GO_CAT = { deslocamento: ['Deslocamento', '#56A8E8'], fila_carregamento: [
 const goH = h => { const m = Math.round((+h || 0) * 60); return `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}`; };
 rota('/operacao/gestao', async tela => {
   if (!document.getElementById('pl-css')) document.head.insertAdjacentHTML('beforeend', plCss);
-  document.body.classList.add('pl-largo'); window.addEventListener('hashchange', () => { if (!location.hash.startsWith('#/operacao/painel') && !location.hash.startsWith('#/operacao/gestao')) document.body.classList.remove('pl-largo'); }, { once: true });
+  plLargo();
   const P = estado.params, hoje = hojeISO(), ini = P.get('de') || new Date(Date.now() - 6 * 864e5).toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' }), fim = P.get('ate') || hoje;
   let g, ult;
   try { [g, ult] = await Promise.all([api.rpc('gestao_operacional', { p_ini: new Date(ini + 'T00:00:00').toISOString(), p_fim: new Date(fim + 'T23:59:59').toISOString() }),
     api.listar('creare_apontamentos', 'select=inicio,importado_em&order=inicio.desc&limit=1').catch(() => [])]); } catch (err) { falha(err); return; }
-  g = g || {}; const pc = g.por_categoria || {}, tot = Object.values(pc).reduce((t, v) => t + +v, 0) || 0, de = g.deslocamento || {};
+  g = g || {}; const op = g.operacoes || {}, pc = g.por_categoria || {}, tot = Object.values(pc).reduce((t, v) => t + +v, 0) || 0, de = g.deslocamento || {};
   const fila = (+pc.fila_carregamento || 0) + (+pc.fila_descarga || 0) + (+pc.fila_balanca || 0);
   const pctV = (+de.vazio_km + +de.carregado_km) ? Math.round(+de.vazio_km * 100 / (+de.vazio_km + +de.carregado_km)) : 0;
   const card = (cor, t, v, sub = '') => `<div class="pl-c" style="--cor:${cor}"><h3>${t}</h3><div class="pl-n" style="font-size:clamp(22px,2vw,34px);white-space:nowrap">${v}</div>${sub ? `<div class="pl-pct" style="text-transform:none;letter-spacing:.3px">${sub}</div>` : ''}</div>`;
@@ -623,11 +675,12 @@ rota('/operacao/gestao', async tela => {
     <form class="filtros pl-barra" id="go-f"><label>De <input type="date" name="de" value="${ini}"></label><label>Até <input type="date" name="ate" value="${fim}"></label><button class="btn prim">Ver</button>
       <button type="button" class="btn" data-per="1">Ontem</button><button type="button" class="btn" data-per="7">Últimos 7 dias</button><button type="button" class="btn" data-per="mes">Este mês</button>
       <span class="muted">${ult?.[0] ? 'Apontamentos até ' + dataHoraBR(ult[0].inicio) + ' · importado ' + dataHoraBR(ult[0].importado_em) : 'Sem apontamentos importados'}</span></form>
+    ${plAbas('operacional')}
     <div id="go-exp"><div class="pl-painel">
       <div class="pl-topo" style="margin-bottom:14px"><img src="logo.png" alt="Verbo"><div class="pl-tit"><h1>GESTÃO <b>OPERACIONAL</b></h1><p>APONTAMENTOS DOS MOTORISTAS · CREARE</p></div><div class="pl-hora"><small>PERÍODO</small>${dataBR(ini)} a ${dataBR(fim)}</div></div>
       <div class="pl-l4" style="grid-template-columns:repeat(auto-fit,minmax(190px,1fr))">
-        ${card('#2BB673', 'Ciclos completos', (g.ciclos || {}).qtd || 0, `ciclo médio ${goH((g.ciclos || {}).medio_h)}`)}
-        ${card('#4DD0E1', 'Descargas', (g.por_frota || []).reduce((t, f) => t + (+f.descargas || 0), 0), 'apontamentos de descarregamento')}
+        ${card('#4DD0E1', 'Viagens (descargas)', op.descargas || 0, `${op.viagens_sistema ?? 0} lançadas no sistema${(op.viagens_sistema ?? 0) !== (op.descargas || 0) ? ' · <b style="color:#F2994A">conferir</b>' : ' · confere'} · ${op.carregamentos || 0} carregamentos`)}
+        ${card('#2BB673', 'Ciclo médio', goH((g.ciclos || {}).medio_h), `${(g.ciclos || {}).qtd || 0} ciclos completos (carga → próxima carga)`)}
         ${card('#E2B93B', 'Tempo em filas', goH(fila), 'carregamento + balança + descarga')}
         ${card('#F2994A', 'Aguardando documento', goH(pc.aguardando_documento), tot ? Math.round((+pc.aguardando_documento || 0) * 100 / tot) + '% do tempo apontado' : '')}
         ${card('#D64545', 'Não apontado', goH(pc.nao_apontado), tot ? Math.round((+pc.nao_apontado || 0) * 100 / tot) + '% do tempo' : '')}
@@ -650,9 +703,11 @@ rota('/operacao/gestao', async tela => {
   const dia = d => new Date(Date.now() - d * 864e5).toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
   $$('[data-per]', f).forEach(b => b.onclick = () => { const p = b.dataset.per; const de = p === 'mes' ? hoje.slice(0, 8) + '01' : p === '1' ? dia(1) : dia(6), ate = p === '1' ? dia(1) : hoje; location.hash = `#/operacao/gestao?de=${de}&ate=${ate}`; });
   const nome = `Gestão operacional ${dataBR(ini).replace(/\//g, '-')} a ${dataBR(fim).replace(/\//g, '-')}`;
-  $$('[data-gexp]', tela).forEach(b => b.onclick = () => ocupado(b, async () => { try { if (!window.html2canvas) await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js');
-    const cv = await html2canvas($('#go-exp'), { scale: 2, useCORS: true, backgroundColor: '#F3F5F4', logging: false, windowWidth: 1700, width: 1600,
-      onclone: d => { const el = d.getElementById('go-exp'); if (el) { el.style.width = '1600px'; el.style.padding = '16px'; el.querySelectorAll('.exportar,.hbar').forEach(x => x.remove()); } } });
+  const imagemG = async () => { if (!window.html2canvas) await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js');
+    return html2canvas($('#go-exp'), { scale: 2, useCORS: true, backgroundColor: '#F3F5F4', logging: false, windowWidth: 1700, width: 1600,
+      onclone: d => { const el = d.getElementById('go-exp'); if (el) { el.style.width = '1600px'; el.style.padding = '16px'; el.querySelectorAll('.exportar,.hbar').forEach(x => x.remove()); } } }); };
+  window.PL_CAP = { k: 'operacional', nome, imagem: imagemG };
+  $$('[data-gexp]', tela).forEach(b => b.onclick = () => ocupado(b, async () => { try { const cv = await imagemG();
     if (b.dataset.gexp === 'png') cv.toBlob(bl => baixarArquivo(bl, nome + '.png'), 'image/png');
     else { await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'); const pdf = new jspdf.jsPDF({ orientation: 'portrait', unit: 'px', format: [cv.width, cv.height] }); pdf.addImage(cv.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, cv.width, cv.height); pdf.save(nome + '.pdf'); }
   } catch (err) { falha(err); } }));
