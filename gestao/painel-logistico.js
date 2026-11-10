@@ -39,6 +39,7 @@ const plCss = `<style id="pl-css">
 .pl-c h3{display:flex;align-items:center;gap:10px;margin:0;font-size:13.5px;letter-spacing:1.6px;font-weight:700;color:#fff;text-transform:uppercase}.pl-c h3 svg{width:20px;height:20px;color:var(--cor,#2BB673);flex:none}
 .pl-n{font-size:46px;font-weight:800;line-height:1;margin-top:12px;color:#fff}.pl-c.grande .pl-n{font-size:58px}
 .pl-grupo{border:1px solid rgba(255,255,255,.06);border-radius:16px;padding:12px;background:rgba(255,255,255,.02)}.pl-grupo>h4{margin:0 0 10px 4px;font-size:12.5px;letter-spacing:3px;color:var(--pl-ouro);font-weight:700}
+.pl-l4 .pl-c h3{font-size:11.5px;letter-spacing:.6px;gap:6px}.pl-l4 .pl-c h3 svg{width:16px;height:16px}.pl-l4 .pl-c{padding:12px 10px 12px 14px}
 .pl-l2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.pl-l4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
 .pl-l2x{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px}.pl-mini{display:flex;flex-direction:column;gap:8px}
 .pl-m{display:flex;align-items:center;gap:10px;background:var(--pl-card);border:1px solid rgba(255,255,255,.07);border-left:3px solid var(--cor,#9FB8AE);border-radius:10px;padding:9px 12px;font-size:12px;font-weight:700;letter-spacing:1px}
@@ -108,7 +109,8 @@ function plHtml(fs, c, quando, per) {
 async function plMapa(el, fs) {
   if (!window.L) { document.head.insertAdjacentHTML('beforeend', '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">'); await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js'); }
   const m = L.map(el, { zoomControl: true, attributionControl: false, preferCanvas: false });
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { subdomains: 'abcd', maxZoom: 18, crossOrigin: true }).addTo(m);
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', { maxZoom: 16, crossOrigin: true }).addTo(m);
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}', { maxZoom: 16, crossOrigin: true, opacity: .8 }).addTo(m);
   const pts = PL_PONTOS.map(p => [p[1], p[2]]);
   L.polyline(pts, { color: '#DDA936', weight: 3, opacity: .85, dashArray: '8 8' }).addTo(m);
   PL_PONTOS.forEach(([n, la, lo, t]) => L.circleMarker([la, lo], { radius: 7, color: '#0B1F19', weight: 2, fillColor: t === 'apoio' ? '#fff' : t === 'origem' ? '#DDA936' : '#F2C94C', fillOpacity: 1 }).bindTooltip(n).addTo(m));
