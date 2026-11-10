@@ -548,7 +548,7 @@ rota('/operacao/viagens/painel', async tela => {
     <form class="filtros pl-barra" id="vp-f"><label>De <input type="date" name="de" value="${ini}"></label><label>Até <input type="date" name="ate" value="${fim}"></label><button class="btn prim">Ver</button>
       <button type="button" class="btn" data-per="mes">Este mês</button><button type="button" class="btn" data-per="7">Últimos 7 dias</button></form>
     <div id="vp-exp"><div class="pl-painel">
-      <div class="pl-topo" style="margin-bottom:14px"><img src="logo.png" alt="Verbo"><div class="pl-tit"><h1>PAINEL DE <b>VIAGENS</b> · <em>FATURAMENTO E META</em></h1><p>1 VIAGEM POR CAMINHÃO EM OPERAÇÃO POR DIA</p></div>
+      <div class="pl-topo" style="margin-bottom:14px"><img src="logo.png" alt="Verbo"><div class="pl-tit"><h1>PAINEL DE <b>VIAGENS</b></h1><p>FATURAMENTO E META · 1 VIAGEM POR CAMINHÃO/DIA</p></div>
         <div class="pl-hora"><small>PERÍODO</small>${dataBR(ini)} a ${dataBR(fim)}</div></div>
       <div class="pl-l4" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
         ${card('#2BB673', 'Faturamento realizado', brl(fat), `${feitas.length} viagem(ns) entregue(s)`)}${card('#56A8E8', 'Em aberto', brl(fatAberto), `${abertas.length} viagem(ns) programada(s) / em trânsito`)}
@@ -558,13 +558,13 @@ rota('/operacao/viagens/painel', async tela => {
     <div class="cartao"><h2>Por dia</h2><div class="tabela-wrap"><table class="tabela compacta"><thead><tr><th>Dia</th><th>Caminhões em operação</th><th>Meta</th><th>Realizadas</th><th>% do dia</th><th>Acumulado</th><th>Faturamento</th></tr></thead><tbody>
       ${porDia.map(d => `<tr${d.dia > hoje ? ' class="muted"' : ''}><td>${dataBR(d.dia)}</td><td>${d.caminhoes} <span class="muted" title="Fonte">${d.fonte === 'cadastro atual' ? '*' : ''}</span></td><td>${d.meta}</td><td><b>${d.feitas}</b></td>
         <td>${+d.meta ? `<span class="tag ${d.feitas >= d.meta ? 'verde' : 'vermelho'}">${Math.round(d.feitas * 100 / d.meta)}%</span>` : '—'}</td><td>${d.acum != null ? `${d.acum} / ${d.acumMeta} (${d.pct}%)` : ''}</td><td>${brl(d.fat)}</td></tr>`).join('')}</tbody></table></div>
-      <p class="muted">* Dia sem histórico do Painel logístico: usa os cavalos atrelados e em operação hoje. A partir de agora o histórico é gravado a cada hora.</p></div></div>
+      <p class="muted">* Dia sem histórico do Painel logístico: usa os cavalos atrelados e em operação hoje. A partir de agora o histórico é gravado a cada hora.</p></div>
     <div class="cartao"><h2>Por caminhão</h2>${porFrota.length ? `<div class="tabela-wrap"><table class="tabela compacta"><thead><tr><th>Frota</th><th>Viagens entregues</th><th>Faturamento</th></tr></thead><tbody>
       ${porFrota.map(f => `<tr><td><b>${esc(f.frota)}</b></td><td>${f.n}</td><td>${brl(f.fat)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="vazio">Nenhuma viagem entregue no período.</div>'}</div>
     <div class="cartao"><h2>Viagens do período (${vs.length})</h2><div class="tabela-wrap"><table class="tabela compacta"><thead><tr><th>Viagem</th><th>Situação</th><th>Frota</th><th>Motorista</th><th>Origem → destino</th><th>Saída</th><th>Entrega</th><th>NF / CT-e</th><th>Valor</th></tr></thead><tbody>
       ${vs.map(v => `<tr class="clicavel" data-v="${v.id}"><td><b>${esc(v.numero)}</b></td><td><span class="tag ${(ST_VIA[v.status] || [])[1] || ''}">${(ST_VIA[v.status] || [v.status])[0]}</span></td><td>${esc(v.eq?.codigo_frota || '—')}</td><td>${esc(v.m?.nome || '—')}</td>
         <td>${esc(v.origem)} → ${esc(v.destino)}</td><td>${dataHoraBR(v.saida_em || v.saida_prevista) || '—'}${!v.saida_em && v.saida_prevista ? ' <span class="muted">(prev.)</span>' : ''}</td><td>${dataHoraBR(v.chegada_em) || '—'}</td>
-        <td>${esc([v.nf_numero && 'NF ' + v.nf_numero, v.cte_numero && 'CT-e ' + v.cte_numero].filter(Boolean).join(' · ') || '—')}</td><td>${brl(v.valor_frete)}</td></tr>`).join('') || '<tr><td colspan="9" class="vazio">Nenhuma viagem no período.</td></tr>'}</tbody></table></div></div></div>`;
+        <td>${esc([v.nf_numero && 'NF ' + v.nf_numero, v.cte_numero && 'CT-e ' + v.cte_numero].filter(Boolean).join(' · ') || '—')}</td><td>${brl(v.valor_frete)}</td></tr>`).join('') || '<tr><td colspan="9" class="vazio">Nenhuma viagem no período.</td></tr>'}</tbody></table></div></div></div></div>`;
   void diasMeta;
   const f = $('#vp-f');
   f.onsubmit = e => { e.preventDefault(); location.hash = `#/operacao/viagens/painel?de=${f.de.value}&ate=${f.ate.value}`; };
@@ -574,7 +574,9 @@ rota('/operacao/viagens/painel', async tela => {
   const nomeV = `Painel de viagens ${dataBR(ini).replace(/\//g, '-')} a ${dataBR(fim).replace(/\//g, '-')}`;
   const imagemV = async () => { if (!window.html2canvas) await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js');
     return html2canvas($('#vp-exp'), { scale: 2, useCORS: true, backgroundColor: '#F3F5F4', logging: false, windowWidth: 1700, width: 1600,
-      onclone: d => { const el = d.getElementById('vp-exp'); if (el) { el.style.width = '1600px'; el.style.padding = '16px'; el.style.background = '#F3F5F4'; } } }); };
+      onclone: d => { const el = d.getElementById('vp-exp'); if (!el) return; el.style.width = '1600px'; el.style.padding = '16px'; el.style.background = '#F3F5F4';
+        el.querySelectorAll('.exportar').forEach(x => x.remove());
+        el.querySelectorAll('svg[viewBox]').forEach(sv => { const [, , w, h] = sv.getAttribute('viewBox').split(' ').map(Number); if (w > 300) { sv.setAttribute('width', 1520); sv.setAttribute('height', Math.round(1520 * h / w)); sv.style.width = '1520px'; sv.style.height = Math.round(1520 * h / w) + 'px'; } }); } }); };
   $$('[data-vexp]', tela).forEach(b => b.onclick = () => ocupado(b, async () => { try { const t = b.dataset.vexp, cv = await imagemV();
     if (t === 'png') cv.toBlob(bl => baixarArquivo(bl, nomeV + '.png'), 'image/png');
     else if (t === 'pdf') { await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'); const pdf = new jspdf.jsPDF({ orientation: cv.width > cv.height ? 'landscape' : 'portrait', unit: 'px', format: [cv.width, cv.height] });
