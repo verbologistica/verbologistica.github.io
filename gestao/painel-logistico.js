@@ -489,3 +489,76 @@ rota('/operacao/painel', async tela => {
   } catch (err) { falha(err); } }));
   void mapa;
 });
+
+
+// ---------- Painel de viagens: faturamento, meta (1 viagem por caminhão em operação por dia) e evolução diária ----------
+rota('/operacao/viagens/painel', async tela => {
+  if (!document.getElementById('pl-css')) document.head.insertAdjacentHTML('beforeend', plCss);
+  const P = estado.params, hoje = hojeISO(), ini = P.get('de') || hoje.slice(0, 8) + '01', fim = P.get('ate') || hoje;
+  const iniTs = new Date(ini + 'T00:00:00').toISOString(), fimTs = new Date(fim + 'T23:59:59').toISOString();
+  const sel = 'select=id,numero,status,origem,destino,saida_prevista,saida_em,chegada_em,valor_frete,peso_t,nf_numero,cte_numero,eq:equipamentos(codigo_frota),m:colaboradores!viagens_motorista_id_fkey(nome),cl:clientes(nome)';
+  let vs, dias;
+  try {
+    [vs, dias] = await Promise.all([
+      api.listar('viagens', `ativo=eq.true&status=neq.cancelada&or=(and(status.eq.entregue,chegada_em.gte.${iniTs},chegada_em.lte.${fimTs}),and(status.in.(planejada,em_transito),or(saida_em.lte.${fimTs},saida_prevista.lte.${fimTs},saida_prevista.is.null)))&${sel}&order=chegada_em.desc.nullsfirst,saida_prevista.desc&limit=2000`),
+      api.rpc('viagens_meta_dias', { p_ini: ini, p_fim: fim })]);
+  } catch (err) { falha(err); return; }
+  const diaBR = ts => ts ? new Date(ts).toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' }) : null;
+  const feitas = vs.filter(v => v.status === 'entregue'), abertas = vs.filter(v => v.status !== 'entregue');
+  const fat = feitas.reduce((t, v) => t + Number(v.valor_frete || 0), 0), fatAberto = abertas.reduce((t, v) => t + Number(v.valor_frete || 0), 0);
+  const porDia = (dias || []).map(d => ({ ...d, feitas: feitas.filter(v => diaBR(v.chegada_em) === d.dia).length, fat: feitas.filter(v => diaBR(v.chegada_em) === d.dia).reduce((t, v) => t + Number(v.valor_frete || 0), 0) }));
+  const ateHoje = porDia.filter(d => d.dia <= hoje);
+  const metaAteHoje = ateHoje.reduce((t, d) => t + (+d.meta || 0), 0), metaPeriodo = porDia.reduce((t, d) => t + (+d.meta || 0), 0);
+  const ating = metaAteHoje ? Math.round(feitas.length * 100 / metaAteHoje) : 0;
+  const ticket = feitas.length ? fat / feitas.length : 0;
+  let acum = 0, acumMeta = 0; ateHoje.forEach(d => { acum += d.feitas; acumMeta += +d.meta || 0; d.acum = acum; d.acumMeta = acumMeta; d.pct = acumMeta ? Math.round(acum * 100 / acumMeta) : 0; });
+  // gráfico diário: barras = viagens realizadas, traço = meta do dia; linha = atingimento acumulado
+  const W = 1100, H = 300, pl = 44, pr = 44, pt = 18, pb = 46, n = Math.max(porDia.length, 1), bw = (W - pl - pr) / n;
+  const maxV = Math.max(1, ...porDia.map(d => Math.max(d.feitas, +d.meta || 0))), y = v => pt + (H - pt - pb) * (1 - v / maxV), yP = v => pt + (H - pt - pb) * (1 - Math.min(v, 150) / 150);
+  const svg = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block" role="img" aria-label="Viagens realizadas por dia contra a meta">
+    ${[0, .5, 1].map(f => `<line x1="${pl}" x2="${W - pr}" y1="${y(maxV * f)}" y2="${y(maxV * f)}" stroke="rgba(255,255,255,.08)"/><text x="${pl - 8}" y="${y(maxV * f) + 4}" text-anchor="end" font-size="11" fill="#9FB8AE">${Math.round(maxV * f)}</text>`).join('')}
+    <text x="${W - pr + 8}" y="${yP(100) + 4}" font-size="11" fill="#DDA936">100%</text><line x1="${pl}" x2="${W - pr}" y1="${yP(100)}" y2="${yP(100)}" stroke="rgba(221,169,54,.35)" stroke-dasharray="4 4"/>
+    ${porDia.map((d, i) => { const x = pl + i * bw, ok = d.feitas >= (+d.meta || 0), fut = d.dia > hoje;
+      return `<rect x="${x + bw * .18}" y="${y(d.feitas)}" width="${bw * .64}" height="${H - pb - y(d.feitas)}" rx="3" fill="${fut ? 'rgba(255,255,255,.08)' : ok ? '#2BB673' : '#EB5757'}"><title>${dataBR(d.dia)}: ${d.feitas} de ${d.meta} (meta) · ${brl(d.fat)}</title></rect>
+        <line x1="${x + bw * .1}" x2="${x + bw * .9}" y1="${y(+d.meta || 0)}" y2="${y(+d.meta || 0)}" stroke="#F3F7F5" stroke-width="2.5"/>
+        ${n <= 31 ? `<text x="${x + bw / 2}" y="${H - pb + 16}" text-anchor="middle" font-size="11" fill="#9FB8AE">${d.dia.slice(8)}</text>` : ''}`; }).join('')}
+    <polyline fill="none" stroke="#DDA936" stroke-width="2.5" points="${ateHoje.map((d, i) => `${pl + i * bw + bw / 2},${yP(d.pct)}`).join(' ')}"/>
+    ${ateHoje.map((d, i) => `<circle cx="${pl + i * bw + bw / 2}" cy="${yP(d.pct)}" r="3.5" fill="#DDA936"><title>${dataBR(d.dia)}: acumulado ${d.acum} de ${d.acumMeta} (${d.pct}%)</title></circle>`).join('')}
+    <text x="${pl}" y="${H - 8}" font-size="11.5" fill="#DCE8E3">▮ realizadas no dia (verde = bateu a meta · vermelho = abaixo)   ━ meta do dia   ● atingimento acumulado (escala à direita)</text></svg>`;
+  const porFrota = Object.values(feitas.reduce((o, v) => { const k = v.eq?.codigo_frota || '—'; (o[k] ||= { frota: k, n: 0, fat: 0 }); o[k].n++; o[k].fat += Number(v.valor_frete || 0); return o; }, {})).sort((a, b) => b.n - a.n);
+  const diasMeta = ateHoje.length * (+((dias || [])[0]?.meta && 1) || 1);
+  const card = (cor, t, v, sub = '') => `<div class="pl-c" style="--cor:${cor}"><h3>${t}</h3><div class="pl-n" style="font-size:40px">${v}</div>${sub ? `<div class="pl-pct" style="letter-spacing:.5px">${sub}</div>` : ''}</div>`;
+  tela.innerHTML = `<div class="pl-wrap">
+    <div class="topo"><div><h1>Painel de viagens</h1><p class="sub">Faturamento e meta · 1 viagem por caminhão em operação por dia · viagem conta no dia da entrega</p></div>
+      <div class="acoes"><a class="btn" href="#/operacao/viagens">← Viagens</a><button class="btn" id="vp-xls">Excel</button></div></div>
+    <form class="filtros pl-barra" id="vp-f"><label>De <input type="date" name="de" value="${ini}"></label><label>Até <input type="date" name="ate" value="${fim}"></label><button class="btn prim">Ver</button>
+      <button type="button" class="btn" data-per="mes">Este mês</button><button type="button" class="btn" data-per="7">Últimos 7 dias</button></form>
+    <div class="pl-painel">
+      <div class="pl-l4" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr))">
+        ${card('#2BB673', 'Faturamento realizado', brl(fat), `${feitas.length} viagem(ns) entregue(s)`)}${card('#56A8E8', 'Em aberto', brl(fatAberto), `${abertas.length} viagem(ns) programada(s) / em trânsito`)}
+        ${card(ating >= 100 ? '#2BB673' : ating >= 80 ? '#DDA936' : '#EB5757', 'Atingimento da meta', ating + '%', `${feitas.length} de ${metaAteHoje} viagens até hoje`)}
+        ${card('#DDA936', 'Meta do período', metaPeriodo, `${porDia.length} dia(s) · caminhões em operação × 1`)}${card('#9B7BEA', 'Ticket médio', brl(ticket), 'por viagem entregue')}</div>
+      <div class="pl-c" style="--cor:#DDA936;margin-top:14px"><h3>${PL_IC.pizza}Evolução diária · realizado × meta</h3>${svg}</div></div>
+    <div class="cartao"><h2>Por dia</h2><div class="tabela-wrap"><table class="tabela compacta"><thead><tr><th>Dia</th><th>Caminhões em operação</th><th>Meta</th><th>Realizadas</th><th>% do dia</th><th>Acumulado</th><th>Faturamento</th></tr></thead><tbody>
+      ${porDia.map(d => `<tr${d.dia > hoje ? ' class="muted"' : ''}><td>${dataBR(d.dia)}</td><td>${d.caminhoes} <span class="muted" title="Fonte">${d.fonte === 'cadastro atual' ? '*' : ''}</span></td><td>${d.meta}</td><td><b>${d.feitas}</b></td>
+        <td>${+d.meta ? `<span class="tag ${d.feitas >= d.meta ? 'verde' : 'vermelho'}">${Math.round(d.feitas * 100 / d.meta)}%</span>` : '—'}</td><td>${d.acum != null ? `${d.acum} / ${d.acumMeta} (${d.pct}%)` : ''}</td><td>${brl(d.fat)}</td></tr>`).join('')}</tbody></table></div>
+      <p class="muted">* Dia sem histórico do Painel logístico: usa os cavalos atrelados e em operação hoje. A partir de agora o histórico é gravado a cada hora.</p></div>
+    <div class="cartao"><h2>Por caminhão</h2>${porFrota.length ? `<div class="tabela-wrap"><table class="tabela compacta"><thead><tr><th>Frota</th><th>Viagens entregues</th><th>Faturamento</th></tr></thead><tbody>
+      ${porFrota.map(f => `<tr><td><b>${esc(f.frota)}</b></td><td>${f.n}</td><td>${brl(f.fat)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="vazio">Nenhuma viagem entregue no período.</div>'}</div>
+    <div class="cartao"><h2>Viagens do período (${vs.length})</h2><div class="tabela-wrap"><table class="tabela compacta"><thead><tr><th>Viagem</th><th>Situação</th><th>Frota</th><th>Motorista</th><th>Origem → destino</th><th>Saída</th><th>Entrega</th><th>NF / CT-e</th><th>Valor</th></tr></thead><tbody>
+      ${vs.map(v => `<tr class="clicavel" data-v="${v.id}"><td><b>${esc(v.numero)}</b></td><td><span class="tag ${(ST_VIA[v.status] || [])[1] || ''}">${(ST_VIA[v.status] || [v.status])[0]}</span></td><td>${esc(v.eq?.codigo_frota || '—')}</td><td>${esc(v.m?.nome || '—')}</td>
+        <td>${esc(v.origem)} → ${esc(v.destino)}</td><td>${dataHoraBR(v.saida_em || v.saida_prevista) || '—'}${!v.saida_em && v.saida_prevista ? ' <span class="muted">(prev.)</span>' : ''}</td><td>${dataHoraBR(v.chegada_em) || '—'}</td>
+        <td>${esc([v.nf_numero && 'NF ' + v.nf_numero, v.cte_numero && 'CT-e ' + v.cte_numero].filter(Boolean).join(' · ') || '—')}</td><td>${brl(v.valor_frete)}</td></tr>`).join('') || '<tr><td colspan="9" class="vazio">Nenhuma viagem no período.</td></tr>'}</tbody></table></div></div></div>`;
+  void diasMeta;
+  const f = $('#vp-f');
+  f.onsubmit = e => { e.preventDefault(); location.hash = `#/operacao/viagens/painel?de=${f.de.value}&ate=${f.ate.value}`; };
+  $$('[data-per]', f).forEach(b => b.onclick = () => { const h = hojeISO(); const de = b.dataset.per === 'mes' ? h.slice(0, 8) + '01' : new Date(Date.now() - 6 * 864e5).toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
+    location.hash = `#/operacao/viagens/painel?de=${de}&ate=${h}`; });
+  $$('[data-v]', tela).forEach(tr => tr.onclick = () => { location.hash = '#/operacao/viagens/ver/' + tr.dataset.v; });
+  $('#vp-xls').onclick = () => ocupado($('#vp-xls'), async () => { await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'); const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Painel de viagens', `${dataBR(ini)} a ${dataBR(fim)}`], [], ['Faturamento realizado', fat], ['Em aberto', fatAberto], ['Viagens entregues', feitas.length], ['Meta até hoje', metaAteHoje], ['Atingimento', ating / 100], ['Meta do período', metaPeriodo], ['Ticket médio', ticket]]), 'Resumo');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(porDia.map(d => ({ Dia: dataBR(d.dia), 'Caminhões em operação': d.caminhoes, Meta: d.meta, Realizadas: d.feitas, '% do dia': d.meta ? d.feitas / d.meta : '', 'Acumulado realizado': d.acum ?? '', 'Acumulado meta': d.acumMeta ?? '', Faturamento: d.fat }))), 'Por dia');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(vs.map(v => ({ Viagem: v.numero, 'Situação': (ST_VIA[v.status] || [v.status])[0], Frota: v.eq?.codigo_frota, Motorista: v.m?.nome, Cliente: v.cl?.nome, Origem: v.origem, Destino: v.destino,
+      'Saída': dataHoraBR(v.saida_em || v.saida_prevista), Entrega: dataHoraBR(v.chegada_em), NF: v.nf_numero, 'CT-e': v.cte_numero, 'Peso (t)': v.peso_t, Valor: Number(v.valor_frete || 0) }))), 'Viagens');
+    XLSX.writeFile(wb, `Painel de viagens ${ini} a ${fim}.xlsx`); });
+});
