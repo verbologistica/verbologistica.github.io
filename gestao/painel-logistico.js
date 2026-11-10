@@ -282,8 +282,7 @@ const PL_SIT = { operacao: ['Em operação', '#2BB673'], manutencao_atrelado: ['
   parado_sem_composicao: ['Parado · sem composição', '#E2B93B'], parado_sem_cavalo: ['Parada · sem cavalo', '#E2B93B'], parado: ['Parado', '#E2B93B'],
   aguardando: ['Aguardando chegada', '#56A8E8'], baixado: ['Baixado / vendido', '#9AA5B1'] };
 const PL_MOTIVOS = ['Aguardando composição', 'Aguardando cavalo', 'Aguardando motorista', 'Aguardando documentação', 'Aguardando instalação (rastreador / rádio / computador de bordo)', 'Aguardando plotagem', 'Aguardando peça', 'Manutenção na base', 'Reserva', 'Outro'];
-async function plComposicao(tela, grupo, ed) {
-  let d; try { d = await api.rpc('painel_frota_composicao', {}); } catch (err) { falha(err); return; }
+function plCompCalc(d, grupo) {
   const it = (d?.itens || []).filter(x => x.grupo === grupo), prev = +(d?.previsto || {})[grupo] || 0;
   const n = k => it.filter(x => x.situacao === k).length;
   const chegaram = it.filter(x => !['aguardando', 'baixado'].includes(x.situacao)).length, aguard = Math.max(prev - chegaram, n('aguardando'));
@@ -293,16 +292,27 @@ async function plComposicao(tela, grupo, ed) {
     n('manutencao') && `${n('manutencao')} em manutenção${grupo === 'cavalo' ? ' aguardando composição' : ''}`, parados.length && `${parados.length} ${grupo === 'cavalo' ? 'parados' : 'paradas'} (${Object.entries(porMotivo).map(([k, v]) => `${v} ${k.toLowerCase()}`).join('; ')})`,
     `${n('operacao')} em operação`].filter(Boolean);
   const resumo = `${nome[2]} - Chegaram ${chegaram} ${grupo === 'cavalo' ? 'dos' : 'das'} ${prev} ${grupo === 'cavalo' ? 'previstos' : 'previstas'}: ${partes.join(', ')}.${aguard ? ` Aguardando a chegada ${aguard === 1 ? 'do que falta' : `${grupo === 'cavalo' ? 'dos' : 'das'} ${aguard} que faltam`}.` : ''}`;
+  return { it, prev, n, chegaram, aguard, nome, parados, porMotivo, resumo };
+}
+// cards de cavalos/carretas (aba e imagem/PDF do painel)
+function plCompCards(c, grupo) {
+  const { prev, n, chegaram, aguard, parados, porMotivo } = c;
   const card = (cor, t, v, sub = '') => `<div class="pl-c" style="--cor:${cor}"><h3>${t}</h3><div class="pl-n">${v}</div>${sub ? `<div class="pl-pct">${sub}</div>` : ''}</div>`;
   const pct = v => prev ? Math.round(v * 100 / prev) + '% do previsto' : '';
+  return `<div class="pl-l4" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
+      ${card('#DDA936', 'Previstos', prev)}${card('#2BB673', 'Chegaram', chegaram, pct(chegaram))}${card('#2BB673', 'Em operação', n('operacao'), pct(n('operacao')))}
+      ${card('#F2994A', grupo === 'cavalo' ? 'Manutenção · atrelados' : 'Manutenção · atreladas', n('manutencao_atrelado'))}${card('#EB5757', grupo === 'cavalo' ? 'Manutenção · sem composição' : 'Manutenção', n('manutencao'))}
+      ${card('#E2B93B', grupo === 'cavalo' ? 'Parados' : 'Paradas', parados.length, Object.entries(porMotivo).map(([k, v]) => `${v} · ${esc(k)}`).join('<br>'))}${card('#56A8E8', 'Aguardando chegada', aguard)}</div>`;
+}
+async function plComposicao(tela, grupo, ed) {
+  let d; try { d = await api.rpc('painel_frota_composicao', {}); } catch (err) { falha(err); return; }
+  const C = plCompCalc(d, grupo), { it, prev, n, chegaram, aguard, nome, parados, porMotivo, resumo } = C;
+  void [chegaram, aguard, parados, porMotivo, prev];
   tela.innerHTML = `<div class="pl-wrap">
     <div class="topo"><div><h1>Painel logístico · ${nome[1][0].toUpperCase() + nome[1].slice(1)}</h1><p class="sub">Montado dos cadastros de equipamentos, engates e OS · motivo de parada informado pela torre</p></div>
       <div class="acoes"><button class="btn" id="pl-copiar">Copiar resumo</button><button class="btn" id="pl-xls">Excel</button></div></div>
     ${plAbas(grupo === 'cavalo' ? 'cavalos' : 'carretas')}
-    <div class="pl-painel"><div class="pl-l4" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
-      ${card('#DDA936', 'Previstos', prev)}${card('#2BB673', 'Chegaram', chegaram, pct(chegaram))}${card('#2BB673', 'Em operação', n('operacao'), pct(n('operacao')))}
-      ${card('#F2994A', grupo === 'cavalo' ? 'Manutenção · atrelados' : 'Manutenção · atreladas', n('manutencao_atrelado'))}${card('#EB5757', grupo === 'cavalo' ? 'Manutenção · sem composição' : 'Manutenção', n('manutencao'))}
-      ${card('#E2B93B', grupo === 'cavalo' ? 'Parados' : 'Paradas', parados.length, Object.entries(porMotivo).map(([k, v]) => `${v} · ${esc(k)}`).join('<br>'))}${card('#56A8E8', 'Aguardando chegada', aguard)}</div>
+    <div class="pl-painel">${plCompCards(C, grupo)}
       <div class="pl-sa" style="background:rgba(221,169,54,.10);border-color:rgba(221,169,54,.35)"><span id="pl-resumo">${esc(resumo)}</span></div></div>
     <div class="cartao"><h2>${nome[1][0].toUpperCase() + nome[1].slice(1)} (${it.length} ${grupo === 'cavalo' ? 'cadastrados' : 'cadastradas'})</h2><div class="tabela-wrap"><table class="tabela compacta"><thead><tr><th>Frota</th><th>Placas</th><th>Modelo</th><th>Situação</th><th>${grupo === 'cavalo' ? 'Carreta atrelada' : 'Cavalo atrelado'}</th><th>OS aberta</th><th>Motivo (torre)</th>${ed ? '<th></th>' : ''}</tr></thead><tbody>
       ${it.map(x => `<tr><td data-r="Frota"><b>${esc(x.codigo || '—')}</b></td><td data-r="Placas">${esc(x.placas || '—')}</td><td data-r="Modelo">${esc(x.modelo || '')}</td>
@@ -459,12 +469,16 @@ rota('/operacao/painel', async tela => {
   const nomeBase = `Painel logístico ${quando.replace(/[\/:]/g, '-').replace(/\s+/g, ' ')}`;
   const imagem = async () => { if (!window.html2canvas) await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js');
     let foto = null; if (mapa) { try { foto = await plMapaImagem(mapa, 2, 1500, 620); } catch (e) { console.warn('mapa', e); } }
+    let comp = ''; if (modo === 'agora') { try { const d = await api.rpc('painel_frota_composicao', {});
+      comp = ['cavalo', 'carreta'].map(g => { const c = plCompCalc(d, g); return `<div class="pl-visao" style="margin-top:18px"><h4>${g === 'cavalo' ? 'CAVALOS' : 'CARRETAS'}</h4>${plCompCards(c, g)}
+        <div class="pl-sa" style="background:rgba(221,169,54,.10);border-color:rgba(221,169,54,.35);margin-top:10px"><span>${esc(c.resumo)}</span></div></div>`; }).join(''); } catch (e) { console.warn('composição', e); } }
     return html2canvas($('#pl-painel'), { scale: 2.5, useCORS: true, backgroundColor: '#0B1F19', logging: false,
       windowWidth: 1700, width: 1600,
       onclone: d => { const pn = d.getElementById('pl-painel'); if (pn) { pn.style.width = '1600px'; pn.style.maxWidth = 'none'; }
         const el = d.getElementById('pl-mapa'); if (el && foto) { const card = el.closest('.pl-c'), gr = pn && pn.querySelector('.pl-grade');
           el.outerHTML = `<img src="${foto}" alt="Mapa" style="width:100%;height:auto;display:block;border-radius:12px;margin-top:10px">${plTabMapa(fs)}`;
-          if (card && gr) { gr.after(card); card.style.marginTop = '16px'; } } } }); };
+          if (card && gr) { gr.after(card); card.style.marginTop = '16px'; } }
+        if (pn && comp) pn.insertAdjacentHTML('beforeend', comp); } }); };
   $$('[data-exp]', tela).forEach(b => b.onclick = () => ocupado(b, async () => { try {
     const t = b.dataset.exp;
     if (t === 'png') { const cv = await imagem(); cv.toBlob(bl => baixarArquivo(bl, nomeBase + '.png'), 'image/png'); }
