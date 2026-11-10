@@ -1,14 +1,14 @@
 // Verbo Gestão — Painel Logístico · Status da frota (hora a hora)
 // Situação atual (Creare + ajustes da torre), foto de qualquer data/hora, ocupação por período e exportação (imagem, PDF, HTML, Excel)
 const PL_ATIV = ['Trânsito Vazio', 'Trânsito Carregado', 'No Horto', 'Na Fábrica', 'Aguardando Nota', 'Cadastro na Balança', 'Falta Cadastro Ticket LOG', 'Mobilização',
-  'Troca de Turno', 'Prancha', 'Corretiva', 'Preventiva', 'Inspeção', 'SOS', 'Sem Motorista', 'Sem Composição', 'Sem Cavalo'];
+  'Sem Apontamento', 'Troca de Turno', 'Prancha', 'Corretiva', 'Preventiva', 'Inspeção', 'SOS', 'Sem Motorista', 'Sem Composição', 'Sem Cavalo'];
 const PL_LOCAIS = ['Trajeto', 'Horto', 'Fábrica', 'Aguardando nota', 'P.A verbo', 'Posto Base', 'Posto Bracell', 'Lavador', 'Granfer', 'Aoki', 'Betel', 'Cemavi', 'Termac',
   'Creare', 'Desamarração', 'Estimulação', 'Instalação de rádio', 'Mobilização', 'Trânsito'];
 const PL_ST = { disponivel: 'Disponível', manutencao: 'Manutenção', indisponivel: 'Indisponível' };
 const PL_COR = { 'Trânsito Vazio': '#DDA936', 'Trânsito Carregado': '#2BB673', 'No Horto': '#6FCF97', 'Na Fábrica': '#56A8E8', 'Aguardando Nota': '#9AA5B1',
   'Cadastro na Balança': '#B39DDB', 'Falta Cadastro Ticket LOG': '#C5A3FF', 'Mobilização': '#4DD0E1', 'Troca de Turno': '#F5D76E', 'Prancha': '#A1887F',
   'Corretiva': '#F2994A', 'Preventiva': '#E2B93B', 'Inspeção': '#9B7BEA', 'SOS': '#EB5757', 'Sem Motorista': '#CFD8DC', 'Sem Composição': '#E57373',
-  'Sem Cavalo': '#8D6E63', 'Outros / sem atividade': '#5F7A70' };
+  'Sem Cavalo': '#8D6E63', 'Sem Apontamento': '#EB5757', 'Outros / sem atividade': '#5F7A70' };
 const PL_PONTOS = [['Três Lagoas (MS)', -20.7849, -51.7007, 'origem'], ['Guararapes (SP)', -21.2608, -50.6453, 'apoio'], ['Lençóis Paulista (SP)', -22.5986, -48.8003, 'destino']];
 const plIc = p => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
 const PL_IC = {
@@ -70,8 +70,8 @@ const plConta = fs => {
   const c = { total: fs.length, disp: st('disponivel'), man: st('manutencao'), indisp: st('indisponivel'), carregado: at('Trânsito Carregado'), vazio: at('Trânsito Vazio'),
     horto: fs.filter(f => f.atividade === 'No Horto' || (/horto/i.test(f.local || '') && !/tr[âa]nsito/i.test(f.atividade || ''))).length,
     fabrica: fs.filter(f => f.atividade === 'Na Fábrica' || (/f[áa]brica/i.test(f.local || '') && !/tr[âa]nsito/i.test(f.atividade || ''))).length,
-    corretiva: at('Corretiva'), preventiva: at('Preventiva'), inspecao: at('Inspeção'), sos: at('SOS'), nota: at('Aguardando Nota'), semMot: at('Sem Motorista'), semComp: at('Sem Composição'), semCav: at('Sem Cavalo') };
-  c.operando = c.carregado + c.vazio + c.horto + c.fabrica; void loc; return c;
+    corretiva: at('Corretiva'), preventiva: at('Preventiva'), inspecao: at('Inspeção'), sos: at('SOS'), nota: at('Aguardando Nota'), semMot: at('Sem Motorista'), semComp: at('Sem Composição'), semCav: at('Sem Cavalo'), semApont: at('Sem Apontamento') };
+  c.operando = c.carregado + c.vazio + c.horto + c.fabrica + c.semApont; void loc; return c;
 };
 const plPct = (n, t) => t ? Math.round(n / t * 100) : 0;
 function plDonut(dist) {

@@ -12,7 +12,7 @@ const TIPOS_EQ = {
   utilitario: ['Utilitário', 1, ['Utilitário']], maquina: ['Máquina / equipamento', 1, ['Máquina']], outro: ['Outro', 1, ['Composição']],
 };
 const tagAtivoEq = e => e.ativo ? '<span class="tag verde">Ativo</span>' : '<span class="tag vermelho">Desativado</span>';
-const SITUACOES_EQ = { operando: ['Operando', 'verde'], manutencao: ['Em manutenção', 'amarelo'], parado: ['Parado', ''], vendido: ['Vendido', ''], baixado: ['Baixado', ''] };
+const SITUACOES_EQ = { operando: ['Operando', 'verde'], manutencao: ['Em manutenção', 'amarelo'], parado: ['Parado', ''], vendido: ['Vendido', ''], baixado: ['Baixado', ''], aguardando_chegada: ['Aguardando chegada', 'azul'] };
 // Documentos obrigatórios por tipo de equipamento (controle de pendências)
 const DOC_LICENCAS = ['Licença de tráfego · Federal noturna', 'Licença de tráfego · Federal diurna', 'Licença de tráfego · Estadual MS', 'Licença de tráfego · Estadual SP'];
 const DOC_OBRIG = { leve: ['CRLV'], cavalo: ['CRLV', 'Inspeção eletromecânica', 'Certificado de tacógrafo', ...DOC_LICENCAS], semirreboque: ['CRLV', 'Inspeção eletromecânica'] };
