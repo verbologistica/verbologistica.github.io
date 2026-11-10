@@ -122,7 +122,7 @@ const PL_CERCA_COR = { cerca: '#2F80ED', fazenda: '#2BB673', fabrica: '#56A8E8',
 const plLigado = f => /LIGADO/i.test(f.estado || f.ignicao || '') && !/DESLIGADO/i.test(f.estado || f.ignicao || '');
 const plAndando = f => /ANDANDO/i.test(f.estado || '') || (+f.vel || 0) > 3;
 const plCorFrota = f => PL_COR[f.atividade] || '#5F7A70';
-const plApont = f => { const a = (f.apontamento || '').trim().replace(/\s*-\s*$/, ''); return a || 'Sem apontamento'; };
+const plApont = f => { const a = (f.apontamento || '').trim().replace(/\s*-\s*$/, ''); return !a ? 'Sem apontamento' : /^\d+$/.test(a) ? `Código ${a} (sem descrição no Creare)` : a; };
 const plMov = f => !(f.estado || f.ignicao) ? 'Sem leitura de ignição' : plLigado(f) ? (plAndando(f) ? `Ignição ligada · em movimento · ${Math.round(+f.vel || 0)} km/h` : 'Ignição ligada · parado') : 'Ignição desligada · parado';
 // frente de caminhão (cabine, para-brisa, grade, faróis, para-choque) + selo de ignição
 function plCaminhaoSvg(f, px = 38) {
@@ -186,7 +186,7 @@ async function plMapa(el, fs, cercas, rastros) {
   com.forEach(f => { const r = (rastros || {})[f.id]; if (r && r.length > 1) L.polyline(r, { color: plCorFrota(f), weight: 4, opacity: .75 }).addTo(gRastro); });
   com.forEach(f => {
     L.marker([f.lat, f.lng], { icon: L.divIcon({ className: 'pl-cam', html: plCaminhaoSvg(f) + `<span class="pl-rot">${esc(f.codigo)}${plAndando(f) ? ' · ' + Math.round(+f.vel || 0) + ' km/h' : ''}</span>`, iconSize: [38, 38], iconAnchor: [19, 21] }) })
-      .bindTooltip(plDica(f), { direction: 'top', offset: [0, -16], className: 'pl-tt' }).addTo(gFrotas);
+      .bindTooltip(plDica(f), { direction: 'auto', offset: [0, 0], className: 'pl-tt' }).addTo(gFrotas);
     b.extend([f.lat, f.lng]); });
   gCercas.addTo(m); gRastro.addTo(m); gFrotas.addTo(m);
   L.control.layers(bases, { 'Cercas': gCercas, 'Rastro (últimas horas)': gRastro, 'Frotas': gFrotas }, { position: 'topright', collapsed: true }).addTo(m);
