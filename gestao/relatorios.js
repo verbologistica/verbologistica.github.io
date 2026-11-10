@@ -312,4 +312,57 @@ function ferramentasExportacao(tela) {
     }
     w.before(barra);
   });
+  exportarTelaBarra(tela);
+}
+
+// ---------- Exportar a tela inteira (toda tela com título ganha PDF e Excel, mesmo sem tabela ou com tabela vazia) ----------
+const EXP_TELA_FORA = /^#\/(menu|perfil|clima|config\/importar)(\?|$)|\/nov[oa](\?|$)/;
+function exportarTelaBarra(tela) {
+  if (EXP_TELA_FORA.test(location.hash) || $('.exp-tela', tela)) return;
+  const h1 = $('h1', tela); if (!h1) return;
+  const topo = $('.topo', tela);
+  const ja = $$('button', topo || tela).some(b => /excel|pdf/i.test(b.innerText) && !b.closest('.exportar'));
+  if (ja) return;   // a tela já tem os botões dela (painéis)
+  const box = document.createElement('div'); box.className = 'exp-tela'; box.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap';
+  box.innerHTML = '<button type="button" class="btn peq" data-xt="pdf" title="PDF desta tela do jeito que está (com os filtros e o período aplicados)">⬇ PDF da tela</button><button type="button" class="btn peq" data-xt="xls" title="Excel com os indicadores e todas as tabelas desta tela">⬇ Excel da tela</button>';
+  let acoes = topo && $('.acoes', topo); if (topo && !acoes) { acoes = document.createElement('div'); acoes.className = 'acoes'; topo.append(acoes); }
+  if (acoes) acoes.append(box); else h1.after(box);
+  box.onclick = e => { const b = e.target.closest('[data-xt]'); if (!b) return;
+    ocupado(b, async () => { try { b.dataset.xt === 'pdf' ? await exportarTelaPDF(tela) : await exportarTelaExcel(tela); } catch (err) { falha(err); } }); };
+}
+// filtros visíveis da tela (período, situação...) — vão no cabeçalho do PDF e no Resumo do Excel
+const telaFiltros = tela => $$('form.filtros input, form.filtros select, .filtros input, .filtros select', tela).filter(i => !i.hidden && i.type !== 'hidden' && i.type !== 'search' && (i.value || '').trim())
+  .map(i => { const l = i.closest('label')?.childNodes[0]?.textContent?.trim() || i.getAttribute('aria-label') || i.name || '';
+    const v = i.tagName === 'SELECT' ? i.options[i.selectedIndex]?.text : i.type === 'date' ? dataBR(i.value) : i.type === 'datetime-local' ? dataHoraBR(new Date(i.value).toISOString()) : i.type === 'checkbox' ? (i.checked ? 'sim' : '') : i.value;
+    return v ? (l ? `${l}: ${v}` : v) : ''; }).filter(Boolean);
+const telaNome = tela => ($('h1', tela)?.innerText.trim() || 'Relatório').replace(/[\\/:*?"<>|]/g, '-');
+async function exportarTelaPDF(tela) {
+  if (!window.html2canvas) await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js');
+  await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+  const cv = await html2canvas(tela, { scale: 2, useCORS: true, backgroundColor: '#FFFFFF', logging: false, windowWidth: 1400,
+    onclone: d => { const t = d.getElementById('tela'); if (!t) return; t.style.width = '1300px';
+      t.querySelectorAll('.exportar,.exp-tela,.acoes,.filtros button,.btn-voltar,[data-fechar]').forEach(x => x.remove()); } });
+  const pdf = new jspdf.jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' }), W = 210, H = 297, m = 10, cab = 16;
+  const fil = telaFiltros(tela), quando = `Gerado em ${dataHoraBR(new Date().toISOString())} por ${estado.usuario?.nome || ''}`;
+  const pxPorMm = cv.width / (W - 2 * m), fatia = Math.floor((H - 2 * m - cab) * pxPorMm);
+  for (let y = 0, p = 0; y < cv.height; y += fatia, p++) {
+    if (p) pdf.addPage(); pdf.setFontSize(9); pdf.setTextColor(90); pdf.text(`${$('h1', tela)?.innerText.trim() || ''} · ${quando}`, m, m + 3);
+    if (fil.length) pdf.text(pdf.splitTextToSize('Filtros / período: ' + fil.join(' · '), W - 2 * m)[0], m, m + 8);
+    pdf.text(`Página ${p + 1}`, W - m, H - 5, { align: 'right' });
+    const c = document.createElement('canvas'); c.width = cv.width; c.height = Math.min(fatia, cv.height - y); c.getContext('2d').drawImage(cv, 0, -y);
+    pdf.addImage(c.toDataURL('image/jpeg', 0.9), 'JPEG', m, m + cab, W - 2 * m, c.height / pxPorMm); }
+  pdf.save(`${telaNome(tela)} ${hojeISO()}.pdf`);
+}
+async function exportarTelaExcel(tela) {
+  await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');
+  const wb = XLSX.utils.book_new(), usados = new Set(), nomeAba = n => { let b = (n || 'Tabela').replace(/[\\/?*[\]:]/g, ' ').slice(0, 28).trim() || 'Tabela', x = b, i = 2; while (usados.has(x)) x = `${b} ${i++}`; usados.add(x); return x; };
+  const res = [[$('h1', tela)?.innerText.trim() || 'Relatório'], [`Gerado em ${dataHoraBR(new Date().toISOString())} por ${estado.usuario?.nome || ''}`], ...telaFiltros(tela).map(f => [f]), []];
+  $$('.cartao, .pl-c, .card, .kpi', tela).filter(c => !$('table', c) && !c.closest('.modal')).forEach(c => {
+    const tit = $('h2, h3, h4', c)?.innerText.trim() || '', txt = c.innerText.replace(tit, '').split('\n').map(x => x.trim()).filter(Boolean).join(' · ');
+    if (tit || txt) res.push([tit, txt]); });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(res), nomeAba('Resumo'));
+  $$('table', tela).filter(t => !t.closest('.modal')).forEach(t => { const tit = t.closest('.cartao, .pl-c')?.querySelector('h2, h3')?.innerText.trim();
+    const c = t.cloneNode(true); c.querySelectorAll('button, .exportar').forEach(x => x.remove());
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.table_to_sheet(c, { raw: true }), nomeAba(tit)); });
+  XLSX.writeFile(wb, `${telaNome(tela)} ${hojeISO()}.xlsx`);
 }
