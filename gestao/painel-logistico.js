@@ -590,3 +590,79 @@ rota('/operacao/viagens/painel', async tela => {
       'Saída': dataHoraBR(v.saida_em || v.saida_prevista), Entrega: dataHoraBR(v.chegada_em), NF: v.nf_numero, 'CT-e': v.cte_numero, 'Peso (t)': v.peso_t, Valor: Number(v.valor_frete || 0) }))), 'Viagens');
     XLSX.writeFile(wb, `Painel de viagens ${ini} a ${fim}.xlsx`); });
 });
+
+
+// ---------- Gestão operacional: tempos por apontamento do motorista (E09 do Creare), ciclos, vazio × carregado, não apontado ----------
+const GO_CAT = { deslocamento: ['Deslocamento', '#56A8E8'], fila_carregamento: ['Fila do carregamento', '#E2B93B'], carregamento: ['Carregando', '#2BB673'], amarracao: ['Amarração', '#6FCF97'],
+  aguardando_documento: ['Aguardando documento', '#F2994A'], fila_balanca: ['Fila balança', '#C5A3FF'], fila_descarga: ['Fila descarga', '#B39DDB'], descarga: ['Descarregando', '#4DD0E1'],
+  limpeza: ['Limpeza carreta', '#A1887F'], manutencao: ['Manutenção', '#EB5757'], abastecimento: ['Abastecimento', '#9AA5B1'], refeicao: ['Refeição', '#CFD8DC'], descanso: ['Descanso', '#78909C'],
+  necessidades: ['Necessidades', '#B0BEC5'], jornada: ['Jornada (turno, checklist)', '#90A4AE'], parada: ['Outras paradas', '#8D6E63'], nao_apontado: ['NÃO APONTADO', '#D64545'], outros: ['Outros', '#5F7A70'] };
+const goH = h => { const m = Math.round((+h || 0) * 60); return `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}`; };
+rota('/operacao/gestao', async tela => {
+  if (!document.getElementById('pl-css')) document.head.insertAdjacentHTML('beforeend', plCss);
+  document.body.classList.add('pl-largo'); window.addEventListener('hashchange', () => { if (!location.hash.startsWith('#/operacao/painel') && !location.hash.startsWith('#/operacao/gestao')) document.body.classList.remove('pl-largo'); }, { once: true });
+  const P = estado.params, hoje = hojeISO(), ini = P.get('de') || new Date(Date.now() - 6 * 864e5).toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' }), fim = P.get('ate') || hoje;
+  let g, ult;
+  try { [g, ult] = await Promise.all([api.rpc('gestao_operacional', { p_ini: new Date(ini + 'T00:00:00').toISOString(), p_fim: new Date(fim + 'T23:59:59').toISOString() }),
+    api.listar('creare_apontamentos', 'select=inicio,importado_em&order=inicio.desc&limit=1').catch(() => [])]); } catch (err) { falha(err); return; }
+  g = g || {}; const pc = g.por_categoria || {}, tot = Object.values(pc).reduce((t, v) => t + +v, 0) || 0, de = g.deslocamento || {};
+  const fila = (+pc.fila_carregamento || 0) + (+pc.fila_descarga || 0) + (+pc.fila_balanca || 0);
+  const pctV = (+de.vazio_km + +de.carregado_km) ? Math.round(+de.vazio_km * 100 / (+de.vazio_km + +de.carregado_km)) : 0;
+  const card = (cor, t, v, sub = '') => `<div class="pl-c" style="--cor:${cor}"><h3>${t}</h3><div class="pl-n" style="font-size:clamp(22px,2vw,34px);white-space:nowrap">${v}</div>${sub ? `<div class="pl-pct" style="text-transform:none;letter-spacing:.3px">${sub}</div>` : ''}</div>`;
+  const cats = Object.entries(pc).sort((a, b) => b[1] - a[1]);
+  const barras = cats.map(([k, v]) => `<div style="display:grid;grid-template-columns:190px 1fr 70px;gap:10px;align-items:center;margin:5px 0;font-size:12.5px;color:#DCE8E3">
+    <span>${esc((GO_CAT[k] || [k])[0])}</span><span style="background:rgba(255,255,255,.06);border-radius:6px;height:14px;overflow:hidden"><i style="display:block;height:100%;width:${tot ? (v * 100 / cats[0][1]).toFixed(1) : 0}%;background:${(GO_CAT[k] || [0, '#5F7A70'])[1]}"></i></span>
+    <b style="text-align:right">${goH(v)}</b></div>`).join('');
+  const cl = (g.ciclos || {}).lista || [], et = {}; cl.forEach(c => Object.entries(c.etapas || {}).forEach(([k, v]) => { (et[k] ||= []).push(+v); }));
+  const etapas = ['fila_carregamento', 'carregamento', 'amarracao', 'aguardando_documento', 'deslocamento_carregado', 'fila_balanca', 'fila_descarga', 'descarga', 'limpeza', 'deslocamento_vazio', 'manutencao', 'descanso', 'refeicao', 'nao_apontado']
+    .filter(k => et[k]).map(k => [k, et[k].reduce((a, b) => a + b, 0) / cl.length]);
+  const nomeEt = k => k === 'deslocamento_carregado' ? 'Deslocamento carregado' : k === 'deslocamento_vazio' ? 'Deslocamento vazio' : (GO_CAT[k] || [k])[0];
+  tela.innerHTML = `<div class="pl-wrap">
+    <div class="topo"><div><h1>Gestão operacional</h1><p class="sub">Tempos pelos apontamentos dos motoristas (relatório E09 do Creare) · ciclo, filas, vazio × carregado, não apontado</p></div>
+      <div class="acoes"><button class="btn" data-gexp="png">Imagem (PNG)</button><button class="btn" data-gexp="pdf">PDF</button><button class="btn" id="go-xls">Excel</button></div></div>
+    <form class="filtros pl-barra" id="go-f"><label>De <input type="date" name="de" value="${ini}"></label><label>Até <input type="date" name="ate" value="${fim}"></label><button class="btn prim">Ver</button>
+      <button type="button" class="btn" data-per="1">Ontem</button><button type="button" class="btn" data-per="7">Últimos 7 dias</button><button type="button" class="btn" data-per="mes">Este mês</button>
+      <span class="muted">${ult?.[0] ? 'Apontamentos até ' + dataHoraBR(ult[0].inicio) + ' · importado ' + dataHoraBR(ult[0].importado_em) : 'Sem apontamentos importados'}</span></form>
+    <div id="go-exp"><div class="pl-painel">
+      <div class="pl-topo" style="margin-bottom:14px"><img src="logo.png" alt="Verbo"><div class="pl-tit"><h1>GESTÃO <b>OPERACIONAL</b></h1><p>APONTAMENTOS DOS MOTORISTAS · CREARE</p></div><div class="pl-hora"><small>PERÍODO</small>${dataBR(ini)} a ${dataBR(fim)}</div></div>
+      <div class="pl-l4" style="grid-template-columns:repeat(auto-fit,minmax(190px,1fr))">
+        ${card('#2BB673', 'Ciclos completos', (g.ciclos || {}).qtd || 0, `ciclo médio ${goH((g.ciclos || {}).medio_h)}`)}
+        ${card('#4DD0E1', 'Descargas', (g.por_frota || []).reduce((t, f) => t + (+f.descargas || 0), 0), 'apontamentos de descarregamento')}
+        ${card('#E2B93B', 'Tempo em filas', goH(fila), 'carregamento + balança + descarga')}
+        ${card('#F2994A', 'Aguardando documento', goH(pc.aguardando_documento), tot ? Math.round((+pc.aguardando_documento || 0) * 100 / tot) + '% do tempo apontado' : '')}
+        ${card('#D64545', 'Não apontado', goH(pc.nao_apontado), tot ? Math.round((+pc.nao_apontado || 0) * 100 / tot) + '% do tempo' : '')}
+        ${card('#56A8E8', 'Km vazio × carregado', `${Math.round(+de.vazio_km || 0).toLocaleString('pt-BR')} × ${Math.round(+de.carregado_km || 0).toLocaleString('pt-BR')}`, `${pctV}% rodado vazio`)}</div>
+      <div class="pl-grade" style="margin-top:14px"><div class="pl-c" style="--cor:#DDA936"><h3>${PL_IC.pizza}Distribuição do tempo por apontamento</h3><div style="margin-top:10px">${barras || '<div class="muted">Sem dados no período.</div>'}</div></div>
+        <div class="pl-c" style="--cor:#2BB673"><h3>${PL_IC.caminhao}Ciclo médio por etapa</h3><div style="margin-top:10px">${etapas.length ? etapas.map(([k, v]) => `<div style="display:flex;justify-content:space-between;font-size:13px;color:#DCE8E3;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.06)"><span>${esc(nomeEt(k))}</span><b>${goH(v)}</b></div>`).join('') + `<div style="display:flex;justify-content:space-between;font-size:14px;color:#fff;padding:8px 0"><span>Ciclo médio (carregamento a carregamento)</span><b>${goH((g.ciclos || {}).medio_h)}</b></div>` : '<div class="muted">Nenhum ciclo completo no período.</div>'}</div></div></div></div>
+    <div class="cartao"><h2>Por frota</h2><div class="tabela-wrap"><table class="tabela compacta"><thead><tr><th>Frota</th><th>Horas apontadas</th><th>Produtivas</th><th>Não apontado</th><th>Aguardando documento</th><th>Filas</th><th>Manutenção</th><th>Km</th><th>Descargas</th></tr></thead><tbody>
+      ${(g.por_frota || []).map(f => { const c = f.cat || {}; return `<tr><td><b>${esc(f.frota)}</b> <span class="muted">${esc(f.placa)}</span></td><td>${goH(f.horas)}</td><td>${goH(f.produtivo_h)}</td><td><span class="tag ${+f.nao_apontado_h > 1 ? 'vermelho' : ''}">${goH(f.nao_apontado_h)}</span></td>
+        <td>${goH(c.aguardando_documento)}</td><td>${goH((+c.fila_carregamento || 0) + (+c.fila_descarga || 0) + (+c.fila_balanca || 0))}</td><td>${goH(c.manutencao)}</td><td>${Math.round(+f.km || 0).toLocaleString('pt-BR')}</td><td>${f.descargas}</td></tr>`; }).join('') || '<tr><td colspan="9" class="vazio">Sem dados.</td></tr>'}</tbody></table></div></div>
+    <div class="cartao"><h2>Por motorista</h2><div class="tabela-wrap"><table class="tabela compacta"><thead><tr><th>Motorista</th><th>Horas apontadas</th><th>Produtivas</th><th>Vezes "não apontado"</th><th>Tempo não apontado</th><th>Apontamentos</th></tr></thead><tbody>
+      ${(g.por_motorista || []).map(m => `<tr><td><b>${esc(m.motorista)}</b></td><td>${goH(m.horas)}</td><td>${goH(m.produtivo_h)}</td><td>${m.nao_apontado_n}</td><td><span class="tag ${+m.nao_apontado_h > 2 ? 'vermelho' : ''}">${goH(m.nao_apontado_h)}</span></td><td>${m.apontamentos}</td></tr>`).join('') || '<tr><td colspan="6" class="vazio">Sem dados.</td></tr>'}</tbody></table></div></div>
+    <div class="cartao"><h2>Ciclos (${cl.length})</h2><div class="tabela-wrap"><table class="tabela compacta"><thead><tr><th>Frota</th><th>Início do carregamento</th><th>Próximo carregamento</th><th>Ciclo</th><th>Fila carreg.</th><th>Desl. carregado</th><th>Filas fábrica</th><th>Desl. vazio</th><th>Não apontado</th></tr></thead><tbody>
+      ${cl.map(c => { const e = c.etapas || {}; return `<tr><td><b>${esc(c.frota)}</b></td><td>${dataHoraBR(c.inicio)}</td><td>${dataHoraBR(c.fim)}</td><td><b>${goH(c.horas)}</b></td><td>${goH(e.fila_carregamento)}</td><td>${goH(e.deslocamento_carregado)}</td><td>${goH((+e.fila_balanca || 0) + (+e.fila_descarga || 0))}</td><td>${goH(e.deslocamento_vazio)}</td><td>${goH(e.nao_apontado)}</td></tr>`; }).join('') || '<tr><td colspan="9" class="vazio">Nenhum ciclo completo.</td></tr>'}</tbody></table></div></div>
+    <div class="cartao"><h2>Por dia</h2><div class="tabela-wrap"><table class="tabela compacta"><thead><tr><th>Dia</th><th>Deslocamento</th><th>Filas</th><th>Carregando</th><th>Descarregando</th><th>Aguardando documento</th><th>Manutenção</th><th>Não apontado</th><th>Descargas</th></tr></thead><tbody>
+      ${(g.por_dia || []).map(d => { const c = d.cat || {}; return `<tr><td>${dataBR(d.dia)}</td><td>${goH(c.deslocamento)}</td><td>${goH((+c.fila_carregamento || 0) + (+c.fila_descarga || 0) + (+c.fila_balanca || 0))}</td><td>${goH(c.carregamento)}</td><td>${goH(c.descarga)}</td><td>${goH(c.aguardando_documento)}</td><td>${goH(c.manutencao)}</td><td>${goH(c.nao_apontado)}</td><td>${d.descargas}</td></tr>`; }).join('') || '<tr><td colspan="9" class="vazio">Sem dados.</td></tr>'}</tbody></table></div></div></div>
+    <div class="cartao"><h2>Códigos de apontamento do Creare</h2><p class="muted">Cada código é agrupado numa categoria. Os códigos terminados em 1 e 2 são o mesmo apontamento; vazio ou carregado é calculado pela sequência (depois de carregar = carregado; depois de descarregar = vazio).</p>
+      <div class="tabela-wrap"><table class="tabela compacta"><thead><tr><th>Código</th><th>Grupo</th><th>Mensagem</th><th>Categoria</th><th>Vezes</th><th>Horas no período</th></tr></thead><tbody>
+      ${(g.eventos || []).map(e => `<tr><td>${e.codigo}</td><td>${esc(e.grupo || '')}</td><td>${esc(e.mensagem || '')}</td><td><span class="pl-sel" style="background:${(GO_CAT[e.categoria] || [0, '#5F7A70'])[1]}">${esc((GO_CAT[e.categoria] || [e.categoria])[0])}</span></td><td>${e.qtd}</td><td>${goH(e.horas)}</td></tr>`).join('')}</tbody></table></div></div></div>`;
+  const f = $('#go-f'); f.onsubmit = e => { e.preventDefault(); location.hash = `#/operacao/gestao?de=${f.de.value}&ate=${f.ate.value}`; };
+  const dia = d => new Date(Date.now() - d * 864e5).toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
+  $$('[data-per]', f).forEach(b => b.onclick = () => { const p = b.dataset.per; const de = p === 'mes' ? hoje.slice(0, 8) + '01' : p === '1' ? dia(1) : dia(6), ate = p === '1' ? dia(1) : hoje; location.hash = `#/operacao/gestao?de=${de}&ate=${ate}`; });
+  const nome = `Gestão operacional ${dataBR(ini).replace(/\//g, '-')} a ${dataBR(fim).replace(/\//g, '-')}`;
+  $$('[data-gexp]', tela).forEach(b => b.onclick = () => ocupado(b, async () => { try { if (!window.html2canvas) await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js');
+    const cv = await html2canvas($('#go-exp'), { scale: 2, useCORS: true, backgroundColor: '#F3F5F4', logging: false, windowWidth: 1700, width: 1600,
+      onclone: d => { const el = d.getElementById('go-exp'); if (el) { el.style.width = '1600px'; el.style.padding = '16px'; el.querySelectorAll('.exportar,.hbar').forEach(x => x.remove()); } } });
+    if (b.dataset.gexp === 'png') cv.toBlob(bl => baixarArquivo(bl, nome + '.png'), 'image/png');
+    else { await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'); const pdf = new jspdf.jsPDF({ orientation: 'portrait', unit: 'px', format: [cv.width, cv.height] }); pdf.addImage(cv.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, cv.width, cv.height); pdf.save(nome + '.pdf'); }
+  } catch (err) { falha(err); } }));
+  $('#go-xls').onclick = () => ocupado($('#go-xls'), async () => { await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'); const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(cats.map(([k, v]) => ({ Apontamento: (GO_CAT[k] || [k])[0], Horas: +v }))), 'Tempo por apontamento');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet((g.por_frota || []).map(x => ({ Frota: x.frota, Placa: x.placa, Horas: +x.horas, Produtivas: +x.produtivo_h, 'Não apontado (h)': +x.nao_apontado_h, Km: +x.km, Descargas: x.descargas, ...Object.fromEntries(Object.entries(x.cat || {}).map(([k, v]) => [(GO_CAT[k] || [k])[0], +v])) }))), 'Por frota');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet((g.por_motorista || []).map(x => ({ Motorista: x.motorista, Horas: +x.horas, Produtivas: +x.produtivo_h, 'Vezes não apontado': x.nao_apontado_n, 'Não apontado (h)': +x.nao_apontado_h, Apontamentos: x.apontamentos }))), 'Por motorista');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(cl.map(c => ({ Frota: c.frota, 'Início': dataHoraBR(c.inicio), 'Próximo carregamento': dataHoraBR(c.fim), 'Ciclo (h)': +c.horas, ...Object.fromEntries(Object.entries(c.etapas || {}).map(([k, v]) => [nomeEt(k), +v])) }))), 'Ciclos');
+    const ap = await api.listar('creare_apontamentos', `inicio=gte.${new Date(ini + 'T00:00:00').toISOString()}&inicio=lte.${new Date(fim + 'T23:59:59').toISOString()}&order=placa,inicio&limit=20000`).catch(() => []);
+    const evs = Object.fromEntries((g.eventos || []).map(e => [e.codigo, e]));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(ap.map(a => ({ Placa: a.placa, Motorista: a.motorista, 'Código': a.codigo, Mensagem: evs[a.codigo]?.mensagem, Categoria: (GO_CAT[evs[a.codigo]?.categoria] || [evs[a.codigo]?.categoria])[0], 'Início': dataHoraBR(a.inicio), Fim: dataHoraBR(a.fim), Minutos: +a.minutos, 'Distância (km)': +a.distancia_km, Carregado: a.carregado == null ? '' : a.carregado ? 'Sim' : 'Não', Latitude: +a.lat, Longitude: +a.lng }))), 'Apontamentos');
+    XLSX.writeFile(wb, nome + '.xlsx'); });
+});

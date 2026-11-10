@@ -411,6 +411,7 @@ const MENU = [
   ['Ocorrências e multas', '#/operacao/ocorrencias', [...P_OP, 'rh', 'dp', 'financeiro'], 'cone', 'multas_indicar', true],
   ['grupo', 'Controle Operacional', 'monitor'],
   ['Painel logístico', '#/operacao/painel', [...P_OP, 'manutencao'], 'monitor', null, true],
+  ['Gestão operacional', '#/operacao/gestao', [...P_OP, 'manutencao', 'ssma'], 'monitor', null, true],
   ['Painel do CCO', '#/operacao', [...P_OP, 'manutencao'], 'monitor', 'viagens_atrasadas', true],
   ['Abastecimentos', '#/operacao/abastecimentos', [...P_OP, 'financeiro', 'comprador', 'manutencao'], 'combustivel', 'abast_alertas', true],
   ['Equipamentos', '#/cadastros/equipamentos', [...P_FIN, 'operacao', 'manutencao'], 'caminhao', null, true],
