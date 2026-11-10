@@ -114,7 +114,7 @@ async function formViagem(tela, v = null) {
   if (!editaOp()) { tela.innerHTML = '<div class="cartao vazio">Sem permissão.</div>'; return; }
   const [cls, eqs, ms, ccs] = await Promise.all([cad('clientes', 'select=id,nome,ativo&order=nome', true).catch(() => []), api.listar('equipamentos', 'select=id,codigo_frota,tipo,tipo_outro,marca,modelo,situacao&ativo=eq.true&order=codigo_frota'), motoristas(), centros()]);
   const mot = ms.filter(m => m.motorista || m.id === v?.motorista_id);
-  tela.innerHTML = `<div class="topo"><div><h1>${v ? 'Editar ' + esc(v.numero) : 'Nova viagem'}</h1><p class="sub">Programe a viagem; a saída e a chegada são registradas pelo CCO ou pelo motorista</p></div></div>
+  tela.innerHTML = `<div class="topo"><div><h1>${v ? 'Editar ' + esc(v.numero) : 'Nova viagem'}</h1><p class="sub">Programe a viagem (a saída e a chegada são registradas pelo CCO ou pelo motorista) ou lance uma viagem que já aconteceu, preenchendo a realização</p></div></div>
     <form id="f-via" class="cartao"><div class="form">
       <label class="campo largo">Cliente<select name="cliente_id"><option value="">—</option>${cls.filter(c => c.ativo).map(c => `<option value="${c.id}" ${c.id === v?.cliente_id ? 'selected' : ''}>${esc(c.nome)}</option>`).join('')}</select></label>
       <label class="campo">Origem *<input name="origem" required value="${esc(v?.origem || '')}"></label><label class="campo">Destino *<input name="destino" required value="${esc(v?.destino || '')}"></label>
@@ -134,16 +134,31 @@ async function formViagem(tela, v = null) {
       <label class="campo">Outros documentos<input name="documentos" value="${esc(v?.documentos || '')}" placeholder="Ex.: ordem de carregamento"></label>
       <label class="campo">Anexar nota fiscal (PDF, XML ou foto)<input type="file" name="arq_nf" multiple accept=".pdf,.xml,image/*"></label>
       <label class="campo">Anexar CT-e (PDF, XML ou foto)<input type="file" name="arq_cte" multiple accept=".pdf,.xml,image/*"></label>
+      <div class="largo"><h3 style="margin:8px 0 4px">Realização <span class="muted" style="font-weight:400;font-size:13px">· preencha para viagens que já aconteceram ou para corrigir a data/hora</span></h3></div>
+      <label class="campo">Saída realizada (data e hora)<input type="datetime-local" name="saida_em" value="${dtLocal(v?.saida_em)}" max="${dtLocal(new Date().toISOString())}"></label><label class="campo">Km de saída<input name="km_saida" inputmode="numeric" value="${v?.km_saida ?? ''}"></label>
+      <label class="campo">Chegada realizada (data e hora)<input type="datetime-local" name="chegada_em" value="${dtLocal(v?.chegada_em)}" max="${dtLocal(new Date().toISOString())}"></label><label class="campo">Km de chegada<input name="km_chegada" inputmode="numeric" value="${v?.km_chegada ?? ''}"></label>
+      <p class="muted largo" style="margin:0">Com saída e chegada preenchidas a viagem fica <b>Entregue</b>; só com a saída, <b>Em trânsito</b>; sem nenhuma, <b>Programada</b>.</p>
       <label class="campo largo">Observações<textarea name="observacao" rows="2">${esc(v?.observacao || '')}</textarea></label></div>
       <p class="muted">Equipamentos em manutenção e motoristas com CNH vencida não aparecem para escolha. Ao iniciar a viagem, o sistema também confere o ASO do motorista.</p>
       <div class="acoes"><button class="btn prim">Salvar</button><a class="btn" href="javascript:history.back()">Cancelar</a></div></form>`;
   $('#f-via').onsubmit = async e => { e.preventDefault(); const d = formDados(e.target);
     const chave = soDigitos(d.cte_chave || ''); if (chave && chave.length !== 44) return aviso(`A chave de acesso do CT-e tem 44 números (foram digitados ${chave.length}).`, true);
+    const saidaEm = d.saida_em ? new Date(d.saida_em) : null, chegadaEm = d.chegada_em ? new Date(d.chegada_em) : null, agora = Date.now() + 6e5;
+    if (chegadaEm && !saidaEm) return aviso('Para lançar a chegada, informe também a saída realizada.', true);
+    if ((saidaEm && saidaEm > agora) || (chegadaEm && chegadaEm > agora)) return aviso('Saída e chegada realizadas não podem ser no futuro.', true);
+    if (saidaEm && chegadaEm && chegadaEm < saidaEm) return aviso('A chegada não pode ser antes da saída.', true);
+    if (v?.status === 'entregue' && !chegadaEm) return aviso('Esta viagem já foi entregue: mantenha a data/hora de chegada.', true);
+    if (v?.status === 'em_transito' && !saidaEm) return aviso('Esta viagem já saiu: mantenha a data/hora de saída.', true);
+    if ((saidaEm || chegadaEm) && (!d.equipamento_id || !d.motorista_id)) return aviso('Para lançar saída/chegada, informe o equipamento e o motorista.', true);
+    const kmS = d.km_saida ? Number(soDigitos(d.km_saida)) : null, kmC = d.km_chegada ? Number(soDigitos(d.km_chegada)) : null;
+    if (kmS != null && kmC != null && kmC < kmS) return aviso('Km de chegada menor que o de saída.', true);
+    const stNovo = chegadaEm ? 'entregue' : saidaEm ? 'em_transito' : (v?.status || 'planejada');
     const arqNf = [...(e.target.arq_nf?.files || [])], arqCte = [...(e.target.arq_cte?.files || [])];
     const dados = { cliente_id: d.cliente_id || null, origem: d.origem, destino: d.destino, saida_prevista: d.saida_prevista ? new Date(d.saida_prevista).toISOString() : null, chegada_prevista: d.chegada_prevista ? new Date(d.chegada_prevista).toISOString() : null,
       equipamento_id: d.equipamento_id || null, motorista_id: d.motorista_id || null, carga: d.carga || null, peso_t: num(d.peso_t), valor_frete: num(d.valor_frete), documentos: d.documentos || null, centro_custo_id: d.centro_custo_id || null, observacao: d.observacao || null,
       motoristas_apoio: [...e.target.querySelectorAll('input[name=apoio]:checked')].map(x => x.value).filter(x => x !== (d.motorista_id || null)),
-      nf_numero: (d.nf_numero || '').trim() || null, cte_numero: (d.cte_numero || '').trim() || null, cte_chave: chave || null, mdfe_numero: (d.mdfe_numero || '').trim() || null };
+      nf_numero: (d.nf_numero || '').trim() || null, cte_numero: (d.cte_numero || '').trim() || null, cte_chave: chave || null, mdfe_numero: (d.mdfe_numero || '').trim() || null,
+      saida_em: saidaEm ? saidaEm.toISOString() : null, chegada_em: chegadaEm ? chegadaEm.toISOString() : null, km_saida: kmS, km_chegada: kmC, status: stNovo };
     await ocupado(e.submitter, async () => { try { let id = v?.id; if (v) await api.alterar('viagens', `id=eq.${id}`, dados); else [{ id }] = await api.inserir('viagens', dados);
       if (arqNf.length) await anexar('viagem', id, arqNf, 'Nota fiscal'); if (arqCte.length) await anexar('viagem', id, arqCte, 'CT-e');
       aviso('Viagem salva.'); location.hash = '#/operacao/viagens/ver/' + id; } catch (err) { falha(err); } }); };
@@ -163,7 +178,7 @@ rota('/operacao/viagens/ver/:id', async (tela, id) => {
   tela.innerHTML = `
     <div class="topo"><div><h1>${esc(v.numero)} · ${esc(v.origem)} → ${esc(v.destino)}</h1><p class="sub">${tagSt(ST_VIA, v.status)} · ${esc(v.cl?.nome || 'sem cliente')}</p></div>
       <div class="acoes">${(ed || souMot) && v.status === 'planejada' ? '<button class="btn prim" id="via-sair">Iniciar viagem</button>' : ''}${(ed || souMot) && v.status === 'em_transito' ? '<button class="btn prim" id="chegar">Registrar entrega</button>' : ''}
-        ${ed && ['planejada', 'em_transito'].includes(v.status) ? `<a class="btn" href="#/operacao/viagens/editar/${id}">Editar</a><button class="btn perigo" id="cancelar">Cancelar</button>` : ''}
+        ${ed && ['planejada', 'em_transito', 'entregue'].includes(v.status) ? `<a class="btn" href="#/operacao/viagens/editar/${id}">${v.status === 'entregue' ? 'Corrigir dados / datas' : 'Editar'}</a>` : ''}${ed && ['planejada', 'em_transito'].includes(v.status) ? '<button class="btn perigo" id="cancelar">Cancelar</button>' : ''}
         <button class="btn" id="ordem">Ordem de viagem</button><a class="btn" href="#/operacao/ocorrencias/nova?viagem=${id}">+ Ocorrência</a><a class="btn" href="#/operacao/viagens">Voltar</a></div></div>
     ${passo ? `<div class="cartao" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;border-left:5px solid var(--${passo[0] === 'azul' ? 'azul, #2F80ED' : 'ouro, #DDA936'})"><div style="flex:1;min-width:220px"><b style="font-size:16px">${passo[1]}</b><div class="muted">${passo[2]}</div></div>${passo[3]}</div>` : ''}
     <div class="cartao"><div class="form">${[['Equipamento', v.eq && rotuloEq(v.eq)], ['Motorista', v.m?.nome], ['Outros motoristas', (v.motoristas_apoio || []).map(i => nomesMot[i]).filter(Boolean).join(', ') || null], ['Entregue por', v.motorista_entrega_id ? nomesMot[v.motorista_entrega_id] : null], ['Saída prevista', dataHoraBR(v.saida_prevista)], ['Chegada prevista', dataHoraBR(v.chegada_prevista)],

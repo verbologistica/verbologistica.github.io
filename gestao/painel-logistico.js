@@ -46,10 +46,12 @@ const plCss = `<style id="pl-css">
 .pl-m svg{width:17px;height:17px;color:var(--cor,#9FB8AE)}.pl-m span{flex:1}.pl-m b{font-size:20px}
 .pl-visao h4{display:flex;align-items:center;gap:12px;margin:4px 0 12px;font-size:13px;letter-spacing:3px;color:var(--pl-ouro)}.pl-visao h4:after{content:"";flex:1;height:1px;background:rgba(221,169,54,.3)}
 .pl-pct{font-size:12px;letter-spacing:2.5px;color:var(--pl-sub);border-top:1px solid rgba(255,255,255,.1);margin-top:10px;padding-top:8px;text-align:center}.pl-pct b{color:#fff;font-size:15px;letter-spacing:0;margin-right:4px}
-.pl-mapa{height:300px;border-radius:12px;overflow:hidden;border:1px solid rgba(221,169,54,.25);background:#0E2520;margin-top:10px}.pl-sub{font-size:12px;color:var(--pl-sub);margin:4px 0 0 30px}
+.pl-mapa{height:340px;border-radius:12px;overflow:hidden;border:1px solid rgba(221,169,54,.25);background:#0E2520;margin-top:10px}.pl-sub{font-size:12px;color:var(--pl-sub);margin:4px 0 0 30px}
 .pl-leg{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:11.5px;color:#DCE8E3;margin-top:8px}.pl-leg i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:-1px}
 .pl-donut{display:flex;align-items:center;gap:14px;margin-top:10px;flex-wrap:wrap}.pl-donut svg{width:150px;height:150px;flex:none}.pl-donut ul{list-style:none;margin:0;padding:0;font-size:12px;flex:1;min-width:140px}
 .pl-donut li{display:flex;align-items:center;gap:6px;margin:3px 0}.pl-donut li i{width:10px;height:10px;border-radius:3px;flex:none}.pl-donut li b{margin-left:auto}
+.pl-cam{position:relative}.pl-cam svg{display:block;filter:drop-shadow(0 2px 3px rgba(0,0,0,.35))}.pl-cam .pl-rot{position:absolute;top:40px;left:50%;transform:translateX(-50%)}
+.pl-tt{padding:0;border-radius:10px;border:0;box-shadow:0 6px 18px rgba(0,0,0,.25)}.pl-dica{padding:9px 11px;font:12px/1.45 Arial,sans-serif;color:#1d2b27;min-width:220px;max-width:300px;white-space:normal}.pl-dica b{color:#0B1F19}.pl-dica svg{width:12px;height:12px;vertical-align:-2px;margin-right:4px}.pl-dica i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px}.pl-dica-ap{margin:5px 0;padding:5px 7px;background:#F3F6F4;border-left:3px solid #DDA936;border-radius:4px}.pl-dica-ap small{display:block;font-size:10px;color:#5F7A70;text-transform:uppercase;letter-spacing:.4px}.pl-dica-ap span{color:#5F7A70;font-size:11px}
 .pl-rot{background:#0B1F19;border:1px solid var(--pl-ouro);color:#fff;font-weight:700;font-size:11px;padding:2px 6px;border-radius:6px;white-space:nowrap}
 .pl-per{font-size:12px;color:var(--pl-sub);margin-top:8px}
 .pl-tab td .tag{white-space:nowrap}.pl-trava{font-size:11px;color:#8a6d1a}
@@ -100,30 +102,141 @@ function plHtml(fs, c, quando, per) {
       <div class="pl-c" style="--cor:#DDA936"><h3>${PL_IC.pino}Corredor operacional</h3><div class="pl-sub">Três Lagoas (MS) · Guararapes (SP) · Lençóis Paulista (SP)</div>
         <div class="pl-mapa" id="pl-mapa"></div>
         <div class="pl-leg"><span><i style="background:#DDA936"></i>Origem</span><span><i style="background:#fff"></i>Apoio · administrativo</span><span><i style="background:#F2C94C"></i>Destino</span>
-          <span><i style="background:#2BB673"></i>Carregado</span><span><i style="background:#DDA936;border:2px solid #fff"></i>Vazio</span><span><i style="background:#9FB8AE"></i>Outras</span></div>
+          <span><i style="background:#2BB673"></i>Carregado</span><span><i style="background:#DDA936"></i>Vazio</span><span><i style="background:#5F7A70"></i>Sem apontamento</span>
+          <span><i style="background:#2BB673;border:2px solid #fff"></i>Ignição ligada</span><span><i style="background:#9AA5B1;border:2px solid #fff"></i>Desligada</span><span><i style="background:#2F80ED;border-radius:2px"></i>Cercas</span></div>
         <div class="pl-per" id="pl-mapa-info"></div></div>
       <div class="pl-c" style="--cor:#DDA936;flex:1"><h3>${PL_IC.pizza}Ocupação da frota</h3><div class="pl-sub">${per ? 'Horas por atividade no período' : 'Distribuição por atividade'}</div>${plDonut(dist)}</div>
     </div></div></div>`;
 }
 
-async function plMapa(el, fs) {
+// ---------- mapa: ruas / satélite / escuro, caminhão por frota, cercas (KML) e rastro ----------
+const PL_BASES = {
+  'Ruas': ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}'],
+  'Satélite': ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}',
+    'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}'],
+  'Escuro': ['https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+    'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}']
+};
+const PL_CERCA_COR = { cerca: '#2F80ED', fazenda: '#2BB673', fabrica: '#56A8E8', posto: '#F2994A', apoio: '#DDA936', outro: '#9B7BEA' };
+const plLigado = f => /LIGADO/i.test(f.estado || f.ignicao || '') && !/DESLIGADO/i.test(f.estado || f.ignicao || '');
+const plAndando = f => /ANDANDO/i.test(f.estado || '') || (+f.vel || 0) > 3;
+const plCorFrota = f => PL_COR[f.atividade] || '#5F7A70';
+const plApont = f => { const a = (f.apontamento || '').trim().replace(/\s*-\s*$/, ''); return a || 'Sem apontamento'; };
+const plMov = f => !(f.estado || f.ignicao) ? 'Sem leitura de ignição' : plLigado(f) ? (plAndando(f) ? `Ignição ligada · em movimento · ${Math.round(+f.vel || 0)} km/h` : 'Ignição ligada · parado') : 'Ignição desligada · parado';
+// frente de caminhão (cabine, para-brisa, grade, faróis, para-choque) + selo de ignição
+function plCaminhaoSvg(f, px = 38) {
+  const cor = plCorFrota(f), on = plLigado(f), anda = plAndando(f);
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${px}" height="${px}" viewBox="0 0 40 40">
+    <circle cx="19" cy="21" r="16.5" fill="${cor}" stroke="#fff" stroke-width="2.5"/>
+    <rect x="10" y="10" width="18" height="18" rx="3.2" fill="#fff"/>
+    <rect x="12" y="12" width="14" height="6.6" rx="1.6" fill="#1F3A33"/>
+    <rect x="15.2" y="20.2" width="7.6" height="4.6" rx=".9" fill="#1F3A33"/><path d="M16.4 21.6h5.2M16.4 23.4h5.2" stroke="#fff" stroke-width=".8"/>
+    <circle cx="12.9" cy="22.5" r="1.5" fill="#F2C94C"/><circle cx="25.1" cy="22.5" r="1.5" fill="#F2C94C"/>
+    <rect x="9" y="26" width="20" height="2.8" rx="1.1" fill="#1F3A33"/>
+    <rect x="11" y="28.6" width="3.6" height="3.4" rx="1" fill="#1F3A33"/><rect x="23.4" y="28.6" width="3.6" height="3.4" rx="1" fill="#1F3A33"/>
+    <circle cx="32" cy="8" r="6" fill="${on ? '#2BB673' : '#9AA5B1'}" stroke="#fff" stroke-width="2"/>
+    ${anda ? '<path d="M29.6 5.4 34.8 8l-5.2 2.6z" fill="#fff"/>' : on ? '<circle cx="32" cy="8" r="2" fill="#fff"/>' : '<path d="M29.8 8h4.4" stroke="#fff" stroke-width="1.8"/>'}
+  </svg>`;
+}
+const plDica = f => `<div class="pl-dica"><b>${esc(f.codigo)}</b> · ${esc(f.placa || '')}${f.motorista ? `<div>${PL_IC.pessoa}${esc(f.motorista)}</div>` : ''}
+  <div class="pl-dica-ap"><small>Apontamento do motorista</small>${esc(plApont(f))}${f.apont_desde ? ` <span>desde ${dataHoraBR(f.apont_desde)}</span>` : ''}</div>
+  <div><i style="background:${plLigado(f) ? '#2BB673' : '#9AA5B1'}"></i>${esc(plMov(f))}</div>
+  <div>Atividade no painel: <b>${esc(f.atividade || '—')}</b></div>
+  ${f.endereco || f.local_creare ? `<div class="muted">${esc(f.endereco || f.local_creare)}</div>` : ''}${f.posicao_em ? `<div class="muted">Leitura ${dataHoraBR(f.posicao_em)}</div>` : ''}</div>`;
+
+async function plRastros(modo, em, ini, fim) {
+  const ate = modo === 'periodo' && fim ? new Date(fim) : modo === 'em' && em ? new Date(em) : new Date();
+  const de = modo === 'periodo' && ini ? new Date(ini) : new Date(ate.getTime() - 12 * 36e5);
+  const h = await api.listar('frota_status_hist', `em=gte.${de.toISOString()}&em=lte.${ate.toISOString()}&lat=not.is.null&select=em,equipamento_id,lat,lng&order=em&limit=5000`).catch(() => []);
+  const r = {}; h.forEach(x => { const a = (r[x.equipamento_id] ||= []); const u = a[a.length - 1]; if (!u || u[0] !== +x.lat || u[1] !== +x.lng) a.push([+x.lat, +x.lng]); });
+  return r;
+}
+
+function plKml(txt) {
+  const x = new DOMParser().parseFromString(txt, 'text/xml'), out = [];
+  [...x.getElementsByTagName('Placemark')].forEach(pm => {
+    const nome = (pm.getElementsByTagName('name')[0]?.textContent || '').trim() || 'Cerca';
+    const coords = el => el.textContent.trim().split(/\s+/).map(c => c.split(',').map(Number)).filter(c => c.length >= 2 && !isNaN(c[0]) && !isNaN(c[1])).map(([lo, la]) => [+la.toFixed(6), +lo.toFixed(6)]);
+    const polys = [...pm.getElementsByTagName('outerBoundaryIs')].map(o => coords(o.getElementsByTagName('coordinates')[0])).filter(p => p.length > 2);
+    const linhas = [...pm.getElementsByTagName('LineString')].map(o => coords(o.getElementsByTagName('coordinates')[0])).filter(p => p.length > 2);
+    const pts = [...pm.getElementsByTagName('Point')].map(o => coords(o.getElementsByTagName('coordinates')[0])).filter(p => p.length);
+    if (polys.length || linhas.length) out.push({ nome, poligonos: [...polys, ...linhas] });
+    else if (pts.length) out.push({ nome, poligonos: [pts[0]] });
+  });
+  return out;
+}
+
+async function plMapa(el, fs, cercas, rastros) {
   if (!window.L) { document.head.insertAdjacentHTML('beforeend', '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">'); await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js'); }
-  const m = L.map(el, { zoomControl: true, attributionControl: false, preferCanvas: false });
-  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', { maxZoom: 16, crossOrigin: true }).addTo(m);
-  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}', { maxZoom: 16, crossOrigin: true, opacity: .8 }).addTo(m);
+  const m = L.map(el, { zoomControl: true, attributionControl: false });
+  let guardado = 'Ruas'; try { guardado = localStorage.getItem('pl-base') || 'Ruas'; } catch (e) { }
+  if (!PL_BASES[guardado]) guardado = 'Ruas';
+  const bases = Object.fromEntries(Object.entries(PL_BASES).map(([n, us]) => [n, L.layerGroup(us.map(u => L.tileLayer(u, { maxZoom: 18, crossOrigin: 'anonymous' })))]));
+  bases[guardado].addTo(m); m._plBase = guardado;
+  m.on('baselayerchange', e => { m._plBase = e.name; try { localStorage.setItem('pl-base', e.name); } catch (er) { } });
+  const gCercas = L.layerGroup(), gRastro = L.layerGroup(), gFrotas = L.layerGroup();
+  (cercas || []).forEach(c => { const cor = c.cor || PL_CERCA_COR[c.tipo] || '#2F80ED';
+    (c.poligonos || []).forEach(p => { if (p.length > 2) L.polygon(p, { color: cor, weight: 2, fillColor: cor, fillOpacity: .14 }).bindTooltip(esc(c.nome), { sticky: true }).addTo(gCercas);
+      else if (p.length === 1) L.circleMarker(p[0], { radius: 6, color: '#fff', weight: 2, fillColor: cor, fillOpacity: 1 }).bindTooltip(esc(c.nome)).addTo(gCercas); }); });
   const pts = PL_PONTOS.map(p => [p[1], p[2]]);
-  L.polyline(pts, { color: '#DDA936', weight: 3, opacity: .85, dashArray: '8 8' }).addTo(m);
+  L.polyline(pts, { color: '#DDA936', weight: 3, opacity: .9, dashArray: '8 8' }).addTo(m);
   PL_PONTOS.forEach(([n, la, lo, t]) => L.circleMarker([la, lo], { radius: 7, color: '#0B1F19', weight: 2, fillColor: t === 'apoio' ? '#fff' : t === 'origem' ? '#DDA936' : '#F2C94C', fillOpacity: 1 }).bindTooltip(n).addTo(m));
   const com = fs.filter(f => f.lat != null && f.lng != null), b = L.latLngBounds(pts);
-  com.forEach(f => { const cor = f.atividade === 'Trânsito Carregado' ? '#2BB673' : f.atividade === 'Trânsito Vazio' ? '#DDA936' : '#9FB8AE';
-    const mk = L.circleMarker([f.lat, f.lng], { radius: 9, color: '#fff', weight: 2, fillColor: cor, fillOpacity: 1 }).addTo(m);
-    mk.bindTooltip(`<b>${esc(f.codigo)}</b> ${esc(f.placa || '')}<br>${esc(f.atividade || '—')}${f.motorista ? '<br>' + esc(f.motorista) : ''}${f.local_creare ? '<br>' + esc(f.local_creare) : ''}${f.posicao_em ? '<br>' + dataHoraBR(f.posicao_em) : ''}`);
-    L.marker([f.lat, f.lng], { icon: L.divIcon({ className: '', html: `<span class="pl-rot">${esc(f.codigo)}</span>`, iconAnchor: [-10, 10] }), interactive: false }).addTo(m);
+  com.forEach(f => { const r = (rastros || {})[f.id]; if (r && r.length > 1) L.polyline(r, { color: plCorFrota(f), weight: 4, opacity: .75 }).addTo(gRastro); });
+  com.forEach(f => {
+    L.marker([f.lat, f.lng], { icon: L.divIcon({ className: 'pl-cam', html: plCaminhaoSvg(f) + `<span class="pl-rot">${esc(f.codigo)}${plAndando(f) ? ' · ' + Math.round(+f.vel || 0) + ' km/h' : ''}</span>`, iconSize: [38, 38], iconAnchor: [19, 21] }) })
+      .bindTooltip(plDica(f), { direction: 'top', offset: [0, -16], className: 'pl-tt' }).addTo(gFrotas);
     b.extend([f.lat, f.lng]); });
+  gCercas.addTo(m); gRastro.addTo(m); gFrotas.addTo(m);
+  L.control.layers(bases, { 'Cercas': gCercas, 'Rastro (últimas horas)': gRastro, 'Frotas': gFrotas }, { position: 'topright', collapsed: true }).addTo(m);
   m.fitBounds(b.pad(0.12));
+  m._pl = { fs: com, cercas: cercas || [], rastros: rastros || {}, grupos: { gCercas, gRastro, gFrotas } };
   const ult = com.map(f => f.posicao_em).filter(Boolean).sort().pop();
-  $('#pl-mapa-info').textContent = com.length ? `${com.length} frota(s) com posição da telemetria${ult ? ' · última leitura ' + dataHoraBR(ult) : ''}` : 'Ainda sem posição da telemetria para as frotas.';
+  $('#pl-mapa-info').textContent = (com.length ? `${com.length} frota(s) com posição da telemetria${ult ? ' · última leitura ' + dataHoraBR(ult) : ''}` : 'Ainda sem posição da telemetria para as frotas.')
+    + ((cercas || []).length ? ` · ${cercas.length} cerca(s)` : '');
   return m;
+}
+
+// desenha o mapa exatamente como está na tela (camada, zoom e enquadramento) num canvas, com rótulos fixos para imagem/PDF
+async function plMapaImagem(m, escala = 2) {
+  const sz = m.getSize(), z = m.getZoom(), pb = m.getPixelBounds(), W = sz.x, H = sz.y;
+  const cv = document.createElement('canvas'); cv.width = W * escala; cv.height = H * escala;
+  const g = cv.getContext('2d'); g.scale(escala, escala); g.fillStyle = '#dfe6e3'; g.fillRect(0, 0, W, H);
+  const carrega = src => new Promise(ok => { const i = new Image(); i.crossOrigin = 'anonymous'; i.onload = () => ok(i); i.onerror = () => ok(null); i.src = src; setTimeout(() => ok(null), 15000); });
+  const n = 2 ** z, x0 = Math.floor(pb.min.x / 256), x1 = Math.floor(pb.max.x / 256), y0 = Math.floor(pb.min.y / 256), y1 = Math.floor(pb.max.y / 256);
+  for (const u of PL_BASES[m._plBase] || PL_BASES.Ruas) {
+    const ts = []; for (let x = x0; x <= x1; x++) for (let y = Math.max(0, y0); y <= Math.min(n - 1, y1); y++) ts.push({ x, y });
+    const imgs = await Promise.all(ts.map(t => carrega(u.replace('{z}', z).replace('{y}', t.y).replace('{x}', ((t.x % n) + n) % n))));
+    imgs.forEach((im, k) => { if (im) g.drawImage(im, ts[k].x * 256 - pb.min.x, ts[k].y * 256 - pb.min.y, 256, 256); });
+  }
+  const P = ll => { const p = m.project(ll, z); return [p.x - pb.min.x, p.y - pb.min.y]; };
+  const linha = (pts, cor, larg, tr = []) => { if (pts.length < 2) return; g.save(); g.setLineDash(tr); g.strokeStyle = cor; g.lineWidth = larg; g.lineJoin = g.lineCap = 'round'; g.beginPath(); pts.map(P).forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.stroke(); g.restore(); };
+  const vis = m._pl.grupos;
+  if (m.hasLayer(vis.gCercas)) m._pl.cercas.forEach(c => { const cor = c.cor || PL_CERCA_COR[c.tipo] || '#2F80ED';
+    (c.poligonos || []).forEach(p => { if (p.length > 2) { g.save(); g.beginPath(); p.map(P).forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.closePath(); g.globalAlpha = .16; g.fillStyle = cor; g.fill(); g.globalAlpha = 1; g.strokeStyle = cor; g.lineWidth = 2; g.stroke(); g.restore(); } }); });
+  linha(PL_PONTOS.map(p => [p[1], p[2]]), '#DDA936', 3, [8, 8]);
+  if (m.hasLayer(vis.gRastro)) m._pl.fs.forEach(f => linha(m._pl.rastros[f.id] || [], plCorFrota(f), 4));
+  g.font = '600 11px Arial'; PL_PONTOS.forEach(([nm, la, lo, t]) => { const [x, y] = P([la, lo]); g.beginPath(); g.arc(x, y, 7, 0, 7); g.fillStyle = t === 'apoio' ? '#fff' : t === 'origem' ? '#DDA936' : '#F2C94C'; g.fill(); g.lineWidth = 2; g.strokeStyle = '#0B1F19'; g.stroke();
+    g.lineWidth = 3; g.strokeStyle = 'rgba(255,255,255,.9)'; g.strokeText(nm, x + 10, y - 8); g.fillStyle = '#0B1F19'; g.fillText(nm, x + 10, y - 8); });
+  if (m.hasLayer(vis.gFrotas)) {
+    const caixas = [];
+    for (const f of m._pl.fs) {
+      const [x, y] = P([f.lat, f.lng]); if (x < -40 || y < -40 || x > W + 40 || y > H + 40) continue;
+      const im = await carrega('data:image/svg+xml;charset=utf-8,' + encodeURIComponent(plCaminhaoSvg(f, 76))); if (im) g.drawImage(im, x - 19, y - 21, 38, 38);
+      const l1 = `${f.codigo} · ${f.placa || ''}`, l2 = plApont(f).slice(0, 34), l3 = plMov(f).replace('Ignição ', 'Ign. ');
+      g.font = '700 11px Arial'; const w1 = g.measureText(l1).width; g.font = '11px Arial'; const bw = Math.max(w1, g.measureText(l2).width, g.measureText(l3).width) + 16, bh = 48;
+      let bx = x + 22, by = y - 30; if (bx + bw > W - 4) bx = x - 22 - bw; if (by < 4) by = 4; if (by + bh > H - 4) by = H - 4 - bh;
+      for (let k = 0; k < 8 && caixas.some(c => bx < c[0] + c[2] && bx + bw > c[0] && by < c[1] + c[3] && by + bh > c[1]); k++) by += bh + 4;
+      caixas.push([bx, by, bw, bh]);
+      g.save(); g.shadowColor = 'rgba(0,0,0,.25)'; g.shadowBlur = 6; g.fillStyle = 'rgba(255,255,255,.96)'; g.beginPath(); g.roundRect ? g.roundRect(bx, by, bw, bh, 7) : g.rect(bx, by, bw, bh); g.fill(); g.restore();
+      g.fillStyle = plCorFrota(f); g.fillRect(bx, by + 6, 3, bh - 12);
+      g.fillStyle = '#0B1F19'; g.font = '700 11px Arial'; g.fillText(l1, bx + 9, by + 15); g.font = '11px Arial'; g.fillStyle = '#1F3A33'; g.fillText(l2, bx + 9, by + 29);
+      g.fillStyle = plLigado(f) ? '#1E8E57' : '#66737F'; g.fillText(l3, bx + 9, by + 42);
+    }
+  }
+  g.font = '10px Arial'; g.fillStyle = 'rgba(255,255,255,.85)'; const at = 'Mapa: Esri · Telemetria: Creare'; const aw = g.measureText(at).width; g.fillRect(W - aw - 10, H - 16, aw + 10, 16); g.fillStyle = '#333'; g.fillText(at, W - aw - 5, H - 5);
+  return cv.toDataURL('image/png');
 }
 
 rota('/operacao/painel', async tela => {
@@ -142,7 +255,7 @@ rota('/operacao/painel', async tela => {
   const agoraLocal = dtLocal(new Date().toISOString()), ontemLocal = dtLocal(new Date(Date.now() - 864e5).toISOString());
   tela.innerHTML = `<div class="pl-wrap">
     <div class="topo"><div><h1>Painel logístico</h1><p class="sub">Status da frota hora a hora · telemetria Creare + ajustes da torre</p></div>
-      <div class="acoes"><button class="btn" data-exp="png">Imagem (PNG)</button><button class="btn" data-exp="pdf">PDF</button><button class="btn" data-exp="html">HTML</button><button class="btn" data-exp="xlsx">Excel</button></div></div>
+      <div class="acoes"><button class="btn" data-exp="png">Imagem (PNG)</button><button class="btn" data-exp="pdf">PDF</button><button class="btn" data-exp="html">HTML</button><button class="btn" data-exp="xlsx">Excel</button>${ed ? '<button class="btn" id="pl-kml" title="Importar cercas/áreas de um arquivo KML (Creare, Google Earth)">Cercas (KML)</button>' : ''}</div></div>
     <form class="filtros pl-barra" id="pl-f"><div class="pl-modo"><select name="modo"><option value="agora" ${modo === 'agora' ? 'selected' : ''}>Agora</option><option value="em" ${modo === 'em' ? 'selected' : ''}>Em uma data e hora</option><option value="periodo" ${modo === 'periodo' ? 'selected' : ''}>Período (de… até…)</option></select></div>
       <input type="datetime-local" name="em" value="${esc(em || agoraLocal)}" ${modo === 'em' ? '' : 'hidden'} aria-label="Data e hora">
       <input type="datetime-local" name="de" value="${esc(ini || ontemLocal)}" ${modo === 'periodo' ? '' : 'hidden'} aria-label="De"><input type="datetime-local" name="ate" value="${esc(fim || agoraLocal)}" ${modo === 'periodo' ? '' : 'hidden'} aria-label="Até">
@@ -152,19 +265,20 @@ rota('/operacao/painel', async tela => {
       ${Object.entries(per.por_status || {}).map(([k, v]) => `<tr><td>${esc(PL_ST[k] || k)}</td><td>${v.toLocaleString('pt-BR')}</td><td>${plPct(v, per.horas_total)}%</td></tr>`).join('')}</tbody></table></div>
       <p class="muted">Base: ${per.fotos} foto(s) da frota no período (coletas do Creare e ajustes da torre). Cada foto vale até a seguinte.</p></div>` : ''}
     <div class="cartao"><h2>Frotas ${modo === 'agora' ? '' : '<span class="muted">(situação em ' + esc(modo === 'periodo' ? dataHoraBR(new Date(fim).toISOString()) : quando) + ')</span>'}</h2>
-      <div class="tabela-wrap"><table class="tabela compacta pl-tab"><thead><tr><th>Frota</th><th>Placa</th><th>Status</th><th>Atividade</th><th>Local</th><th>Motorista</th><th>Observação</th><th>Telemetria (Creare)</th>${ed && modo === 'agora' ? '<th></th>' : ''}</tr></thead><tbody>
+      <div class="tabela-wrap"><table class="tabela compacta pl-tab"><thead><tr><th>Frota</th><th>Placa</th><th>Status</th><th>Atividade</th><th>Local</th><th>Motorista</th><th>Observação</th><th>Apontamento do motorista · telemetria</th>${ed && modo === 'agora' ? '<th></th>' : ''}</tr></thead><tbody>
       ${fs.map(f => `<tr><td data-r="Frota"><b>${esc(f.codigo)}</b><div class="muted">${esc(f.modelo || '')}</div></td><td data-r="Placa">${esc(f.placa || '')}</td>
         <td data-r="Status"><span class="tag ${f.status === 'disponivel' ? 'verde' : f.status === 'manutencao' ? 'vermelho' : 'amarelo'}">${PL_ST[f.status] || f.status}</span>${f.travado ? '<div class="pl-trava">🔒 torre</div>' : ''}</td>
         <td data-r="Atividade"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${PL_COR[f.atividade] || '#5F7A70'};margin-right:5px"></span>${esc(f.atividade || '—')}</td>
         <td data-r="Local">${esc(f.local || '')}</td><td data-r="Motorista">${esc(f.motorista || '')}</td><td data-r="Observação">${esc(f.observacao || '')}</td>
-        <td data-r="Telemetria" class="muted">${f.apontamento ? esc(f.apontamento) : ''}${f.local_creare ? '<br>' + esc(f.local_creare) : ''}${f.posicao_em ? '<br>' + dataHoraBR(f.posicao_em) : ''}</td>
+        <td data-r="Telemetria" class="muted">${f.posicao_em ? `<b style="color:inherit">${esc(plApont(f))}</b>${f.apont_desde ? ' · desde ' + dataHoraBR(f.apont_desde) : ''}<br><span style="color:${plLigado(f) ? '#1E8E57' : 'inherit'}">${esc(plMov(f))}</span>${f.endereco || f.local_creare ? '<br>' + esc(f.endereco || f.local_creare) : ''}<br>Leitura ${dataHoraBR(f.posicao_em)}` : ''}</td>
         ${ed && modo === 'agora' ? `<td><button class="btn peq" data-ed="${f.id}">Ajustar</button></td>` : ''}</tr>`).join('')}</tbody></table></div>
       <p class="muted">Sem a trava 🔒, a atividade acompanha o apontamento do motorista no Creare a cada coleta. Com a trava, vale o que a torre definiu até ela destravar.</p></div></div>`;
   const f = $('#pl-f');
   f.modo.onchange = () => { f.em.hidden = f.modo.value !== 'em'; f.de.hidden = f.ate.hidden = f.modo.value !== 'periodo'; };
   f.onsubmit = e => { e.preventDefault(); const d = formDados(f); const p = new URLSearchParams({ modo: d.modo });
     if (d.modo === 'em') p.set('em', d.em); if (d.modo === 'periodo') { p.set('de', d.de); p.set('ate', d.ate); } location.hash = '#/operacao/painel?' + p; };
-  let mapa = null; try { mapa = await plMapa($('#pl-mapa'), fs); } catch (e) { $('#pl-mapa-info').textContent = 'Não foi possível carregar o mapa.'; }
+  const [cercas, rastros] = await Promise.all([api.listar('mapa_cercas', 'ativo=is.true&select=id,nome,tipo,cor,poligonos').catch(() => []), plRastros(modo, em, ini, fim).catch(() => ({}))]);
+  let mapa = null; try { mapa = await plMapa($('#pl-mapa'), fs, cercas, rastros); } catch (e) { $('#pl-mapa-info').textContent = 'Não foi possível carregar o mapa.'; }
   if (modo === 'agora') { const t = setTimeout(() => { if (location.hash.startsWith('#/operacao/painel') && !(new URLSearchParams(location.hash.split('?')[1] || '').get('modo') || '').match(/em|periodo/)) navegar(); }, 300000);
     window.addEventListener('hashchange', () => clearTimeout(t), { once: true }); }
   $$('[data-ed]', tela).forEach(b => b.onclick = async () => { const x = fs.find(y => y.id === b.dataset.ed);
@@ -179,25 +293,37 @@ rota('/operacao/painel', async tela => {
     if (!r) return;
     try { await api.rpc('frota_status_salvar', { p_eq: x.id, p: { status: r.status, atividade: r.atividade, local: r.local, motorista: r.motorista, observacao: r.observacao, travado: !!r.travado } });
       aviso('Frota atualizada.'); navegar(); } catch (err) { falha(err); } });
+  $('#pl-kml')?.addEventListener('click', async () => {
+    const r = await modal(`<form><h2>Importar cercas (KML)</h2><p class="muted">Exporte as cercas no Creare ou no Google Earth em KML e envie aqui. Cada área do arquivo vira uma cerca no mapa.</p><div class="form">
+      <label class="campo largo">Arquivo KML<input type="file" name="arq" accept=".kml,application/vnd.google-earth.kml+xml" required></label>
+      <label class="campo">Tipo<select name="tipo">${Object.keys(PL_CERCA_COR).map(t => `<option value="${t}">${{ cerca: 'Cerca', fazenda: 'Fazenda / horto', fabrica: 'Fábrica', posto: 'Posto', apoio: 'Apoio / base', outro: 'Outro' }[t]}</option>`).join('')}</select></label></div>
+      <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Importar</button></div></form>`);
+    if (!r) return;
+    const arq = (r.arq || [])[0]; if (!arq) return falha('Escolha o arquivo KML.');
+    try { const itens = plKml(await arq.text()); if (!itens.length) return falha('Não encontrei áreas nem pontos nesse KML.');
+      await api.inserir('mapa_cercas', itens.map(c => ({ nome: c.nome.slice(0, 120), tipo: r.tipo || 'cerca', poligonos: c.poligonos, origem: arq.name })));
+      aviso(`${itens.length} cerca(s) importada(s).`); navegar(); } catch (err) { falha(err); } });
   // exportações
   const nomeBase = `Painel logístico ${quando.replace(/[\/:]/g, '-').replace(/\s+/g, ' ')}`;
   const imagem = async () => { if (!window.html2canvas) await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js');
-    return html2canvas($('#pl-painel'), { scale: 2.5, useCORS: true, backgroundColor: '#0B1F19', logging: false }); };
+    let foto = null; if (mapa) { try { foto = await plMapaImagem(mapa, 2.5); } catch (e) { console.warn('mapa', e); } }
+    return html2canvas($('#pl-painel'), { scale: 2.5, useCORS: true, backgroundColor: '#0B1F19', logging: false,
+      onclone: d => { const el = d.getElementById('pl-mapa'); if (el && foto) { el.innerHTML = `<img src="${foto}" alt="Mapa" style="width:100%;height:100%;display:block">`; el.className = 'pl-mapa'; } } }); };
   $$('[data-exp]', tela).forEach(b => b.onclick = () => ocupado(b, async () => { try {
     const t = b.dataset.exp;
     if (t === 'png') { const cv = await imagem(); cv.toBlob(bl => baixarArquivo(bl, nomeBase + '.png'), 'image/png'); }
     else if (t === 'pdf') { const cv = await imagem(); await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
       const pdf = new jspdf.jsPDF({ orientation: 'landscape', unit: 'px', format: [cv.width, cv.height] }); pdf.addImage(cv.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, cv.width, cv.height); pdf.save(nomeBase + '.pdf'); }
     else if (t === 'html') { const cv = await imagem(); const img = cv.toDataURL('image/png');
-      const linhas = fs.map(x => `<tr><td>${esc(x.codigo)}</td><td>${esc(x.placa || '')}</td><td>${PL_ST[x.status] || ''}</td><td>${esc(x.atividade || '')}</td><td>${esc(x.local || '')}</td><td>${esc(x.motorista || '')}</td><td>${esc(x.observacao || '')}</td></tr>`).join('');
-      baixarArquivo(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(nomeBase)}</title><style>body{margin:0;background:#0B1F19;color:#EAF2EE;font-family:Arial,sans-serif;padding:16px}img{max-width:100%;border-radius:12px;display:block;margin:0 auto 16px}table{border-collapse:collapse;width:100%;background:#fff;color:#1d2b27;font-size:13px}th,td{border:1px solid #d9e2de;padding:6px 8px;text-align:left}th{background:#02654D;color:#fff}</style></head><body><img src="${img}" alt="Painel logístico"><table><thead><tr><th>Frota</th><th>Placa</th><th>Status</th><th>Atividade</th><th>Local</th><th>Motorista</th><th>Observação</th></tr></thead><tbody>${linhas}</tbody></table></body></html>`, nomeBase + '.html', 'text/html'); }
+      const linhas = fs.map(x => `<tr><td>${esc(x.codigo)}</td><td>${esc(x.placa || '')}</td><td>${PL_ST[x.status] || ''}</td><td>${esc(x.atividade || '')}</td><td>${esc(x.local || '')}</td><td>${esc(x.motorista || '')}</td><td>${x.posicao_em ? esc(plApont(x)) : ''}</td><td>${x.posicao_em ? esc(plMov(x)) : ''}</td><td>${esc(x.observacao || '')}</td></tr>`).join('');
+      baixarArquivo(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(nomeBase)}</title><style>body{margin:0;background:#0B1F19;color:#EAF2EE;font-family:Arial,sans-serif;padding:16px}img{max-width:100%;border-radius:12px;display:block;margin:0 auto 16px}table{border-collapse:collapse;width:100%;background:#fff;color:#1d2b27;font-size:13px}th,td{border:1px solid #d9e2de;padding:6px 8px;text-align:left}th{background:#02654D;color:#fff}</style></head><body><img src="${img}" alt="Painel logístico"><table><thead><tr><th>Frota</th><th>Placa</th><th>Status</th><th>Atividade</th><th>Local</th><th>Motorista</th><th>Apontamento do motorista</th><th>Ignição / movimento</th><th>Observação</th></tr></thead><tbody>${linhas}</tbody></table></body></html>`, nomeBase + '.html', 'text/html'); }
     else if (t === 'xlsx') { await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'); const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Painel logístico · status da frota'], [per ? 'Período' : 'Situação em', quando], [],
         ['Indicador', 'Frotas', '% da frota'], ...[['Total de frotas operacionais', c.total], ['Frotas disponíveis', c.disp], ['Em trânsito carregado', c.carregado], ['Em trânsito vazio', c.vazio], ['No horto', c.horto], ['Na fábrica', c.fabrica],
           ['Corretiva', c.corretiva], ['Preventiva', c.preventiva], ['Inspeção', c.inspecao], ['SOS', c.sos], ['Aguardando nota', c.nota], ['Sem motorista', c.semMot], ['Sem composição', c.semComp], ['Sem cavalo', c.semCav],
           ['Operando', c.operando], ['Manutenção', c.man], ['Disponível', c.disp], ['Indisponível', c.indisp]].map(([k, v]) => [k, v, plPct(v, c.total) / 100])]), 'Indicadores');
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(fs.map(x => ({ Frota: x.codigo, Placa: x.placa, Modelo: x.modelo, Status: PL_ST[x.status] || x.status, Atividade: x.atividade, Local: x.local, Motorista: x.motorista,
-        'Observação': x.observacao, 'Apontamento (Creare)': x.apontamento, 'Local (Creare)': x.local_creare, Latitude: x.lat, Longitude: x.lng, 'Leitura': x.posicao_em ? dataHoraBR(x.posicao_em) : '', 'Travado pela torre': x.travado ? 'Sim' : '' }))), 'Frotas');
+        'Observação': x.observacao, 'Apontamento do motorista': x.apontamento, 'Apontado em': x.apont_desde ? dataHoraBR(x.apont_desde) : '', 'Ignição / movimento': x.posicao_em ? plMov(x) : '', 'Velocidade (km/h)': x.vel, 'Endereço (Creare)': x.endereco || x.local_creare, 'Grupo (Creare)': x.grupo, Latitude: x.lat, Longitude: x.lng, 'Leitura': x.posicao_em ? dataHoraBR(x.posicao_em) : '', 'Travado pela torre': x.travado ? 'Sim' : '' }))), 'Frotas');
       if (per) XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Atividade', 'Horas'], ...Object.entries(per.por_atividade || {}), [], ['Status', 'Horas'], ...Object.entries(per.por_status || {}).map(([k, v]) => [PL_ST[k] || k, v])]), 'Horas no período');
       if (per || modo === 'em') { const h = await api.listar('frota_status_hist', `em=gte.${new Date(per ? ini : em).toISOString()}&em=lte.${new Date(per ? fim : em).toISOString()}&order=em&select=em,status,atividade,local,motorista,observacao,lat,lng,apontamento,origem,eq:equipamentos(codigo_frota)`).catch(() => []);
         if (h.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(h.map(x => ({ 'Data/hora': dataHoraBR(x.em), Frota: x.eq?.codigo_frota, Status: PL_ST[x.status] || x.status, Atividade: x.atividade, Local: x.local, Motorista: x.motorista, 'Observação': x.observacao, Apontamento: x.apontamento, Origem: x.origem, Latitude: x.lat, Longitude: x.lng }))), 'Histórico'); }
