@@ -751,8 +751,22 @@ rota('/operacao/gestao', async tela => {
 });
 
 // ---------- Segurança na condução: Creare (B02 velocidade, B15 condução ininterrupta, B19 parada com motor ligado) + GoAwake (fadiga) ----------
-const SG_TIPO = { velocidade: ['Excesso de velocidade', '#EB5757'], conducao_continua: ['Condução sem pausa', '#F2994A'], motor_ligado: ['Parado com motor ligado', '#E2B93B'], fadiga: ['Fadiga (GoAwake)', '#C5A3FF'], distracao: ['Distração (GoAwake)', '#B39DDB'] };
+const SG_TIPO = { velocidade: ['Excesso de velocidade', '#EB5757'], conducao_continua: ['Condução sem pausa', '#F2994A'], motor_ligado: ['Parado com motor ligado', '#E2B93B'], fadiga: ['Câmera (GoAwake)', '#C5A3FF'], distracao: ['Distração (GoAwake)', '#B39DDB'] };
 const sgH = s => { const m = Math.round((+s || 0) / 60); return `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}`; };
+// fotos dos alertas da GoAwake: os links da GoAwake expiram, então a foto é copiada para os anexos do sistema (entidade seg_evento)
+window.sgSalvarFotos = async (dias = 15) => {
+  const ev = await api.listar('seguranca_eventos', `fonte=eq.goawake&inicio=gte.${new Date(Date.now() - dias * 864e5).toISOString()}&select=id,dados&limit=2000`);
+  const ja = new Set((await api.listar('anexos', `entidade=eq.seg_evento&select=entidade_id&limit=10000`)).map(a => a.entidade_id));
+  let n = 0, erros = 0;
+  for (const e of ev.filter(x => !ja.has(x.id) && (x.dados?.fotos || []).length)) {
+    const files = [];
+    for (const [k, u] of e.dados.fotos.entries()) { try { const b = await fetch(u).then(r => { if (!r.ok) throw new Error(r.status); return r.blob(); });
+      const bmp = await createImageBitmap(b), cv = document.createElement('canvas'), esc2 = Math.min(1, 960 / bmp.width); cv.width = Math.round(bmp.width * esc2); cv.height = Math.round(bmp.height * esc2);
+      cv.getContext('2d').drawImage(bmp, 0, 0, cv.width, cv.height); const j = await new Promise(ok => cv.toBlob(ok, 'image/jpeg', 0.8));
+      files.push(new File([j], `goawake-${e.dados.id}-${k === 0 ? 'cabine' : 'frontal'}.jpg`, { type: 'image/jpeg' })); } catch (er) { erros++; } }
+    if (files.length) { await anexar('seg_evento', e.id, files, 'Foto do alerta GoAwake'); n++; } }
+  return { salvas: n, erros };
+};
 const sgAcao = a => !a ? '<span class="tag amarelo">Sem tratativa</span>' : /^v[áa]lid/i.test(a) ? '<span class="tag vermelho">Válida</span>' : /inv[áa]lid/i.test(a) ? '<span class="tag">Inválida</span>' : esc(a);
 rota('/operacao/seguranca', async tela => {
   if (!document.getElementById('pl-css')) document.head.insertAdjacentHTML('beforeend', plCss);
@@ -762,20 +776,24 @@ rota('/operacao/seguranca', async tela => {
   try { [ev, ult] = await Promise.all([api.listar('seguranca_eventos', `inicio=gte.${new Date(ini + 'T00:00:00').toISOString()}&inicio=lte.${new Date(fim + 'T23:59:59').toISOString()}&order=inicio.desc&limit=5000&select=*,eq:equipamentos(codigo_frota)`),
     api.listar('seguranca_eventos', 'select=importado_em&order=importado_em.desc&limit=1').catch(() => [])]); } catch (err) { falha(err); return; }
   ev = ev || []; const fr = e => e.eq?.codigo_frota || e.placa, de = t => ev.filter(e => e.tipo === t);
-  const vel = de('velocidade'), cc = de('conducao_continua'), ml = de('motor_ligado'), fad = ev.filter(e => e.fonte === 'goawake');
+  const vel = de('velocidade'), cc = de('conducao_continua'), ml = de('motor_ligado'), fad = ev.filter(e => e.fonte === 'goawake'), fadVal = fad.filter(e => e.acao === 'Válido');
+  const porCls = Object.entries(fadVal.reduce((o, e) => { const k = e.local || '—'; o[k] = (o[k] || 0) + 1; return o; }, {})).sort((a, b) => b[1] - a[1]);
+  const fotos = {}; try { const ids = fad.map(e => e.id); if (ids.length) (await api.listar('anexos', `entidade=eq.seg_evento&cancelado_em=is.null&entidade_id=in.(${ids.join(',')})&select=entidade_id,caminho_arquivo,nome_original&order=nome_original`)).forEach(a => (fotos[a.entidade_id] ||= []).push(a.caminho_arquivo)); } catch (e) { }
+  const galeria = fadVal.filter(e => fotos[e.id]).slice(0, 12);
+  const links = {}; await Promise.all(galeria.map(async e => { try { links[e.id] = await api.linkArquivo(fotos[e.id][0]); } catch (er) { } }));
   const velVal = vel.filter(e => /^v[áa]lid/i.test(e.acao || '')).length, velInv = vel.filter(e => /inv[áa]lid/i.test(e.acao || '')).length;
   const mlS = ml.reduce((t, e) => t + (+e.duracao_s || 0), 0), ccExc = cc.reduce((t, e) => t + (+e.excesso_s || 0), 0);
   const card = (cor, t, v, sub = '') => `<div class="pl-c" style="--cor:${cor}"><h3>${t}</h3><div class="pl-n" style="font-size:clamp(22px,2vw,34px);white-space:nowrap">${v}</div>${sub ? `<div class="pl-pct" style="text-transform:none;letter-spacing:.3px">${sub}</div>` : ''}</div>`;
   const agrupa = k => Object.values(ev.reduce((o, e) => { const c = k(e) || '—'; const x = (o[c] ||= { nome: c, velocidade: 0, velMax: 0, conducao_continua: 0, ccExc: 0, motor_ligado: 0, mlS: 0, goawake: 0, total: 0 });
-    x.total++; if (e.fonte === 'goawake') x.goawake++; else x[e.tipo] = (x[e.tipo] || 0) + 1; if (e.tipo === 'velocidade') x.velMax = Math.max(x.velMax, +e.valor || 0);
+    if (e.fonte === 'goawake' && e.acao !== 'Válido') return o; x.total++; if (e.fonte === 'goawake') x.goawake++; else x[e.tipo] = (x[e.tipo] || 0) + 1; if (e.tipo === 'velocidade') x.velMax = Math.max(x.velMax, +e.valor || 0);
     if (e.tipo === 'conducao_continua') x.ccExc += +e.excesso_s || 0; if (e.tipo === 'motor_ligado') x.mlS += +e.duracao_s || 0; return o; }, {})).sort((a, b) => b.velocidade - a.velocidade || b.conducao_continua - a.conducao_continua || b.mlS - a.mlS);
   const porMot = agrupa(e => e.motorista), porFrota = agrupa(fr);
   const porVig = Object.entries(ml.reduce((o, e) => { const k = (e.local || '—').replace(/\s*\/\s*$/, ''); (o[k] ||= [0, 0]); o[k][0]++; o[k][1] += +e.duracao_s || 0; return o; }, {})).sort((a, b) => b[1][1] - a[1][1]);
   const dias = []; for (let d = new Date(ini + 'T12:00:00'); d <= new Date(fim + 'T12:00:00'); d.setDate(d.getDate() + 1)) dias.push(d.toLocaleDateString('sv-SE'));
-  const porDia = dias.map(d => { const x = ev.filter(e => new Date(e.inicio).toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' }) === d); return { d, v: x.filter(e => e.tipo === 'velocidade').length, c: x.filter(e => e.tipo === 'conducao_continua').length, m: x.filter(e => e.tipo === 'motor_ligado').length, g: x.filter(e => e.fonte === 'goawake').length }; });
+  const porDia = dias.map(d => { const x = ev.filter(e => new Date(e.inicio).toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' }) === d); return { d, v: x.filter(e => e.tipo === 'velocidade').length, c: x.filter(e => e.tipo === 'conducao_continua').length, m: x.filter(e => e.tipo === 'motor_ligado').length, g: x.filter(e => e.fonte === 'goawake' && e.acao === 'Válido').length }; });
   const mx = Math.max(1, ...porDia.map(x => x.v + x.c + x.m + x.g)), W = 1100, H = 220, pl = 40, bw = (W - pl - 10) / Math.max(1, porDia.length);
   const graf = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto">${porDia.map((x, i) => { let y = H - 28; return [['m', '#E2B93B'], ['c', '#F2994A'], ['v', '#EB5757'], ['g', '#C5A3FF']].map(([k, cor]) => { const h = x[k] * (H - 50) / mx; y -= h; return h ? `<rect x="${pl + i * bw + 3}" y="${y}" width="${bw - 6}" height="${h}" fill="${cor}" rx="2"><title>${dataBR(x.d)}: ${x[k]}</title></rect>` : ''; }).join('') + `<text x="${pl + i * bw + bw / 2}" y="${H - 12}" font-size="11" fill="#DCE8E3" text-anchor="middle">${x.d.slice(8)}/${x.d.slice(5, 7)}</text>${x.v + x.c + x.m + x.g ? `<text x="${pl + i * bw + bw / 2}" y="${y - 4}" font-size="11" fill="#fff" text-anchor="middle">${x.v + x.c + x.m + x.g}</text>` : ''}`; }).join('')}</svg>
-    <div class="pl-leg"><span><i style="background:#EB5757"></i>Velocidade</span><span><i style="background:#F2994A"></i>Condução sem pausa</span><span><i style="background:#E2B93B"></i>Motor ligado parado</span><span><i style="background:#C5A3FF"></i>Fadiga / distração</span></div>`;
+    <div class="pl-leg"><span><i style="background:#EB5757"></i>Velocidade</span><span><i style="background:#F2994A"></i>Condução sem pausa</span><span><i style="background:#E2B93B"></i>Motor ligado parado</span><span><i style="background:#C5A3FF"></i>Câmera GoAwake (validados)</span></div>`;
   const lista = tf ? ev.filter(e => e.tipo === tf) : ev;
   tela.innerHTML = `<div class="pl-wrap">
     <div class="topo"><div><h1>Segurança na condução</h1><p class="sub">Infrações do Creare (velocidade, condução sem pausa, parada com motor ligado) e alertas de fadiga da GoAwake</p></div>
@@ -790,7 +808,11 @@ rota('/operacao/seguranca', async tela => {
         ${card('#EB5757', 'Excesso de velocidade', vel.length, vel.length ? `máx. ${Math.max(...vel.map(e => +e.valor || 0))} km/h · ${velVal} válida(s) · ${velInv} inválida(s) · ${vel.length - velVal - velInv} sem tratativa` : 'nenhuma no período')}
         ${card('#F2994A', 'Condução sem pausa', cc.length, cc.length ? `${sgH(ccExc)} além do limite` : 'nenhuma no período')}
         ${card('#E2B93B', 'Parado com motor ligado', ml.length, ml.length ? `${sgH(mlS)} no total · média ${Math.round(mlS / ml.length / 60)} min` : 'nenhuma no período')}
-        ${card('#C5A3FF', 'Fadiga / distração', fad.length, fad.length ? 'alertas da GoAwake' : 'integração GoAwake em andamento')}</div>
+        ${card('#C5A3FF', 'Câmera (GoAwake)', fadVal.length, fad.length ? `${porCls.map(([k, n]) => `${n} ${esc(k.toLowerCase())}`).join(' · ')}${fad.length - fadVal.length ? ` · ${fad.length - fadVal.length} invalidado(s) pela central` : ''}` : 'nenhum alerta no período')}</div>
+      ${galeria.length ? `<div class="pl-c" style="--cor:#C5A3FF;margin-top:14px"><h3>${PL_IC.alerta}Alertas da câmera validados pela central (GoAwake)</h3>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px;margin-top:10px">${galeria.map(e => `<div style="background:rgba(0,0,0,.25);border-radius:10px;overflow:hidden">
+          ${links[e.id] ? `<img src="${esc(links[e.id])}" crossorigin="anonymous" alt="Foto do alerta" style="width:100%;aspect-ratio:4/3;object-fit:cover;display:block;cursor:zoom-in" data-sgfoto="${e.id}">` : ''}
+          <div style="padding:8px 10px;font-size:12px;color:#DCE8E3"><b style="color:#fff">${esc(e.local || '')}</b> · ${esc(fr(e))}<br>${dataHoraBR(e.inicio)} · ${e.valor ?? '—'} km/h<br><span style="color:#9FB8AE">${esc(e.motorista || 'Motorista não identificado')}</span><br><span style="color:#C5A3FF">${esc(e.dados?.tratativa || '')}</span></div></div>`).join('')}</div></div>` : ''}
       <div class="pl-c" style="--cor:#DDA936;margin-top:14px"><h3>${PL_IC.alerta}Eventos por dia</h3>${graf}</div>
       <div class="pl-grade" style="margin-top:14px;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr)">
         <div class="pl-c" style="--cor:#EB5757"><h3>${PL_IC.pessoa}Motoristas</h3><table style="width:100%;border-collapse:collapse;font-size:13px;color:#EAF2EE;margin-top:8px"><thead><tr style="color:#DDA936;font-size:11px;text-align:left"><th style="padding:5px">MOTORISTA</th><th>VELOC.</th><th>MÁX.</th><th>SEM PAUSA</th><th>MOTOR LIGADO</th><th>FADIGA</th></tr></thead><tbody>
@@ -804,8 +826,8 @@ rota('/operacao/seguranca', async tela => {
       <div class="filtros"><label>Tipo <select id="sg-tipo"><option value="">Todos</option>${Object.entries(SG_TIPO).map(([k, [t]]) => `<option value="${k}" ${tf === k ? 'selected' : ''}>${t}</option>`).join('')}</select></label></div>
       <div class="tabela-wrap"><table class="tabela compacta"><thead><tr><th>Quando</th><th>Tipo</th><th>Frota</th><th>Motorista</th><th>Detalhe</th><th>Local / apontamento</th><th>Tratativa (Creare)</th></tr></thead><tbody>
       ${lista.slice(0, 500).map(e => `<tr><td>${dataHoraBR(e.inicio)}</td><td><span class="pl-sel" style="background:${(SG_TIPO[e.tipo] || [0, '#9AA5B1'])[1]}">${(SG_TIPO[e.tipo] || [e.tipo])[0]}</span></td><td><b>${esc(fr(e))}</b></td><td>${esc(e.motorista || '—')}</td>
-        <td>${e.tipo === 'velocidade' ? `<b>${e.valor} km/h</b> (limite ${esc(e.limite || '')}) · ${e.duracao_s}s` : e.tipo === 'conducao_continua' ? `${sgH(e.duracao_s)} dirigindo (limite ${esc(e.limite || '')}) · <b>+${sgH(e.excesso_s)}</b>` : e.tipo === 'motor_ligado' ? `<b>${sgH(e.duracao_s)}</b> parado ligado` : esc(e.limite || '')}</td>
-        <td>${esc(e.local || '')}${e.lat ? ` <a href="https://www.google.com/maps?q=${e.lat},${e.lng}" target="_blank" rel="noopener">mapa</a>` : ''}</td>
+        <td>${e.fonte === 'goawake' ? `<b>${esc(e.local || '')}</b> <span class="muted">(alerta original: ${esc(e.limite || '')})</span> · ${e.valor ?? '—'} km/h${e.dados?.tratativa ? `<div class="muted">Tratativa: ${esc(e.dados.tratativa)}${e.dados.comentario ? ' · ' + esc(e.dados.comentario) : ''}</div>` : ''}${fotos[e.id] ? ` <button type="button" class="btn peq" data-sgfoto="${e.id}">📷 Fotos</button>` : ''}` : e.tipo === 'velocidade' ? `<b>${e.valor} km/h</b> (limite ${esc(e.limite || '')}) · ${e.duracao_s}s` : e.tipo === 'conducao_continua' ? `${sgH(e.duracao_s)} dirigindo (limite ${esc(e.limite || '')}) · <b>+${sgH(e.excesso_s)}</b>` : e.tipo === 'motor_ligado' ? `<b>${sgH(e.duracao_s)}</b> parado ligado` : esc(e.limite || '')}</td>
+        <td>${e.fonte === 'goawake' ? '' : esc(e.local || '')}${e.lat ? ` <a href="https://www.google.com/maps?q=${e.lat},${e.lng}" target="_blank" rel="noopener">mapa</a>` : ''}</td>
         <td>${e.tipo === 'motor_ligado' ? '<span class="muted">—</span>' : sgAcao(e.acao)}${e.acao_por ? `<div class="muted">${esc(e.acao_por)}${e.acao_em ? ' · ' + dataHoraBR(e.acao_em) : ''}</div>` : ''}</td></tr>`).join('') || '<tr><td colspan="7" class="vazio">Nenhum evento.</td></tr>'}</tbody></table></div>
       <p class="muted">Fonte: relatórios B02, B15 e B19 do Creare, importados de hora em hora. A tratativa (válida/inválida) é a registrada pela central do Creare.</p></div></div>`;
   const f = $('#sg-f'), vai = (d1, d2, t = tf) => { location.hash = `#/operacao/seguranca?de=${d1}&ate=${d2}${t ? '&tipo=' + t : ''}`; };
@@ -813,6 +835,9 @@ rota('/operacao/seguranca', async tela => {
   const dia = d => new Date(Date.now() - d * 864e5).toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
   $$('[data-per]', f).forEach(b => b.onclick = () => { const p = b.dataset.per; vai(p === 'mes' ? hoje.slice(0, 8) + '01' : p === '1' ? dia(1) : dia(6), p === '1' ? dia(1) : hoje); });
   $('#sg-tipo').onchange = e => vai(ini, fim, e.target.value);
+  $$('[data-sgfoto]', tela).forEach(b => b.onclick = async () => { const e = ev.find(x => x.id === b.dataset.sgfoto); try { const us = await Promise.all((fotos[e.id] || []).map(c => api.linkArquivo(c)));
+    modal(`<div><h2>${esc(e.local || 'Alerta')} · ${esc(fr(e))} · ${dataHoraBR(e.inicio)}</h2><p class="muted">${esc(e.motorista || 'Motorista não identificado')} · ${e.valor ?? '—'} km/h · alerta original: ${esc(e.limite || '')} · tratativa: ${esc(e.dados?.tratativa || '—')}${e.acao_por ? ' (' + esc(e.acao_por) + ')' : ''}</p>
+      <div style="display:grid;gap:10px">${us.map(u => `<img src="${esc(u)}" alt="Foto" style="width:100%;border-radius:8px">`).join('')}</div><div class="rodape"><button type="button" class="btn" data-fechar>Fechar</button></div></div>`); } catch (err) { falha(err); } });
   const nome = `Segurança na condução ${dataBR(ini).replace(/\//g, '-')} a ${dataBR(fim).replace(/\//g, '-')}`;
   const imagemS = async () => { if (!window.html2canvas) await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js');
     return html2canvas($('#sg-exp'), { scale: 2, useCORS: true, backgroundColor: '#F3F5F4', logging: false, windowWidth: 1700, width: 1600,
