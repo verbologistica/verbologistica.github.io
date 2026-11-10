@@ -749,3 +749,82 @@ rota('/operacao/gestao', async tela => {
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(ap.map(a => ({ Placa: a.placa, Motorista: a.motorista, 'Código': a.codigo, Mensagem: evs[a.codigo]?.mensagem, Categoria: (GO_CAT[evs[a.codigo]?.categoria] || [evs[a.codigo]?.categoria])[0], 'Início': dataHoraBR(a.inicio), Fim: dataHoraBR(a.fim), Minutos: +a.minutos, 'Distância (km)': +a.distancia_km, Carregado: a.carregado == null ? '' : a.carregado ? 'Sim' : 'Não', Latitude: +a.lat, Longitude: +a.lng }))), 'Apontamentos');
     XLSX.writeFile(wb, nome + '.xlsx'); });
 });
+
+// ---------- Segurança na condução: Creare (B02 velocidade, B15 condução ininterrupta, B19 parada com motor ligado) + GoAwake (fadiga) ----------
+const SG_TIPO = { velocidade: ['Excesso de velocidade', '#EB5757'], conducao_continua: ['Condução sem pausa', '#F2994A'], motor_ligado: ['Parado com motor ligado', '#E2B93B'], fadiga: ['Fadiga (GoAwake)', '#C5A3FF'], distracao: ['Distração (GoAwake)', '#B39DDB'] };
+const sgH = s => { const m = Math.round((+s || 0) / 60); return `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}`; };
+const sgAcao = a => !a ? '<span class="tag amarelo">Sem tratativa</span>' : /^v[áa]lid/i.test(a) ? '<span class="tag vermelho">Válida</span>' : /inv[áa]lid/i.test(a) ? '<span class="tag">Inválida</span>' : esc(a);
+rota('/operacao/seguranca', async tela => {
+  if (!document.getElementById('pl-css')) document.head.insertAdjacentHTML('beforeend', plCss);
+  plLargo();
+  const P = estado.params, hoje = hojeISO(), ini = P.get('de') || new Date(Date.now() - 6 * 864e5).toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' }), fim = P.get('ate') || hoje, tf = P.get('tipo') || '';
+  let ev, ult;
+  try { [ev, ult] = await Promise.all([api.listar('seguranca_eventos', `inicio=gte.${new Date(ini + 'T00:00:00').toISOString()}&inicio=lte.${new Date(fim + 'T23:59:59').toISOString()}&order=inicio.desc&limit=5000&select=*,eq:equipamentos(codigo_frota)`),
+    api.listar('seguranca_eventos', 'select=importado_em&order=importado_em.desc&limit=1').catch(() => [])]); } catch (err) { falha(err); return; }
+  ev = ev || []; const fr = e => e.eq?.codigo_frota || e.placa, de = t => ev.filter(e => e.tipo === t);
+  const vel = de('velocidade'), cc = de('conducao_continua'), ml = de('motor_ligado'), fad = ev.filter(e => e.fonte === 'goawake');
+  const velVal = vel.filter(e => /^v[áa]lid/i.test(e.acao || '')).length, velInv = vel.filter(e => /inv[áa]lid/i.test(e.acao || '')).length;
+  const mlS = ml.reduce((t, e) => t + (+e.duracao_s || 0), 0), ccExc = cc.reduce((t, e) => t + (+e.excesso_s || 0), 0);
+  const card = (cor, t, v, sub = '') => `<div class="pl-c" style="--cor:${cor}"><h3>${t}</h3><div class="pl-n" style="font-size:clamp(22px,2vw,34px);white-space:nowrap">${v}</div>${sub ? `<div class="pl-pct" style="text-transform:none;letter-spacing:.3px">${sub}</div>` : ''}</div>`;
+  const agrupa = k => Object.values(ev.reduce((o, e) => { const c = k(e) || '—'; const x = (o[c] ||= { nome: c, velocidade: 0, velMax: 0, conducao_continua: 0, ccExc: 0, motor_ligado: 0, mlS: 0, goawake: 0, total: 0 });
+    x.total++; if (e.fonte === 'goawake') x.goawake++; else x[e.tipo] = (x[e.tipo] || 0) + 1; if (e.tipo === 'velocidade') x.velMax = Math.max(x.velMax, +e.valor || 0);
+    if (e.tipo === 'conducao_continua') x.ccExc += +e.excesso_s || 0; if (e.tipo === 'motor_ligado') x.mlS += +e.duracao_s || 0; return o; }, {})).sort((a, b) => b.velocidade - a.velocidade || b.conducao_continua - a.conducao_continua || b.mlS - a.mlS);
+  const porMot = agrupa(e => e.motorista), porFrota = agrupa(fr);
+  const porVig = Object.entries(ml.reduce((o, e) => { const k = (e.local || '—').replace(/\s*\/\s*$/, ''); (o[k] ||= [0, 0]); o[k][0]++; o[k][1] += +e.duracao_s || 0; return o; }, {})).sort((a, b) => b[1][1] - a[1][1]);
+  const dias = []; for (let d = new Date(ini + 'T12:00:00'); d <= new Date(fim + 'T12:00:00'); d.setDate(d.getDate() + 1)) dias.push(d.toLocaleDateString('sv-SE'));
+  const porDia = dias.map(d => { const x = ev.filter(e => new Date(e.inicio).toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' }) === d); return { d, v: x.filter(e => e.tipo === 'velocidade').length, c: x.filter(e => e.tipo === 'conducao_continua').length, m: x.filter(e => e.tipo === 'motor_ligado').length, g: x.filter(e => e.fonte === 'goawake').length }; });
+  const mx = Math.max(1, ...porDia.map(x => x.v + x.c + x.m + x.g)), W = 1100, H = 220, pl = 40, bw = (W - pl - 10) / Math.max(1, porDia.length);
+  const graf = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto">${porDia.map((x, i) => { let y = H - 28; return [['m', '#E2B93B'], ['c', '#F2994A'], ['v', '#EB5757'], ['g', '#C5A3FF']].map(([k, cor]) => { const h = x[k] * (H - 50) / mx; y -= h; return h ? `<rect x="${pl + i * bw + 3}" y="${y}" width="${bw - 6}" height="${h}" fill="${cor}" rx="2"><title>${dataBR(x.d)}: ${x[k]}</title></rect>` : ''; }).join('') + `<text x="${pl + i * bw + bw / 2}" y="${H - 12}" font-size="11" fill="#DCE8E3" text-anchor="middle">${x.d.slice(8)}/${x.d.slice(5, 7)}</text>${x.v + x.c + x.m + x.g ? `<text x="${pl + i * bw + bw / 2}" y="${y - 4}" font-size="11" fill="#fff" text-anchor="middle">${x.v + x.c + x.m + x.g}</text>` : ''}`; }).join('')}</svg>
+    <div class="pl-leg"><span><i style="background:#EB5757"></i>Velocidade</span><span><i style="background:#F2994A"></i>Condução sem pausa</span><span><i style="background:#E2B93B"></i>Motor ligado parado</span><span><i style="background:#C5A3FF"></i>Fadiga / distração</span></div>`;
+  const lista = tf ? ev.filter(e => e.tipo === tf) : ev;
+  tela.innerHTML = `<div class="pl-wrap">
+    <div class="topo"><div><h1>Segurança na condução</h1><p class="sub">Infrações do Creare (velocidade, condução sem pausa, parada com motor ligado) e alertas de fadiga da GoAwake</p></div>
+      <div class="acoes"><button class="btn" data-sexp="png">Imagem (PNG)</button><button class="btn" data-sexp="pdf">PDF</button><button class="btn" id="sg-xls">Excel</button></div></div>
+    <form class="filtros pl-barra" id="sg-f"><label>De <input type="date" name="de" value="${ini}"></label><label>Até <input type="date" name="ate" value="${fim}"></label><button class="btn prim">Ver</button>
+      <button type="button" class="btn" data-per="1">Ontem</button><button type="button" class="btn" data-per="7">Últimos 7 dias</button><button type="button" class="btn" data-per="mes">Este mês</button>
+      <span class="muted">${ult?.[0] ? 'Importado do Creare em ' + dataHoraBR(ult[0].importado_em) : 'Ainda sem importação'}</span></form>
+    ${plAbas('seguranca')}
+    <div id="sg-exp"><div class="pl-painel">
+      <div class="pl-topo" style="margin-bottom:14px"><img src="logo.png" alt="Verbo"><div class="pl-tit"><h1>SEGURANÇA NA <b>CONDUÇÃO</b></h1><p>CREARE · GOAWAKE</p></div><div class="pl-hora"><small>PERÍODO</small>${dataBR(ini)} a ${dataBR(fim)}</div></div>
+      <div class="pl-l4" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
+        ${card('#EB5757', 'Excesso de velocidade', vel.length, vel.length ? `máx. ${Math.max(...vel.map(e => +e.valor || 0))} km/h · ${velVal} válida(s) · ${velInv} inválida(s) · ${vel.length - velVal - velInv} sem tratativa` : 'nenhuma no período')}
+        ${card('#F2994A', 'Condução sem pausa', cc.length, cc.length ? `${sgH(ccExc)} além do limite` : 'nenhuma no período')}
+        ${card('#E2B93B', 'Parado com motor ligado', ml.length, ml.length ? `${sgH(mlS)} no total · média ${Math.round(mlS / ml.length / 60)} min` : 'nenhuma no período')}
+        ${card('#C5A3FF', 'Fadiga / distração', fad.length, fad.length ? 'alertas da GoAwake' : 'integração GoAwake em andamento')}</div>
+      <div class="pl-c" style="--cor:#DDA936;margin-top:14px"><h3>${PL_IC.alerta}Eventos por dia</h3>${graf}</div>
+      <div class="pl-grade" style="margin-top:14px;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr)">
+        <div class="pl-c" style="--cor:#EB5757"><h3>${PL_IC.pessoa}Motoristas</h3><table style="width:100%;border-collapse:collapse;font-size:13px;color:#EAF2EE;margin-top:8px"><thead><tr style="color:#DDA936;font-size:11px;text-align:left"><th style="padding:5px">MOTORISTA</th><th>VELOC.</th><th>MÁX.</th><th>SEM PAUSA</th><th>MOTOR LIGADO</th><th>FADIGA</th></tr></thead><tbody>
+          ${porMot.map(x => `<tr style="border-top:1px solid rgba(255,255,255,.1)"><td style="padding:5px"><b>${esc(x.nome)}</b></td><td>${x.velocidade || '—'}</td><td>${x.velMax ? x.velMax + ' km/h' : '—'}</td><td>${x.conducao_continua ? `${x.conducao_continua} · +${sgH(x.ccExc)}` : '—'}</td><td>${x.motor_ligado ? `${x.motor_ligado} · ${sgH(x.mlS)}` : '—'}</td><td>${x.goawake || '—'}</td></tr>`).join('') || '<tr><td colspan="6" style="padding:6px;color:#9FB8AE">Sem eventos.</td></tr>'}</tbody></table></div>
+        <div class="pl-c" style="--cor:#E2B93B"><h3>${PL_IC.chave}Motor ligado parado · apontamento no momento</h3><table style="width:100%;border-collapse:collapse;font-size:13px;color:#EAF2EE;margin-top:8px"><tbody>
+          ${porVig.map(([k, [n, s]]) => `<tr style="border-top:1px solid rgba(255,255,255,.1)"><td style="padding:5px">${esc(k)}</td><td>${n}x</td><td><b>${sgH(s)}</b></td></tr>`).join('') || '<tr><td style="padding:6px;color:#9FB8AE">Sem eventos.</td></tr>'}</tbody></table>
+          <p style="color:#9FB8AE;font-size:11.5px;margin:8px 0 0">Motor ligado com o caminhão parado acima do limite do Creare (10 min). Consumo e desgaste sem produzir.</p></div></div></div></div>
+    <div class="cartao"><h2>Por frota</h2><div class="tabela-wrap"><table class="tabela compacta"><thead><tr><th>Frota</th><th>Velocidade</th><th>Máx.</th><th>Condução sem pausa</th><th>Motor ligado parado</th><th>Fadiga / distração</th><th>Total</th></tr></thead><tbody>
+      ${porFrota.map(x => `<tr><td><b>${esc(x.nome)}</b></td><td>${x.velocidade}</td><td>${x.velMax ? x.velMax + ' km/h' : '—'}</td><td>${x.conducao_continua}${x.ccExc ? ' · +' + sgH(x.ccExc) : ''}</td><td>${x.motor_ligado}${x.mlS ? ' · ' + sgH(x.mlS) : ''}</td><td>${x.goawake}</td><td><b>${x.total}</b></td></tr>`).join('') || '<tr><td colspan="7" class="vazio">Sem eventos.</td></tr>'}</tbody></table></div></div>
+    <div class="cartao"><h2>Eventos (${lista.length})</h2>
+      <div class="filtros"><label>Tipo <select id="sg-tipo"><option value="">Todos</option>${Object.entries(SG_TIPO).map(([k, [t]]) => `<option value="${k}" ${tf === k ? 'selected' : ''}>${t}</option>`).join('')}</select></label></div>
+      <div class="tabela-wrap"><table class="tabela compacta"><thead><tr><th>Quando</th><th>Tipo</th><th>Frota</th><th>Motorista</th><th>Detalhe</th><th>Local / apontamento</th><th>Tratativa (Creare)</th></tr></thead><tbody>
+      ${lista.slice(0, 500).map(e => `<tr><td>${dataHoraBR(e.inicio)}</td><td><span class="pl-sel" style="background:${(SG_TIPO[e.tipo] || [0, '#9AA5B1'])[1]}">${(SG_TIPO[e.tipo] || [e.tipo])[0]}</span></td><td><b>${esc(fr(e))}</b></td><td>${esc(e.motorista || '—')}</td>
+        <td>${e.tipo === 'velocidade' ? `<b>${e.valor} km/h</b> (limite ${esc(e.limite || '')}) · ${e.duracao_s}s` : e.tipo === 'conducao_continua' ? `${sgH(e.duracao_s)} dirigindo (limite ${esc(e.limite || '')}) · <b>+${sgH(e.excesso_s)}</b>` : e.tipo === 'motor_ligado' ? `<b>${sgH(e.duracao_s)}</b> parado ligado` : esc(e.limite || '')}</td>
+        <td>${esc(e.local || '')}${e.lat ? ` <a href="https://www.google.com/maps?q=${e.lat},${e.lng}" target="_blank" rel="noopener">mapa</a>` : ''}</td>
+        <td>${e.tipo === 'motor_ligado' ? '<span class="muted">—</span>' : sgAcao(e.acao)}${e.acao_por ? `<div class="muted">${esc(e.acao_por)}${e.acao_em ? ' · ' + dataHoraBR(e.acao_em) : ''}</div>` : ''}</td></tr>`).join('') || '<tr><td colspan="7" class="vazio">Nenhum evento.</td></tr>'}</tbody></table></div>
+      <p class="muted">Fonte: relatórios B02, B15 e B19 do Creare, importados de hora em hora. A tratativa (válida/inválida) é a registrada pela central do Creare.</p></div></div>`;
+  const f = $('#sg-f'), vai = (d1, d2, t = tf) => { location.hash = `#/operacao/seguranca?de=${d1}&ate=${d2}${t ? '&tipo=' + t : ''}`; };
+  f.onsubmit = e => { e.preventDefault(); vai(f.de.value, f.ate.value); };
+  const dia = d => new Date(Date.now() - d * 864e5).toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
+  $$('[data-per]', f).forEach(b => b.onclick = () => { const p = b.dataset.per; vai(p === 'mes' ? hoje.slice(0, 8) + '01' : p === '1' ? dia(1) : dia(6), p === '1' ? dia(1) : hoje); });
+  $('#sg-tipo').onchange = e => vai(ini, fim, e.target.value);
+  const nome = `Segurança na condução ${dataBR(ini).replace(/\//g, '-')} a ${dataBR(fim).replace(/\//g, '-')}`;
+  const imagemS = async () => { if (!window.html2canvas) await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js');
+    return html2canvas($('#sg-exp'), { scale: 2, useCORS: true, backgroundColor: '#F3F5F4', logging: false, windowWidth: 1700, width: 1600,
+      onclone: d => { const el = d.getElementById('sg-exp'); if (!el) return; el.style.width = '1600px'; el.style.padding = '16px'; el.querySelectorAll('.exportar,.hbar').forEach(x => x.remove());
+        el.querySelectorAll('svg[viewBox]').forEach(sv => { const [, , w, h] = sv.getAttribute('viewBox').split(' ').map(Number); if (w > 300) { sv.setAttribute('width', 1520); sv.setAttribute('height', Math.round(1520 * h / w)); sv.style.width = '1520px'; sv.style.height = Math.round(1520 * h / w) + 'px'; } }); } }); };
+  window.PL_CAP = { k: 'seguranca', nome, imagem: imagemS };
+  $$('[data-sexp]', tela).forEach(b => b.onclick = () => ocupado(b, async () => { try { const cv = await imagemS();
+    if (b.dataset.sexp === 'png') cv.toBlob(bl => baixarArquivo(bl, nome + '.png'), 'image/png');
+    else { await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'); const pdf = new jspdf.jsPDF({ orientation: 'portrait', unit: 'px', format: [cv.width, cv.height] }); pdf.addImage(cv.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, cv.width, cv.height); pdf.save(nome + '.pdf'); }
+  } catch (err) { falha(err); } }));
+  $('#sg-xls').onclick = () => ocupado($('#sg-xls'), async () => { await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'); const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(porMot.map(x => ({ Motorista: x.nome, 'Excesso de velocidade': x.velocidade, 'Velocidade máx. (km/h)': x.velMax || '', 'Condução sem pausa': x.conducao_continua, 'Tempo além do limite (h)': +(x.ccExc / 3600).toFixed(2), 'Motor ligado parado': x.motor_ligado, 'Horas motor ligado parado': +(x.mlS / 3600).toFixed(2), 'Fadiga / distração': x.goawake, Total: x.total }))), 'Motoristas');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(ev.map(e => ({ Quando: dataHoraBR(e.inicio), Fim: e.fim ? dataHoraBR(e.fim) : '', Tipo: (SG_TIPO[e.tipo] || [e.tipo])[0], Fonte: e.fonte, Frota: fr(e), Placa: e.placa, Motorista: e.motorista, 'Duração (min)': e.duracao_s != null ? +(e.duracao_s / 60).toFixed(1) : '', 'Excesso (min)': e.excesso_s != null ? +(e.excesso_s / 60).toFixed(1) : '', Valor: e.valor, Limite: e.limite, 'Local / apontamento': e.local, 'Tratativa': e.acao, 'Tratado por': e.acao_por, 'Tratado em': e.acao_em ? dataHoraBR(e.acao_em) : '', Latitude: e.lat, Longitude: e.lng }))), 'Eventos');
+    XLSX.writeFile(wb, nome + '.xlsx'); });
+});
