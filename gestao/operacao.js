@@ -89,15 +89,26 @@ async function formViagem(tela, v = null) {
         return `<option value="${m.id}" ${m.id === v?.motorista_id ? 'selected' : ''} ${venc ? 'disabled' : ''}>${esc(m.nome)}${m.cnh_categoria ? ' · CNH ' + esc(m.cnh_categoria) : ''}${venc ? ' (CNH vencida)' : ''}</option>`; }).join('')}</select></label>
       <label class="campo largo">Carga<input name="carga" value="${esc(v?.carga || '')}" placeholder="Ex.: eucalipto em toras, celulose"></label>
       <label class="campo">Peso (t)<input name="peso_t" inputmode="decimal" value="${v?.peso_t ?? ''}"></label><label class="campo">Valor do frete (R$)<input name="valor_frete" inputmode="decimal" value="${v?.valor_frete ?? ''}"></label>
-      <label class="campo">Documentos (CT-e, MDF-e, NF)<input name="documentos" value="${esc(v?.documentos || '')}"></label>
       <label class="campo">Centro de custo<select name="centro_custo_id">${opcoes(ccs.filter(c => c.ativo), null, c => c.nome, v?.centro_custo_id, '—')}</select></label>
+      <div class="largo"><h3 style="margin:8px 0 4px">Documentos fiscais</h3></div>
+      <label class="campo">Nº da nota fiscal<input name="nf_numero" value="${esc(v?.nf_numero || '')}" placeholder="Mais de uma: separe com vírgula"></label>
+      <label class="campo">Nº do CT-e<input name="cte_numero" inputmode="numeric" value="${esc(v?.cte_numero || '')}"></label>
+      <label class="campo largo">Chave de acesso do CT-e (44 dígitos)<input name="cte_chave" inputmode="numeric" maxlength="60" value="${esc(v?.cte_chave || '')}" placeholder="Cole ou digite os 44 números"></label>
+      <label class="campo">Nº do MDF-e<input name="mdfe_numero" inputmode="numeric" value="${esc(v?.mdfe_numero || '')}"></label>
+      <label class="campo">Outros documentos<input name="documentos" value="${esc(v?.documentos || '')}" placeholder="Ex.: ordem de carregamento"></label>
+      <label class="campo">Anexar nota fiscal (PDF, XML ou foto)<input type="file" name="arq_nf" multiple accept=".pdf,.xml,image/*"></label>
+      <label class="campo">Anexar CT-e (PDF, XML ou foto)<input type="file" name="arq_cte" multiple accept=".pdf,.xml,image/*"></label>
       <label class="campo largo">Observações<textarea name="observacao" rows="2">${esc(v?.observacao || '')}</textarea></label></div>
       <p class="muted">Equipamentos em manutenção e motoristas com CNH vencida não aparecem para escolha. Ao iniciar a viagem, o sistema também confere o ASO do motorista.</p>
       <div class="acoes"><button class="btn prim">Salvar</button><a class="btn" href="javascript:history.back()">Cancelar</a></div></form>`;
   $('#f-via').onsubmit = async e => { e.preventDefault(); const d = formDados(e.target);
+    const chave = soDigitos(d.cte_chave || ''); if (chave && chave.length !== 44) return aviso(`A chave de acesso do CT-e tem 44 números (foram digitados ${chave.length}).`, true);
+    const arqNf = [...(e.target.arq_nf?.files || [])], arqCte = [...(e.target.arq_cte?.files || [])];
     const dados = { cliente_id: d.cliente_id || null, origem: d.origem, destino: d.destino, saida_prevista: d.saida_prevista ? new Date(d.saida_prevista).toISOString() : null, chegada_prevista: d.chegada_prevista ? new Date(d.chegada_prevista).toISOString() : null,
-      equipamento_id: d.equipamento_id || null, motorista_id: d.motorista_id || null, carga: d.carga || null, peso_t: num(d.peso_t), valor_frete: num(d.valor_frete), documentos: d.documentos || null, centro_custo_id: d.centro_custo_id || null, observacao: d.observacao || null };
+      equipamento_id: d.equipamento_id || null, motorista_id: d.motorista_id || null, carga: d.carga || null, peso_t: num(d.peso_t), valor_frete: num(d.valor_frete), documentos: d.documentos || null, centro_custo_id: d.centro_custo_id || null, observacao: d.observacao || null,
+      nf_numero: (d.nf_numero || '').trim() || null, cte_numero: (d.cte_numero || '').trim() || null, cte_chave: chave || null, mdfe_numero: (d.mdfe_numero || '').trim() || null };
     await ocupado(e.submitter, async () => { try { let id = v?.id; if (v) await api.alterar('viagens', `id=eq.${id}`, dados); else [{ id }] = await api.inserir('viagens', dados);
+      if (arqNf.length) await anexar('viagem', id, arqNf, 'Nota fiscal'); if (arqCte.length) await anexar('viagem', id, arqCte, 'CT-e');
       aviso('Viagem salva.'); location.hash = '#/operacao/viagens/ver/' + id; } catch (err) { falha(err); } }); };
 }
 rota('/operacao/viagens/nova', tela => formViagem(tela));
@@ -114,11 +125,14 @@ rota('/operacao/viagens/ver/:id', async (tela, id) => {
         <button class="btn" id="ordem">Ordem de viagem</button><a class="btn" href="#/operacao/ocorrencias/nova?viagem=${id}">+ Ocorrência</a><a class="btn" href="#/operacao/viagens">Voltar</a></div></div>
     <div class="cartao"><div class="form">${[['Equipamento', v.eq && rotuloEq(v.eq)], ['Motorista', v.m?.nome], ['Saída prevista', dataHoraBR(v.saida_prevista)], ['Chegada prevista', dataHoraBR(v.chegada_prevista)],
       ['Saiu em', dataHoraBR(v.saida_em)], ['Chegou em', dataHoraBR(v.chegada_em)], ['Km', [v.km_saida != null && 'saída ' + v.km_saida.toLocaleString('pt-BR'), v.km_chegada != null && 'chegada ' + v.km_chegada.toLocaleString('pt-BR'), v.km_chegada && v.km_saida && '= ' + (v.km_chegada - v.km_saida).toLocaleString('pt-BR') + ' km'].filter(Boolean).join(' · ')],
-      ['Carga', [v.carga, v.peso_t && v.peso_t + ' t'].filter(Boolean).join(' · ')], ['Documentos', v.documentos], ['Frete', v.valor_frete && brl(v.valor_frete)], ['Centro de custo', v.cc?.nome], ['Observações', v.observacao], ['Cancelamento', v.motivo_cancelamento]]
+      ['Carga', [v.carga, v.peso_t && v.peso_t + ' t'].filter(Boolean).join(' · ')], ['Nota fiscal', v.nf_numero], ['CT-e', v.cte_numero], ['Chave do CT-e', v.cte_chave], ['MDF-e', v.mdfe_numero], ['Outros documentos', v.documentos], ['Frete', v.valor_frete && brl(v.valor_frete)], ['Centro de custo', v.cc?.nome], ['Observações', v.observacao], ['Cancelamento', v.motivo_cancelamento]]
       .filter(([, x]) => x !== null && x !== undefined).map(([k, x]) => `<div><div class="muted">${k}</div><b>${x ? esc(x) : '—'}</b></div>`).join('')}<div class="largo" id="anx-via"></div></div></div>
     <div class="cartao"><h2>Ocorrências</h2>${ocs.length ? `<ul class="lista-simples">${ocs.map(o => `<li class="clicavel" onclick="location.hash='#/operacao/ocorrencias/ver/${o.id}'"><span><b>${esc(o.numero)}</b> ${esc(TIPO_OCO[o.tipo] || o.tipo)} · ${dataHoraBR(o.data_hora)}<div class="muted">${esc(o.descricao)}</div></span>${tagSt(ST_OCO, o.status)}</li>`).join('')}</ul>` : '<div class="vazio">Nenhuma ocorrência.</div>'}</div>
     <div class="cartao"><h2>Jornada registrada na viagem</h2>${evs.length ? `<ul class="lista-simples">${evs.map(e => `<li><span>${EV_JOR[e.tipo][1]} ${EV_JOR[e.tipo][0]}${e.local ? ' · ' + esc(e.local) : ''}</span><span class="muted">${dataHoraBR(e.data_hora)}</span></li>`).join('')}</ul>` : '<div class="vazio">O motorista ainda não registrou eventos vinculados a esta viagem.</div>'}</div>`;
-  $('#anx-via').innerHTML = await htmlAnexos('viagem', id);
+  $('#anx-via').innerHTML = `<div class="muted">Anexos (nota fiscal, CT-e e outros)</div>` + await htmlAnexos('viagem', id)
+    + (ed ? `<div class="acoes" style="justify-content:flex-start;margin-top:8px"><label class="btn peq">Anexar nota fiscal<input type="file" data-anxvia="Nota fiscal" multiple accept=".pdf,.xml,image/*" hidden></label><label class="btn peq">Anexar CT-e<input type="file" data-anxvia="CT-e" multiple accept=".pdf,.xml,image/*" hidden></label></div>` : '');
+  $$('[data-anxvia]', tela).forEach(i => i.addEventListener('change', async () => { if (!i.files.length) return;
+    try { aviso('Enviando…'); await anexar('viagem', id, [...i.files], i.dataset.anxvia); aviso(i.dataset.anxvia + ' anexado(a).'); navegar(); } catch (err) { falha(err); } }));
   $("#via-sair")?.addEventListener('click', async () => {
     const r = await modal(`<form><h2>Iniciar ${esc(v.numero)}</h2><div class="form"><label class="campo">Km de saída<input name="km" inputmode="numeric" value="${v.eq?.km_atual ?? ''}"></label><label class="campo">Saída<input type="datetime-local" name="quando" value="${dtLocal(new Date().toISOString())}"></label></div>
       <p class="muted">O sistema confere: equipamento sem OS que o pare, ASO do motorista e CNH válida. Lembre o motorista de fazer o checklist pré-uso.</p>
