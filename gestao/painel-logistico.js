@@ -810,8 +810,11 @@ rota('/operacao/seguranca', async tela => {
   const vel = de('velocidade'), cc = de('conducao_continua'), ml = de('motor_ligado'), fad = ev.filter(e => e.fonte === 'goawake'), fadVal = fad.filter(e => e.acao === 'Válido');
   const porCls = Object.entries(fadVal.reduce((o, e) => { const k = e.local || '—'; o[k] = (o[k] || 0) + 1; return o; }, {})).sort((a, b) => b[1] - a[1]);
   const fotos = {}; try { const ids = fad.map(e => e.id); if (ids.length) (await api.listar('anexos', `entidade=eq.seg_evento&cancelado_em=is.null&entidade_id=in.(${ids.join(',')})&select=entidade_id,caminho_arquivo,nome_original&order=nome_original`)).forEach(a => (fotos[a.entidade_id] ||= []).push(a.caminho_arquivo)); } catch (e) { }
-  const galeria = fadVal.filter(e => fotos[e.id]).slice(0, 12);
-  const links = {}; await Promise.all(galeria.map(async e => { try { links[e.id] = await api.linkArquivo(fotos[e.id][0]); } catch (er) { } }));
+  // câmera: resumo em card (as fotos ficam na relação de eventos, botão 📷)
+  const conta = k => Object.entries(fadVal.reduce((o, e) => { const c = k(e) || '—'; o[c] = (o[c] || 0) + 1; return o; }, {})).sort((x, y) => y[1] - x[1]);
+  const camMot = conta(e => e.motorista), camFr = conta(fr), camVid = fadVal.filter(e => e.dados?.video).length, camFoto = fadVal.filter(e => fotos[e.id]).length;
+  const barrasCam = (arr, cor) => arr.map(([k, n]) => `<div style="display:grid;grid-template-columns:minmax(0,1fr) 90px 30px;gap:8px;align-items:center;font-size:12.5px;color:#DCE8E3;margin:4px 0">
+    <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(k)}</span><span style="background:rgba(255,255,255,.06);border-radius:4px;height:8px;overflow:hidden"><i style="display:block;height:100%;width:${(n * 100 / arr[0][1]).toFixed(1)}%;background:${cor}"></i></span><b style="text-align:right">${n}</b></div>`).join('');
   const velVal = vel.filter(e => /^v[áa]lid/i.test(e.acao || '')).length, velInv = vel.filter(e => /inv[áa]lid/i.test(e.acao || '')).length;
   const mlS = ml.reduce((t, e) => t + (+e.duracao_s || 0), 0), ccExc = cc.reduce((t, e) => t + (+e.excesso_s || 0), 0);
   const card = (cor, t, v, sub = '') => `<div class="pl-c" style="--cor:${cor}"><h3>${t}</h3><div class="pl-n" style="font-size:clamp(22px,2vw,34px);white-space:nowrap">${v}</div>${sub ? `<div class="pl-pct" style="text-transform:none;letter-spacing:.3px">${sub}</div>` : ''}</div>`;
@@ -840,10 +843,12 @@ rota('/operacao/seguranca', async tela => {
         ${card('#F2994A', 'Condução sem pausa', cc.length, cc.length ? `${sgH(ccExc)} além do limite` : 'nenhuma no período')}
         ${card('#E2B93B', 'Parado com motor ligado', ml.length, ml.length ? `${sgH(mlS)} no total · média ${Math.round(mlS / ml.length / 60)} min` : 'nenhuma no período')}
         ${card('#C5A3FF', 'Câmera (GoAwake)', fadVal.length, fad.length ? `${porCls.map(([k, n]) => `${n} ${esc(k.toLowerCase())}`).join(' · ')}${fad.length - fadVal.length ? ` · ${fad.length - fadVal.length} invalidado(s) pela central` : ''}` : 'nenhum alerta no período')}</div>
-      ${galeria.length ? `<div class="pl-c" style="--cor:#C5A3FF;margin-top:14px"><h3>${PL_IC.alerta}Alertas da câmera validados pela central (GoAwake)</h3>
-        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px;margin-top:10px">${galeria.map(e => `<div style="background:rgba(0,0,0,.25);border-radius:10px;overflow:hidden">
-          ${links[e.id] ? `<img src="${esc(links[e.id])}" crossorigin="anonymous" alt="Foto do alerta" style="width:100%;aspect-ratio:4/3;object-fit:cover;display:block;cursor:zoom-in" data-sgfoto="${e.id}">` : ''}
-          <div style="padding:8px 10px;font-size:12px;color:#DCE8E3"><span data-sgvideo="${e.id}" class="exportar" style="float:right;cursor:pointer;color:#C5A3FF" title="Assistir na GoAwake">▶ vídeo</span><b style="color:#fff">${esc(e.local || '')}</b> · ${esc(fr(e))}<br>${dataHoraBR(e.inicio)} · ${e.valor ?? '—'} km/h<br><span style="color:#9FB8AE">${esc(e.motorista || 'Motorista não identificado')}</span><br><span style="color:#C5A3FF">${esc(e.dados?.tratativa || '')}</span></div></div>`).join('')}</div></div>` : ''}
+      ${fad.length ? `<div class="pl-c" style="--cor:#C5A3FF;margin-top:14px"><h3>${PL_IC.alerta}Câmera (GoAwake) · alertas validados pela central</h3>
+        <div class="pl-pct" style="text-transform:none;letter-spacing:.2px;margin-top:2px">${fadVal.length} validado(s) · ${fad.length - fadVal.length} invalidado(s) · ${camFoto} com foto · ${camVid} com vídeo · fotos e vídeos na relação de eventos</div>
+        ${fadVal.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:8px 28px;margin-top:10px">
+          <div><div style="color:#DDA936;font-size:11px;letter-spacing:1px;margin-bottom:4px">TIPO DE ALERTA</div>${barrasCam(porCls, '#C5A3FF')}</div>
+          <div><div style="color:#DDA936;font-size:11px;letter-spacing:1px;margin-bottom:4px">MOTORISTA</div>${barrasCam(camMot, '#9B7BD8')}</div>
+          <div><div style="color:#DDA936;font-size:11px;letter-spacing:1px;margin-bottom:4px">FROTA</div>${barrasCam(camFr, '#7E6BC4')}</div></div>` : ''}</div>` : ''}
       <div class="pl-c" style="--cor:#DDA936;margin-top:14px"><h3>${PL_IC.alerta}Eventos por dia</h3>${graf}</div>
       <div class="pl-grade" style="margin-top:14px;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr)">
         <div class="pl-c" style="--cor:#EB5757"><h3>${PL_IC.pessoa}Motoristas</h3><table style="width:100%;border-collapse:collapse;font-size:13px;color:#EAF2EE;margin-top:8px"><thead><tr style="color:#DDA936;font-size:11px;text-align:left"><th style="padding:5px">MOTORISTA</th><th>VELOC.</th><th>MÁX.</th><th>SEM PAUSA</th><th>MOTOR LIGADO</th><th>FADIGA</th></tr></thead><tbody>
@@ -873,10 +878,21 @@ rota('/operacao/seguranca', async tela => {
   $$('[data-sgfoto]', tela).forEach(b => b.onclick = async () => { const e = ev.find(x => x.id === b.dataset.sgfoto); try { const us = await Promise.all((fotos[e.id] || []).map(c => api.linkArquivo(c)));
     modal(`<div><h2>${esc(e.local || 'Alerta')} · ${esc(fr(e))} · ${dataHoraBR(e.inicio)}</h2><p class="muted">${esc(e.motorista || 'Motorista não identificado')} · ${e.valor ?? '—'} km/h · alerta original: ${esc(e.limite || '')} · tratativa: ${esc(e.dados?.tratativa || '—')}${e.acao_por ? ' (' + esc(e.acao_por) + ')' : ''}</p>
       <div style="display:grid;gap:10px">${us.map(u => `<img src="${esc(u)}" alt="Foto" style="width:100%;border-radius:8px">`).join('')}</div><div class="rodape"><button type="button" class="btn" data-fechar>Fechar</button></div></div>`); } catch (err) { falha(err); } });
+  // relação de eventos para a imagem/PDF (mesmo filtro de tipo da tela; alertas invalidados pela central ficam de fora)
+  const sgTabExp = () => { const td = 'padding:6px;background:transparent;color:#EAF2EE;border:0;vertical-align:top', th = 'padding:6px;background:transparent;color:#DDA936;border:0;text-align:left';
+    const L = lista.filter(e => !(e.fonte === 'goawake' && e.acao !== 'Válido'));
+    const det = e => e.fonte === 'goawake' ? `<b>${esc(e.local || '')}</b> · ${e.valor ?? '—'} km/h${e.dados?.tratativa ? `<br><span style="color:#C5A3FF">${esc(e.dados.tratativa)}</span>` : ''}`
+      : e.tipo === 'velocidade' ? `<b>${e.valor} km/h</b> (limite ${esc(e.limite || '')}) · ${e.duracao_s}s` : e.tipo === 'conducao_continua' ? `${sgH(e.duracao_s)} dirigindo · <b>+${sgH(e.excesso_s)}</b> além do limite`
+      : `<b>${sgH(e.duracao_s)}</b> parado com motor ligado${e.local ? ` · ${esc(e.local)}` : ''}`;
+    return `<div class="pl-visao" style="margin-top:18px"><h4>RELAÇÃO DE EVENTOS (${L.length})${tf ? ' · ' + esc((SG_TIPO[tf] || [tf])[0]) : ''}</h4>
+      <table style="width:100%;border-collapse:collapse;margin-top:8px;font:13px/1.35 Arial,sans-serif;color:#EAF2EE"><thead><tr style="font-size:11px;letter-spacing:1px"><th style="${th}">QUANDO</th><th style="${th}">TIPO</th><th style="${th}">FROTA</th><th style="${th}">MOTORISTA</th><th style="${th}">DETALHE</th><th style="${th}">TRATATIVA</th></tr></thead><tbody>
+      ${L.map(e => `<tr style="border-top:1px solid rgba(255,255,255,.12)"><td style="${td};white-space:nowrap">${dataHoraBR(e.inicio)}</td><td style="${td}"><span style="background:${(SG_TIPO[e.tipo] || [0, '#9AA5B1'])[1]};color:#0B1F1A;border-radius:10px;padding:2px 8px;font-size:11px;font-weight:700;white-space:nowrap">${(SG_TIPO[e.tipo] || [e.tipo])[0]}</span></td>
+        <td style="${td}"><b>${esc(fr(e))}</b></td><td style="${td}">${esc(e.motorista || '—')}</td><td style="${td}">${det(e)}</td><td style="${td}">${e.tipo === 'motor_ligado' ? '—' : esc(e.acao || 'sem tratativa')}${e.acao_por ? `<br><span style="color:#9FB8AE">${esc(e.acao_por)}</span>` : ''}</td></tr>`).join('') || `<tr><td style="${td}" colspan="6">Nenhum evento.</td></tr>`}</tbody></table></div>`; };
   const nome = `Segurança na condução ${dataBR(ini).replace(/\//g, '-')} a ${dataBR(fim).replace(/\//g, '-')}`;
   const imagemS = async () => { if (!window.html2canvas) await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js');
     return html2canvas($('#sg-exp'), { scale: 2, useCORS: true, backgroundColor: '#F3F5F4', logging: false, windowWidth: 1700, width: 1600,
       onclone: d => { const el = d.getElementById('sg-exp'); if (!el) return; el.style.width = '1600px'; el.style.padding = '16px'; el.querySelectorAll('.exportar,.hbar').forEach(x => x.remove());
+        el.querySelector('.pl-painel')?.insertAdjacentHTML('beforeend', sgTabExp());
         el.querySelectorAll('svg[viewBox]').forEach(sv => { const [, , w, h] = sv.getAttribute('viewBox').split(' ').map(Number); if (w > 300) { sv.setAttribute('width', 1520); sv.setAttribute('height', Math.round(1520 * h / w)); sv.style.width = '1520px'; sv.style.height = Math.round(1520 * h / w) + 'px'; } }); } }); };
   window.PL_CAP = { k: 'seguranca', nome, imagem: imagemS };
   $$('[data-sexp]', tela).forEach(b => b.onclick = () => ocupado(b, async () => { try { const cv = await imagemS();
