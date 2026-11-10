@@ -275,7 +275,7 @@ function formUsuario(u, atuais, ccs, funcoes) {
               g.itens.push([i, k]); });
             return blocos.map((b, bi) => `<details class="ac-grupo" open><summary><label class="check" onclick="event.stopPropagation()"><input type="checkbox" data-grupo="${bi}"> ${ico(b.ic)} <b>${esc(b.nome)}</b></label></summary>
               <div class="ac-itens">${b.itens.map(([i, k]) => i[0] === 'sub' ? `<div class="ac-sub">${esc(i[1])}</div>`
-                : `<div class="ac-item"><label class="check"><input type="checkbox" name="m_${k}" data-g="${bi}" data-perfis="${(i[2] || []).join(',')}" ${!u?.menus?.length || u.menus.includes(i[1]) ? 'checked' : ''}> ${esc(i[0])}</label><span class="ac-falta" data-falta="${k}" hidden></span>
+                : `<div class="ac-item"><label class="check"><input type="checkbox" name="m_${k}" data-g="${bi}" data-perfis="${(i[2] || []).join(',')}" ${!u?.menus?.length || u.menus.includes(i[1]) || (menuNovo(baseHref(i[1]), u.menus) && (!i[2] || i[2].some(p => (atuais || []).includes(p)))) ? 'checked' : ''}>${u?.menus?.length && menuNovo(baseHref(i[1]), u.menus) ? ' <span class="tag azul">nova</span>' : ''} ${esc(i[0])}</label><span class="ac-falta" data-falta="${k}" hidden></span>
                    ${GUIAS[i[1]] ? `<div class="ac-guias"><span class="muted">Guias:</span>${GUIAS[i[1]].itens.map(([gk, gt]) => { const sel = (u?.menus || []).filter(x => x.startsWith(i[1] + '::'));
                      return `<label class="check"><input type="checkbox" name="g_${k}_${gk}" data-mk="${k}" ${!sel.length || sel.includes(i[1] + '::' + gk) ? 'checked' : ''}> ${esc(gt)}</label>`; }).join('')}</div>` : ''}</div>`).join('')}</div></details>`).join(''); })()}
         </div></div>
@@ -328,7 +328,7 @@ const menusEscolhidos = r => {
   MENU.forEach((i, k) => { if (i[0] === 'grupo' || i[0] === 'sub' || !r['m_' + k]) return; out.push(i[1]);
     const g = GUIAS[i[1]]; if (!g) return; const marc = g.itens.filter(([gk]) => r[`g_${k}_${gk}`]).map(([gk]) => gk);
     if (marc.length < g.itens.length) out.push(...(marc.length ? marc.map(gk => i[1] + '::' + gk) : [i[1] + '::-'])); });
-  return out.length ? out : ['#/inicio'];
+  return [...(out.length ? out : ['#/inicio']), '@em:' + new Date().toISOString()];   // data da revisão: telas criadas depois seguem o perfil
 };
 function ligarLoginCPF(raiz) {
   const cb = $('[name=login_cpf]', raiz), em = $('[name=email]', raiz); if (!cb || !em) return;
@@ -533,7 +533,7 @@ async function conferirUsuario(u, D, abrir = true, aoAndar = null) {
       probs.push({ tela: i[0], tipo: 'perfil', msg: req.length ? 'falta o perfil ' + req.map(p => NOME_P[p] || p).join(' ou ') + ' para ver os dados' : 'tela exclusiva do administrador: mesmo marcada, só abre para quem tem o perfil Administrador' });
   }
   if (Array.isArray(u.menus) && u.menus.length) { const mk = new Set(MENU.map(x => x[1]));
-    u.menus.filter(x => !x.includes('::') && !mk.has(x)).forEach(x => probs.push({ tela: x, tipo: 'aviso', msg: 'está na lista de acesso, mas a tela não existe mais' }));
+    u.menus.filter(x => !x.includes('::') && !x.startsWith('@') && !mk.has(x)).forEach(x => probs.push({ tela: x, tipo: 'aviso', msg: 'está na lista de acesso, mas a tela não existe mais' }));
     if (lider && !u.menus.includes('#/minha-equipe')) probs.push({ tela: 'Minha equipe', tipo: 'aviso', msg: 'lidera pessoas, mas a tela não está liberada' }); }
   if (abrir) {
     const orig = { usuario: estado.usuario, perfis: estado.perfis, fch: estado.fch, lider: estado.lider, params: estado.params, cache: estado.cache }, hash0 = location.hash;

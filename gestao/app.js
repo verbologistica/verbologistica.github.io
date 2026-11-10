@@ -527,12 +527,18 @@ const MENU = [
 ];
 // Telas permitidas: sem lista no cadastro, valem as telas dos perfis; com lista (acesso personalizado), valem exatamente
 // as telas marcadas no cadastro do usuário, sem filtro automático pelo perfil. Administrador vê tudo.
+// Tela nova x acesso personalizado: a tela que surgiu depois da última revisão do acesso da pessoa ("@em:data" na lista) segue o perfil dela
+const menuRevisadoEm = menus => ((menus || []).find(x => String(x).startsWith('@em:')) || '').slice(4);
+const menuNovo = (href, menus) => { const c = (estado.menuCatalogo || {})[href]; return !!c && c > menuRevisadoEm(menus); };
+async function menuCatalogoCarregar() { const hs = [...new Set(MENU.filter(i => i[0] !== 'grupo' && i[0] !== 'sub').map(i => baseHref(i[1])))];
+  try { estado.menuCatalogo = await api.rpc('menu_catalogo', { p_hrefs: hs }) || {}; } catch (e) { estado.menuCatalogo = estado.menuCatalogo || {}; } }
 function menuPara(perfis, menus) {
   const admin = perfis.includes('administrador');
   const lista = !admin && Array.isArray(menus) && menus.length ? menus : null;
   const SEMPRE = ['#/inicio'];   // a tela inicial aparece para todos
   const fch = i => Array.isArray(i[2]) && i[2].some(p => p.startsWith('fch:') && perfis.includes(p));   // responsável pelo fechamento do setor
-  const ok = MENU.filter(i => i[0] === 'grupo' || i[0] === 'sub' || SEMPRE.includes(i[1]) || (lista ? lista.includes(i[1]) : (fch(i) || !i[2] || i[2].some(p => perfis.includes(p)))));
+  const pelPerfil = i => fch(i) || !i[2] || i[2].some(p => perfis.includes(p));
+  const ok = MENU.filter(i => i[0] === 'grupo' || i[0] === 'sub' || SEMPRE.includes(i[1]) || (lista ? lista.includes(i[1]) || (menuNovo(baseHref(i[1]), lista) && pelPerfil(i)) : pelPerfil(i)));
   const semSub = ok.filter((i, k) => i[0] !== 'sub' || (ok[k + 1] && !['sub', 'grupo'].includes(ok[k + 1][0])));
   return semSub.filter((i, k) => i[0] !== 'grupo' || (semSub[k + 1] && semSub[k + 1][0] !== 'grupo'));
 }
@@ -590,7 +596,7 @@ async function atualizarAcesso(forcar = false) {
   try { const [[u], ps, fs, lid] = await Promise.all([api.listar('usuarios', `id=eq.${estado.usuario.id}&select=*`), api.listar('usuario_perfis', `usuario_id=eq.${estado.usuario.id}&select=perfil`),
       api.listar('setores_fechamento', 'select=codigo,aprovadores,lancadores&ativo=is.true').catch(() => null), api.rpc('lidera_alguem', { p_usuario: estado.usuario.id }).catch(() => estado.lider)]);
     if (u) estado.usuario = u; if (ps) estado.perfisReais = ps.map(p => p.perfil); if (fs) estado.fchReais = fs.filter(s => [...s.aprovadores, ...s.lancadores].includes(estado.usuario.id)).map(s => s.codigo); estado.lider = !!lid;
-    await telaPerfisCarregar(); aplicarPerfisDasTelas();
+    await Promise.all([telaPerfisCarregar(), menuCatalogoCarregar()]); aplicarPerfisDasTelas();
   } catch { /* segue com o que já tinha */ } }
 
 
@@ -937,7 +943,7 @@ async function iniciar() {
     estado.fch = (await api.listar('setores_fechamento', 'select=codigo,aprovadores,lancadores&ativo=is.true').catch(() => []))
       .filter(s => [...s.aprovadores, ...s.lancadores].includes(u.id)).map(s => s.codigo);
     estado.lider = await api.rpc('lidera_alguem', { p_usuario: u.id }).catch(() => false); _acessoEm = Date.now();
-    estado.perfisReais = estado.perfis; estado.fchReais = estado.fch; await telaPerfisCarregar(); aplicarPerfisDasTelas();
+    estado.perfisReais = estado.perfis; estado.fchReais = estado.fch; await Promise.all([telaPerfisCarregar(), menuCatalogoCarregar()]); aplicarPerfisDasTelas();
     estado.cache = {};
     if (!location.hash || location.hash === '#') location.hash = '#/inicio';
     await navegar();
