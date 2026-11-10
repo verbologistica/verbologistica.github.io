@@ -178,7 +178,7 @@ rota('/operacao/viagens/ver/:id', async (tela, id) => {
   tela.innerHTML = `
     <div class="topo"><div><h1>${esc(v.numero)} · ${esc(v.origem)} → ${esc(v.destino)}</h1><p class="sub">${tagSt(ST_VIA, v.status)} · ${esc(v.cl?.nome || 'sem cliente')}</p></div>
       <div class="acoes">${(ed || souMot) && v.status === 'planejada' ? '<button class="btn prim" id="via-sair">Iniciar viagem</button>' : ''}${(ed || souMot) && v.status === 'em_transito' ? '<button class="btn prim" id="chegar">Registrar entrega</button>' : ''}
-        ${ed && ['planejada', 'em_transito', 'entregue'].includes(v.status) ? `<a class="btn" href="#/operacao/viagens/editar/${id}">${v.status === 'entregue' ? 'Corrigir dados / datas' : 'Editar'}</a>` : ''}${ed && ['planejada', 'em_transito'].includes(v.status) ? '<button class="btn perigo" id="cancelar">Cancelar</button>' : ''}
+        ${ed && ['planejada', 'em_transito', 'entregue'].includes(v.status) ? `<a class="btn" href="#/operacao/viagens/editar/${id}">${v.status === 'entregue' ? 'Corrigir dados / datas' : 'Editar'}</a>` : ''}${ed && ['planejada', 'em_transito'].includes(v.status) ? '<button class="btn perigo" id="cancelar">Cancelar</button>' : ''}${ed && v.ativo !== false ? '<button class="btn perigo" id="via-excluir" title="Para viagem lançada errada: sai das listas e relatórios, com motivo registrado">Excluir</button>' : ''}
         <button class="btn" id="ordem">Ordem de viagem</button><a class="btn" href="#/operacao/ocorrencias/nova?viagem=${id}">+ Ocorrência</a><a class="btn" href="#/operacao/viagens">Voltar</a></div></div>
     ${passo ? `<div class="cartao" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;border-left:5px solid var(--${passo[0] === 'azul' ? 'azul, #2F80ED' : 'ouro, #DDA936'})"><div style="flex:1;min-width:220px"><b style="font-size:16px">${passo[1]}</b><div class="muted">${passo[2]}</div></div>${passo[3]}</div>` : ''}
     <div class="cartao"><div class="form">${[['Equipamento', v.eq && rotuloEq(v.eq)], ['Motorista', v.m?.nome], ['Outros motoristas', (v.motoristas_apoio || []).map(i => nomesMot[i]).filter(Boolean).join(', ') || null], ['Entregue por', v.motorista_entrega_id ? nomesMot[v.motorista_entrega_id] : null], ['Saída prevista', dataHoraBR(v.saida_prevista)], ['Chegada prevista', dataHoraBR(v.chegada_prevista)],
@@ -195,6 +195,9 @@ rota('/operacao/viagens/ver/:id', async (tela, id) => {
   $('#via-sair2')?.addEventListener('click', async () => { try { if (await viagemIniciar(v)) navegar(); } catch (err) { falha(err); } });
   $('#chegar2')?.addEventListener('click', async () => { try { if (await viagemEntregar(v)) navegar(); } catch (err) { falha(err); } });
   $('#chegar')?.addEventListener('click', async () => { try { if (await viagemEntregar(v)) navegar(); } catch (err) { falha(err); } });
+  $('#via-excluir')?.addEventListener('click', async () => {
+    const m = await confirmar(`Excluir a viagem ${v.numero}? Use só para viagem lançada errada (duplicada, dados trocados…). Ela sai das listas e relatórios; o registro e o motivo ficam guardados.`, { comMotivo: true, botao: 'Excluir viagem' });
+    if (!m) return; try { await api.rpc('viagem_excluir', { p_id: id, p_motivo: m }); aviso('Viagem excluída.'); location.hash = '#/operacao/viagens'; } catch (err) { falha(err); } });
   $('#cancelar')?.addEventListener('click', async () => { const m = await confirmar('Cancelar esta viagem?', { comMotivo: true, botao: 'Cancelar viagem' }); if (!m) return;
     try { await api.alterar('viagens', `id=eq.${id}`, { status: 'cancelada', motivo_cancelamento: m }); navegar(); } catch (err) { falha(err); } });
   $('#ordem').onclick = async () => { const m = await modeloPorCodigo('OPE-VIA-001'); if (!m) return aviso('Modelo não encontrado.', true);
