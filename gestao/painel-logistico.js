@@ -228,45 +228,54 @@ async function plMapa(el, fs, cercas, rastros) {
 }
 
 // desenha o mapa exatamente como está na tela (camada, zoom e enquadramento) num canvas, com rótulos fixos para imagem/PDF
-async function plMapaImagem(m, escala = 2) {
-  const sz = m.getSize(), z = m.getZoom(), pb = m.getPixelBounds(), W = sz.x, H = sz.y;
+// mapa para imagem/PDF: enquadra todas as frotas e o corredor num tamanho fixo (independe do zoom/tamanho da tela);
+// no mapa vão só o caminhão e o código; os detalhes saem na tabela ao lado (sem sobreposição)
+async function plMapaImagem(m, escala = 2, W = 1000, H = 560) {
+  const crs = L.CRS.EPSG3857, vis = m._pl.grupos, frotas = m.hasLayer(vis.gFrotas) ? m._pl.fs : [];
+  const pts = [...PL_PONTOS.map(p => L.latLng(p[1], p[2])), ...frotas.map(f => L.latLng(f.lat, f.lng))];
+  if (m.hasLayer(vis.gRastro)) frotas.forEach(f => (m._pl.rastros[f.id] || []).forEach(q => pts.push(L.latLng(q[0], q[1]))));
+  const b = L.latLngBounds(pts); let z = 12;
+  for (; z > 3; z--) { const a = crs.latLngToPoint(b.getNorthWest(), z), c = crs.latLngToPoint(b.getSouthEast(), z); if (c.x - a.x <= W - 140 && c.y - a.y <= H - 110) break; }
+  const ctr = crs.latLngToPoint(b.getCenter(), z), o = L.point(ctr.x - W / 2, ctr.y - H / 2);
   const cv = document.createElement('canvas'); cv.width = W * escala; cv.height = H * escala;
   const g = cv.getContext('2d'); g.scale(escala, escala); g.fillStyle = '#dfe6e3'; g.fillRect(0, 0, W, H);
   const carrega = src => new Promise(ok => { const i = new Image(); i.crossOrigin = 'anonymous'; i.onload = () => ok(i); i.onerror = () => ok(null); i.src = src; setTimeout(() => ok(null), 15000); });
-  const n = 2 ** z, x0 = Math.floor(pb.min.x / 256), x1 = Math.floor(pb.max.x / 256), y0 = Math.floor(pb.min.y / 256), y1 = Math.floor(pb.max.y / 256);
+  const n = 2 ** z, x0 = Math.floor(o.x / 256), x1 = Math.floor((o.x + W) / 256), y0 = Math.floor(o.y / 256), y1 = Math.floor((o.y + H) / 256);
   for (const u of PL_BASES[m._plBase] || PL_BASES.Ruas) {
     const ts = []; for (let x = x0; x <= x1; x++) for (let y = Math.max(0, y0); y <= Math.min(n - 1, y1); y++) ts.push({ x, y });
     const imgs = await Promise.all(ts.map(t => carrega(u.replace('{z}', z).replace('{y}', t.y).replace('{x}', ((t.x % n) + n) % n))));
-    imgs.forEach((im, k) => { if (im) g.drawImage(im, ts[k].x * 256 - pb.min.x, ts[k].y * 256 - pb.min.y, 256, 256); });
+    imgs.forEach((im, k) => { if (im) g.drawImage(im, ts[k].x * 256 - o.x, ts[k].y * 256 - o.y, 256, 256); });
   }
-  const P = ll => { const p = m.project(ll, z); return [p.x - pb.min.x, p.y - pb.min.y]; };
-  const linha = (pts, cor, larg, tr = []) => { if (pts.length < 2) return; g.save(); g.setLineDash(tr); g.strokeStyle = cor; g.lineWidth = larg; g.lineJoin = g.lineCap = 'round'; g.beginPath(); pts.map(P).forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.stroke(); g.restore(); };
-  const vis = m._pl.grupos;
+  const P = ll => { const p = crs.latLngToPoint(L.latLng(ll), z); return [p.x - o.x, p.y - o.y]; };
+  const linha = (ps, cor, larg, tr = []) => { if (ps.length < 2) return; g.save(); g.setLineDash(tr); g.strokeStyle = cor; g.lineWidth = larg; g.lineJoin = g.lineCap = 'round'; g.beginPath(); ps.map(P).forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.stroke(); g.restore(); };
+  const rot = (txt, x, y, fundo, cor, fonte = '700 13px Arial') => { g.font = fonte; const w = g.measureText(txt).width + 12; g.save(); g.shadowColor = 'rgba(0,0,0,.3)'; g.shadowBlur = 4; g.fillStyle = fundo;
+    g.beginPath(); g.roundRect ? g.roundRect(x - w / 2, y, w, 20, 6) : g.rect(x - w / 2, y, w, 20); g.fill(); g.restore(); g.fillStyle = cor; g.textAlign = 'center'; g.fillText(txt, x, y + 14.5); g.textAlign = 'left'; };
   if (m.hasLayer(vis.gCercas)) m._pl.cercas.forEach(c => { const cor = c.cor || PL_CERCA_COR[c.tipo] || '#2F80ED';
     (c.poligonos || []).forEach(p => { if (p.length > 2) { g.save(); g.beginPath(); p.map(P).forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.closePath(); g.globalAlpha = .16; g.fillStyle = cor; g.fill(); g.globalAlpha = 1; g.strokeStyle = cor; g.lineWidth = 2; g.stroke(); g.restore(); } }); });
-  linha(PL_PONTOS.map(p => [p[1], p[2]]), '#DDA936', 3, [8, 8]);
-  if (m.hasLayer(vis.gRastro)) m._pl.fs.forEach(f => linha(m._pl.rastros[f.id] || [], plCorFrota(f), 4));
-  g.font = '600 11px Arial'; PL_PONTOS.forEach(([nm, la, lo, t]) => { const [x, y] = P([la, lo]); g.beginPath(); g.arc(x, y, 7, 0, 7); g.fillStyle = t === 'apoio' ? '#fff' : t === 'origem' ? '#DDA936' : '#F2C94C'; g.fill(); g.lineWidth = 2; g.strokeStyle = '#0B1F19'; g.stroke();
-    g.lineWidth = 3; g.strokeStyle = 'rgba(255,255,255,.9)'; g.strokeText(nm, x + 10, y - 8); g.fillStyle = '#0B1F19'; g.fillText(nm, x + 10, y - 8); });
-  if (m.hasLayer(vis.gFrotas)) {
-    const caixas = [];
-    for (const f of m._pl.fs) {
-      const [x, y] = P([f.lat, f.lng]); if (x < -40 || y < -40 || x > W + 40 || y > H + 40) continue;
-      const im = await carrega('data:image/svg+xml;charset=utf-8,' + encodeURIComponent(plCaminhaoSvg(f, 76))); if (im) g.drawImage(im, x - 19, y - 21, 38, 38);
-      const l1 = `${f.codigo} · ${f.placa || ''} · ${plConfere(f)[1]}`, l2 = ('Apont.: ' + plApont(f)).slice(0, 40), l2b = ('Telem.: ' + (f.grupo || '—')).slice(0, 40), l3 = plMov(f).replace('Ignição ', 'Ign. ');
-      g.font = '700 11px Arial'; const w1 = g.measureText(l1).width; g.font = '11px Arial'; const bw = Math.max(w1, g.measureText(l2).width, g.measureText(l2b).width, g.measureText(l3).width) + 16, bh = 62;
-      let bx = x + 22, by = y - 30; if (bx + bw > W - 4) bx = x - 22 - bw; if (by < 4) by = 4; if (by + bh > H - 4) by = H - 4 - bh;
-      for (let k = 0; k < 8 && caixas.some(c => bx < c[0] + c[2] && bx + bw > c[0] && by < c[1] + c[3] && by + bh > c[1]); k++) by += bh + 4;
-      caixas.push([bx, by, bw, bh]);
-      g.save(); g.shadowColor = 'rgba(0,0,0,.25)'; g.shadowBlur = 6; g.fillStyle = 'rgba(255,255,255,.96)'; g.beginPath(); g.roundRect ? g.roundRect(bx, by, bw, bh, 7) : g.rect(bx, by, bw, bh); g.fill(); g.restore();
-      g.fillStyle = { ok: '#2BB673', div: '#F2994A', nao: '#EB5757', na: '#9AA5B1' }[plConfere(f)[0]]; g.fillRect(bx, by + 6, 3, bh - 12);
-      g.fillStyle = '#0B1F19'; g.font = '700 11px Arial'; g.fillText(l1, bx + 9, by + 15); g.font = '11px Arial'; g.fillStyle = '#1F3A33'; g.fillText(l2, bx + 9, by + 29); g.fillStyle = '#5F7A70'; g.fillText(l2b, bx + 9, by + 42);
-      g.fillStyle = plLigado(f) ? '#1E8E57' : '#66737F'; g.fillText(l3, bx + 9, by + 55);
-    }
+  linha(PL_PONTOS.map(p => [p[1], p[2]]), '#DDA936', 3.5, [9, 8]);
+  if (m.hasLayer(vis.gRastro)) frotas.forEach(f => linha(m._pl.rastros[f.id] || [], plCorFrota(f), 5));
+  PL_PONTOS.forEach(([nm, la, lo, t]) => { const [x, y] = P([la, lo]); g.beginPath(); g.arc(x, y, 8, 0, 7); g.fillStyle = t === 'apoio' ? '#fff' : t === 'origem' ? '#DDA936' : '#F2C94C'; g.fill(); g.lineWidth = 2.5; g.strokeStyle = '#0B1F19'; g.stroke();
+    g.font = '700 13px Arial'; g.lineWidth = 4; g.strokeStyle = 'rgba(255,255,255,.95)'; g.strokeText(nm, x + 12, y - 10); g.fillStyle = '#0B1F19'; g.fillText(nm, x + 12, y - 10); });
+  const usados = [];
+  for (const f of frotas) {
+    let [x, y] = P([f.lat, f.lng]);
+    for (let k = 0; k < 6 && usados.some(([a, c]) => Math.abs(a - x) < 46 && Math.abs(c - y) < 46); k++) x += 48;   // afasta caminhões no mesmo ponto
+    usados.push([x, y]);
+    const im = await carrega('data:image/svg+xml;charset=utf-8,' + encodeURIComponent(plCaminhaoSvg(f, 96))); if (im) g.drawImage(im, x - 24, y - 26, 48, 48);
+    const cf = plConfere(f)[0];
+    rot(f.codigo, x, y + 24, { ok: '#1E8E57', div: '#D9822B', nao: '#D64545', na: '#0B1F19' }[cf], '#fff');
   }
-  g.font = '10px Arial'; g.fillStyle = 'rgba(255,255,255,.85)'; const at = 'Mapa: Esri · Telemetria: Creare'; const aw = g.measureText(at).width; g.fillRect(W - aw - 10, H - 16, aw + 10, 16); g.fillStyle = '#333'; g.fillText(at, W - aw - 5, H - 5);
+  g.font = '11px Arial'; const at = 'Mapa: Esri · Telemetria: Creare'; const aw = g.measureText(at).width; g.fillStyle = 'rgba(255,255,255,.85)'; g.fillRect(W - aw - 10, H - 16, aw + 10, 16); g.fillStyle = '#333'; g.fillText(at, W - aw - 5, H - 5);
   return cv.toDataURL('image/png');
 }
+// tabela que acompanha o mapa na imagem/PDF
+const plTabMapa = fs => { const c = fs.filter(f => f.posicao_em); if (!c.length) return '';
+  const cor = { ok: '#2BB673', div: '#F2994A', nao: '#EB5757', na: '#9AA5B1' };
+  return `<table style="width:100%;border-collapse:collapse;margin-top:10px;font:13px/1.35 Arial,sans-serif;color:#EAF2EE"><thead><tr style="color:#DDA936;font-size:11px;letter-spacing:1px;text-align:left">
+    <th style="padding:6px">FROTA</th><th style="padding:6px">MOTORISTA</th><th style="padding:6px">APONTAMENTO MOTORISTA</th><th style="padding:6px">TELEMETRIA</th><th style="padding:6px">CONFRONTO</th><th style="padding:6px">IGNIÇÃO / MOVIMENTO</th></tr></thead><tbody>
+    ${c.map(f => { const [k, t] = plConfere(f); return `<tr style="border-top:1px solid rgba(255,255,255,.12)"><td style="padding:6px"><b>${esc(f.codigo)}</b><br><span style="color:#9FB8AE">${esc(f.placa || '')}</span></td><td style="padding:6px">${esc(f.motorista || '—')}</td>
+      <td style="padding:6px"><b>${esc(plApont(f))}</b>${f.apont_desde ? `<br><span style="color:#9FB8AE">desde ${dataHoraBR(f.apont_desde)}</span>` : ''}</td><td style="padding:6px">${esc(f.grupo || '—')}</td>
+      <td style="padding:6px"><span style="background:${cor[k]};color:#fff;border-radius:9px;padding:2px 8px;font-weight:700;font-size:11px;white-space:nowrap">${t}</span></td><td style="padding:6px">${esc(plMov(f))}<br><span style="color:#9FB8AE">${esc(f.endereco || f.local_creare || '')}</span></td></tr>`; }).join('')}</tbody></table>`; };
 
 rota('/operacao/painel', async tela => {
   if (!document.getElementById('pl-css')) document.head.insertAdjacentHTML('beforeend', plCss);
@@ -369,9 +378,11 @@ rota('/operacao/painel', async tela => {
   // exportações
   const nomeBase = `Painel logístico ${quando.replace(/[\/:]/g, '-').replace(/\s+/g, ' ')}`;
   const imagem = async () => { if (!window.html2canvas) await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js');
-    let foto = null; if (mapa) { try { foto = await plMapaImagem(mapa, 2.5); } catch (e) { console.warn('mapa', e); } }
+    let foto = null; if (mapa) { try { foto = await plMapaImagem(mapa, 2); } catch (e) { console.warn('mapa', e); } }
     return html2canvas($('#pl-painel'), { scale: 2.5, useCORS: true, backgroundColor: '#0B1F19', logging: false,
-      onclone: d => { const el = d.getElementById('pl-mapa'); if (el && foto) { el.innerHTML = `<img src="${foto}" alt="Mapa" style="width:100%;height:100%;display:block">`; el.className = 'pl-mapa'; } } }); };
+      windowWidth: 1700, width: 1600,
+      onclone: d => { const pn = d.getElementById('pl-painel'); if (pn) { pn.style.width = '1600px'; pn.style.maxWidth = 'none'; }
+        const el = d.getElementById('pl-mapa'); if (el && foto) { el.outerHTML = `<img src="${foto}" alt="Mapa" style="width:100%;height:auto;display:block;border-radius:12px;margin-top:10px">${plTabMapa(fs)}`; } } }); };
   $$('[data-exp]', tela).forEach(b => b.onclick = () => ocupado(b, async () => { try {
     const t = b.dataset.exp;
     if (t === 'png') { const cv = await imagem(); cv.toBlob(bl => baixarArquivo(bl, nomeBase + '.png'), 'image/png'); }
