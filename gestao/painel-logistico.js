@@ -149,14 +149,18 @@ const plConfere = f => { if (!f.posicao_em) return ['na', 'Sem leitura'];
   return !a || !t ? ['na', 'Conferir'] : a === t || (a === 'Deslocamento' && /^Trânsito/.test(t)) || (t === 'Deslocamento' && /^Trânsito/.test(a)) ? ['ok', 'Confere'] : ['div', 'Divergente']; };
 const plCorFrota = f => PL_COR[f.atividade] || '#5F7A70';
 const plApont = f => { const a = (f.apontamento || '').trim().replace(/\s*-\s*$/, ''); return !a ? 'Sem apontamento' : /^\d+$/.test(a) ? `Código ${a} (sem descrição no Creare)` : a; };
-// carga real (sequência carregamento → descarga do E09) × declarada pelo motorista (código terminado em 1 = vazio, 2 = carregado) e sentido pelo rastro
+// carga real (sequência carregamento → descarga do E09) × declarada pelo motorista (códigos com par: final 1 = vazio, 2 = carregado, ex.: 1001/1002)
+// × grupo da telemetria no Creare (Desloc. Vazio / Carregado) e sentido pelo rastro
 const plDistKm = (a, b) => { const r = Math.PI / 180, x = Math.sin((b[0] - a[0]) * r / 2) ** 2 + Math.cos(a[0] * r) * Math.cos(b[0] * r) * Math.sin((b[1] - a[1]) * r / 2) ** 2; return 12742 * Math.asin(Math.sqrt(x)); };
 const plPonto = t => { const p = PL_PONTOS.find(x => x[3] === t); return p ? { nome: String(p[0]).split(/ \(| ·/)[0].trim(), ll: [p[1], p[2]] } : null; };
 function plSentido(f, r) { const o = plPonto('origem'), d = plPonto('destino'); if (!o || !d || !r || r.length < 2 || f.lat == null) return null;
   const a = r[Math.max(0, r.length - 4)], b = [+f.lat, +f.lng], dv = plDistKm(b, o.ll) - plDistKm(a, o.ll); if (Math.abs(dv) < 3) return null;
   return dv < 0 ? { para: 'origem', nome: o.nome } : { para: 'destino', nome: d.nome }; }
 function plCarga(f) { const c = f.carga || {}, real = c.carregado == null ? null : c.carregado ? 'carregado' : 'vazio', s = f.sentido, al = [];
-  if (real && c.declarado && c.declarado !== real) al.push(`motorista apontando ${c.declarado.toUpperCase()}, mas ${real === 'carregado' ? 'carregou' : 'descarregou'} em ${dataHoraBR(c.op_em)}`);
+  const op = `${real === 'carregado' ? 'carregou' : 'descarregou'} em ${dataHoraBR(c.op_em)}`,
+    tg = /vazio/i.test(f.grupo || '') ? 'vazio' : /carregad/i.test(f.grupo || '') ? 'carregado' : null;   // grupo da telemetria no Creare
+  if (real && c.declarado && c.declarado !== real) al.push(`motorista apontando ${c.declarado.toUpperCase()}, mas ${op}`);
+  else if (real && tg && tg !== real) al.push(`telemetria (Creare) indica ${tg.toUpperCase()}, mas ${op}`);
   if (real && s && plAndando(f) && ((real === 'carregado') !== (s.para === 'destino'))) al.push(`${real} indo para ${s.nome}: conferir`);
   const txt = real ? `${real.toUpperCase()}${s && plAndando(f) ? ' → ' + s.nome : ''}` : '';
   return { real, txt, al, cor: real === 'carregado' ? '#2BB673' : real === 'vazio' ? '#56A8E8' : '#9AA5B1', desde: c.op_em ? `${c.op === 'carregamento' ? 'carregou' : 'descarregou'} em ${dataHoraBR(c.op_em)}` : '' }; }
