@@ -9,6 +9,7 @@ const PL_COR = { 'Trânsito Vazio': '#DDA936', 'Trânsito Carregado': '#2BB673',
   'Cadastro na Balança': '#B39DDB', 'Falta Cadastro Ticket LOG': '#C5A3FF', 'Mobilização': '#4DD0E1', 'Troca de Turno': '#F5D76E', 'Prancha': '#A1887F',
   'Corretiva': '#F2994A', 'Preventiva': '#E2B93B', 'Inspeção': '#9B7BEA', 'SOS': '#EB5757', 'Sem Motorista': '#CFD8DC', 'Sem Composição': '#E57373',
   'Sem Cavalo': '#8D6E63', 'Sem Apontamento': '#EB5757', 'Outros / sem atividade': '#5F7A70' };
+const PL_PONTO_COR = { origem: '#8E44AD', apoio: '#FFFFFF', destino: '#2F80ED' };
 const PL_PONTOS = [['Três Lagoas (MS)', -20.7849, -51.7007, 'origem'], ['Guararapes (SP)', -21.2608, -50.6453, 'apoio'], ['Lençóis Paulista (SP)', -22.5986, -48.8003, 'destino']];
 const plIc = p => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
 const PL_IC = {
@@ -55,6 +56,7 @@ const plCss = `<style id="pl-css">
 .pl-leg{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:11.5px;color:#DCE8E3;margin-top:8px}.pl-leg i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:-1px}
 .pl-donut{display:flex;align-items:center;gap:14px;margin-top:10px;flex-wrap:wrap}.pl-donut svg{width:150px;height:150px;flex:none}.pl-donut ul{list-style:none;margin:0;padding:0;font-size:12px;flex:1;min-width:140px}
 .pl-donut li{display:flex;align-items:center;gap:6px;margin:3px 0}.pl-donut li i{width:10px;height:10px;border-radius:3px;flex:none}.pl-donut li b{margin-left:auto}
+body.pl-largo .conteudo{max-width:none}.pl-abas{margin:4px 0 12px}
 .pl-cam{position:relative}.pl-cam svg{display:block;filter:drop-shadow(0 2px 3px rgba(0,0,0,.35))}.pl-cam .pl-rot{position:absolute;top:40px;left:50%;transform:translateX(-50%)}
 .pl-tt{padding:0;border-radius:10px;border:0;box-shadow:0 6px 18px rgba(0,0,0,.25)}.pl-dica{padding:9px 11px;font:12px/1.45 Arial,sans-serif;color:#1d2b27;min-width:220px;max-width:300px;white-space:normal}.pl-dica b{color:#0B1F19}.pl-dica svg{width:12px;height:12px;vertical-align:-2px;margin-right:4px}.pl-dica i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px}.pl-dica-ap{margin:5px 0;padding:5px 7px;background:#F3F6F4;border-left:3px solid #DDA936;border-radius:4px}.pl-dica-ap small{display:block;font-size:10px;color:#5F7A70;text-transform:uppercase;letter-spacing:.4px}.pl-dica-ap span{color:#5F7A70;font-size:11px}
 .pl-rot{background:#0B1F19;border:1px solid var(--pl-ouro);color:#fff;font-weight:700;font-size:11px;padding:2px 6px;border-radius:6px;white-space:nowrap}
@@ -104,11 +106,9 @@ function plHtml(fs, c, quando, per, sa = []) {
         <div class="pl-mini">${mini('#56A8E8', 'doc', 'AGUARDANDO NOTA', c.nota)}${mini('#CFD8DC', 'pessoa', 'SEM MOTORISTA', c.semMot)}${mini('#E57373', 'elo', 'SEM COMPOSIÇÃO', c.semComp)}${mini('#A1887F', 'semcav', 'SEM CAVALO', c.semCav)}</div></div>
       <div class="pl-visao"><h4>VISÃO GERAL</h4><div class="pl-l4">${vg('#DDA936', 'caminhao', 'Operando', c.operando)}${vg('#EB5757', 'chave', 'Manutenção', c.man)}${vg('#2BB673', 'ok', 'Disponível', c.disp)}${vg('#F2994A', 'proibido', 'Indisponível', c.indisp)}</div></div>
     </div><div class="pl-col">
-      <div class="pl-c" style="--cor:#DDA936"><h3>${PL_IC.pino}Corredor operacional</h3><div class="pl-sub">Três Lagoas (MS) · Guararapes (SP) · Lençóis Paulista (SP)</div>
+      <div class="pl-c" style="--cor:#DDA936"><h3>${PL_IC.pino}Corredor operacional</h3><div class="pl-sub">${PL_PONTOS.map(p => esc(p[0])).join(' · ')}</div>
         <div class="pl-mapa" id="pl-mapa"></div>
-        <div class="pl-leg"><span><i style="background:#DDA936"></i>Origem</span><span><i style="background:#fff"></i>Apoio · administrativo</span><span><i style="background:#F2C94C"></i>Destino</span>
-          <span><i style="background:#2BB673"></i>Carregado</span><span><i style="background:#DDA936"></i>Vazio</span><span><i style="background:#5F7A70"></i>Sem apontamento</span>
-          <span><i style="background:#2BB673;border:2px solid #fff"></i>Ignição ligada</span><span><i style="background:#9AA5B1;border:2px solid #fff"></i>Desligada</span><span><i style="background:#2F80ED;border-radius:2px"></i>Cercas</span></div>
+        <div class="pl-leg"><span><i style="background:#2BB673;border:2px solid #fff"></i>Ignição ligada</span><span><i style="background:#9AA5B1;border:2px solid #fff"></i>Ignição desligada</span></div>
         <div class="pl-per" id="pl-mapa-info"></div></div>
       <div class="pl-c" style="--cor:#DDA936;flex:1"><h3>${PL_IC.pizza}Ocupação da frota</h3><div class="pl-sub">${per ? 'Horas por atividade no período' : 'Distribuição por atividade'}</div>${plDonut(dist)}</div>
     </div></div>${plFaixaSA(fs, sa)}</div>`;
@@ -209,8 +209,8 @@ async function plMapa(el, fs, cercas, rastros) {
     (c.poligonos || []).forEach(p => { if (p.length > 2) L.polygon(p, { color: cor, weight: 2, fillColor: cor, fillOpacity: .14 }).bindTooltip(esc(c.nome), { sticky: true }).addTo(gCercas);
       else if (p.length === 1) L.circleMarker(p[0], { radius: 6, color: '#fff', weight: 2, fillColor: cor, fillOpacity: 1 }).bindTooltip(esc(c.nome)).addTo(gCercas); }); });
   const pts = PL_PONTOS.map(p => [p[1], p[2]]);
-  L.polyline(pts, { color: '#DDA936', weight: 3, opacity: .9, dashArray: '8 8' }).addTo(m);
-  PL_PONTOS.forEach(([n, la, lo, t]) => L.circleMarker([la, lo], { radius: 7, color: '#0B1F19', weight: 2, fillColor: t === 'apoio' ? '#fff' : t === 'origem' ? '#DDA936' : '#F2C94C', fillOpacity: 1 }).bindTooltip(n).addTo(m));
+  L.polyline(pts, { color: '#37474F', weight: 3, opacity: .75, dashArray: '8 8' }).addTo(m);
+  PL_PONTOS.forEach(([n, la, lo, t]) => L.circleMarker([la, lo], { radius: 7, color: '#0B1F19', weight: 2, fillColor: PL_PONTO_COR[t] || '#fff', fillOpacity: 1 }).bindTooltip(n).addTo(m));
   const com = fs.filter(f => f.lat != null && f.lng != null), b = L.latLngBounds(pts);
   com.forEach(f => { const r = (rastros || {})[f.id]; if (r && r.length > 1) L.polyline(r, { color: plCorFrota(f), weight: 4, opacity: .75 }).addTo(gRastro); });
   com.forEach(f => {
@@ -252,9 +252,9 @@ async function plMapaImagem(m, escala = 2, W = 1000, H = 560) {
     g.beginPath(); g.roundRect ? g.roundRect(x - w / 2, y, w, 20, 6) : g.rect(x - w / 2, y, w, 20); g.fill(); g.restore(); g.fillStyle = cor; g.textAlign = 'center'; g.fillText(txt, x, y + 14.5); g.textAlign = 'left'; };
   if (m.hasLayer(vis.gCercas)) m._pl.cercas.forEach(c => { const cor = c.cor || PL_CERCA_COR[c.tipo] || '#2F80ED';
     (c.poligonos || []).forEach(p => { if (p.length > 2) { g.save(); g.beginPath(); p.map(P).forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.closePath(); g.globalAlpha = .16; g.fillStyle = cor; g.fill(); g.globalAlpha = 1; g.strokeStyle = cor; g.lineWidth = 2; g.stroke(); g.restore(); } }); });
-  linha(PL_PONTOS.map(p => [p[1], p[2]]), '#DDA936', 3.5, [9, 8]);
+  linha(PL_PONTOS.map(p => [p[1], p[2]]), '#37474F', 3.5, [9, 8]);
   if (m.hasLayer(vis.gRastro)) frotas.forEach(f => linha(m._pl.rastros[f.id] || [], plCorFrota(f), 5));
-  PL_PONTOS.forEach(([nm, la, lo, t]) => { const [x, y] = P([la, lo]); g.beginPath(); g.arc(x, y, 8, 0, 7); g.fillStyle = t === 'apoio' ? '#fff' : t === 'origem' ? '#DDA936' : '#F2C94C'; g.fill(); g.lineWidth = 2.5; g.strokeStyle = '#0B1F19'; g.stroke();
+  PL_PONTOS.forEach(([nm, la, lo, t]) => { const [x, y] = P([la, lo]); g.beginPath(); g.arc(x, y, 8, 0, 7); g.fillStyle = PL_PONTO_COR[t] || '#fff'; g.fill(); g.lineWidth = 2.5; g.strokeStyle = '#0B1F19'; g.stroke();
     g.font = '700 13px Arial'; g.lineWidth = 4; g.strokeStyle = 'rgba(255,255,255,.95)'; g.strokeText(nm, x + 12, y - 10); g.fillStyle = '#0B1F19'; g.fillText(nm, x + 12, y - 10); });
   const usados = [];
   for (const f of frotas) {
@@ -277,10 +277,68 @@ const plTabMapa = fs => { const c = fs.filter(f => f.posicao_em); if (!c.length)
       <td style="padding:6px;background:transparent;color:#EAF2EE;border:0"><b>${esc(plApont(f))}</b>${f.apont_desde ? `<br><span style="color:#9FB8AE">desde ${dataHoraBR(f.apont_desde)}</span>` : ''}</td><td style="padding:6px;background:transparent;color:#EAF2EE;border:0">${esc(f.grupo || '—')}</td>
       <td style="padding:6px;background:transparent;color:#EAF2EE;border:0"><span style="background:${cor[k]};color:#fff;border-radius:9px;padding:2px 8px;font-weight:700;font-size:11px;white-space:nowrap">${t}</span></td><td style="padding:6px;background:transparent;color:#EAF2EE;border:0">${esc(plMov(f))}<br><span style="color:#9FB8AE">${esc(f.endereco || f.local_creare || '')}</span></td></tr>`; }).join('')}</tbody></table>`; };
 
+// ---------- abas Cavalos e Carretas: situação montada de cadastros + engates + OS + motivo informado pela torre ----------
+const PL_SIT = { operacao: ['Em operação', '#2BB673'], manutencao_atrelado: ['Manutenção · atrelado', '#F2994A'], manutencao: ['Manutenção', '#EB5757'],
+  parado_sem_composicao: ['Parado · sem composição', '#E2B93B'], parado_sem_cavalo: ['Parada · sem cavalo', '#E2B93B'], parado: ['Parado', '#E2B93B'],
+  aguardando: ['Aguardando chegada', '#56A8E8'], baixado: ['Baixado / vendido', '#9AA5B1'] };
+const PL_MOTIVOS = ['Aguardando composição', 'Aguardando cavalo', 'Aguardando motorista', 'Aguardando documentação', 'Aguardando instalação (rastreador / rádio / computador de bordo)', 'Aguardando plotagem', 'Aguardando peça', 'Manutenção na base', 'Reserva', 'Outro'];
+async function plComposicao(tela, grupo, ed) {
+  let d; try { d = await api.rpc('painel_frota_composicao', {}); } catch (err) { falha(err); return; }
+  const it = (d?.itens || []).filter(x => x.grupo === grupo), prev = +(d?.previsto || {})[grupo] || 0;
+  const n = k => it.filter(x => x.situacao === k).length;
+  const chegaram = it.filter(x => !['aguardando', 'baixado'].includes(x.situacao)).length, aguard = Math.max(prev - chegaram, n('aguardando'));
+  const nome = grupo === 'cavalo' ? ['cavalo', 'cavalos', 'CV'] : ['carreta', 'carretas', 'Carretas'];
+  const parados = it.filter(x => /^parado/.test(x.situacao)), porMotivo = parados.reduce((o, x) => { const k = x.motivo || 'Sem motivo informado'; o[k] = (o[k] || 0) + 1; return o; }, {});
+  const partes = [n('manutencao_atrelado') && `${n('manutencao_atrelado')} ${grupo === 'cavalo' ? 'atrelados em carretas' : 'atreladas em cavalos'} e em manutenção (${it.filter(x => x.situacao === 'manutencao_atrelado').map(x => grupo === 'cavalo' ? x.codigo : x.par).join(', ')})`,
+    n('manutencao') && `${n('manutencao')} em manutenção${grupo === 'cavalo' ? ' aguardando composição' : ''}`, parados.length && `${parados.length} ${grupo === 'cavalo' ? 'parados' : 'paradas'} (${Object.entries(porMotivo).map(([k, v]) => `${v} ${k.toLowerCase()}`).join('; ')})`,
+    `${n('operacao')} em operação`].filter(Boolean);
+  const resumo = `${nome[2]} - Chegaram ${chegaram} ${grupo === 'cavalo' ? 'dos' : 'das'} ${prev} ${grupo === 'cavalo' ? 'previstos' : 'previstas'}: ${partes.join(', ')}.${aguard ? ` Aguardando a chegada ${aguard === 1 ? 'do que falta' : `${grupo === 'cavalo' ? 'dos' : 'das'} ${aguard} que faltam`}.` : ''}`;
+  const card = (cor, t, v, sub = '') => `<div class="pl-c" style="--cor:${cor}"><h3>${t}</h3><div class="pl-n">${v}</div>${sub ? `<div class="pl-pct">${sub}</div>` : ''}</div>`;
+  const pct = v => prev ? Math.round(v * 100 / prev) + '% do previsto' : '';
+  tela.innerHTML = `<div class="pl-wrap">
+    <div class="topo"><div><h1>Painel logístico · ${nome[1][0].toUpperCase() + nome[1].slice(1)}</h1><p class="sub">Montado dos cadastros de equipamentos, engates e OS · motivo de parada informado pela torre</p></div>
+      <div class="acoes"><button class="btn" id="pl-copiar">Copiar resumo</button><button class="btn" id="pl-xls">Excel</button></div></div>
+    ${plAbas(grupo === 'cavalo' ? 'cavalos' : 'carretas')}
+    <div class="pl-painel"><div class="pl-l4" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
+      ${card('#DDA936', 'Previstos', prev)}${card('#2BB673', 'Chegaram', chegaram, pct(chegaram))}${card('#2BB673', 'Em operação', n('operacao'), pct(n('operacao')))}
+      ${card('#F2994A', grupo === 'cavalo' ? 'Manutenção · atrelados' : 'Manutenção · atreladas', n('manutencao_atrelado'))}${card('#EB5757', grupo === 'cavalo' ? 'Manutenção · sem composição' : 'Manutenção', n('manutencao'))}
+      ${card('#E2B93B', grupo === 'cavalo' ? 'Parados' : 'Paradas', parados.length, Object.entries(porMotivo).map(([k, v]) => `${v} · ${esc(k)}`).join('<br>'))}${card('#56A8E8', 'Aguardando chegada', aguard)}</div>
+      <div class="pl-sa" style="background:rgba(221,169,54,.10);border-color:rgba(221,169,54,.35)"><span id="pl-resumo">${esc(resumo)}</span></div></div>
+    <div class="cartao"><h2>${nome[1][0].toUpperCase() + nome[1].slice(1)} (${it.length} ${grupo === 'cavalo' ? 'cadastrados' : 'cadastradas'})</h2><div class="tabela-wrap"><table class="tabela compacta"><thead><tr><th>Frota</th><th>Placas</th><th>Modelo</th><th>Situação</th><th>${grupo === 'cavalo' ? 'Carreta atrelada' : 'Cavalo atrelado'}</th><th>OS aberta</th><th>Motivo (torre)</th>${ed ? '<th></th>' : ''}</tr></thead><tbody>
+      ${it.map(x => `<tr><td data-r="Frota"><b>${esc(x.codigo || '—')}</b></td><td data-r="Placas">${esc(x.placas || '—')}</td><td data-r="Modelo">${esc(x.modelo || '')}</td>
+        <td data-r="Situação"><span class="pl-sel" style="background:${(PL_SIT[x.situacao] || [])[1] || '#9AA5B1'}">${(PL_SIT[x.situacao] || [x.situacao])[0]}</span></td>
+        <td data-r="Engate">${x.par ? `<b>${esc(x.par)}</b><div class="muted">desde ${dataBR ? dataBR(String(x.engate_desde).slice(0, 10)) : esc(x.engate_desde)}</div>` : '<span class="muted">—</span>'}</td>
+        <td data-r="OS">${+x.os_abertas ? esc(x.os || x.os_abertas + ' OS') : x.situacao_cadastro === 'manutencao' ? '<span class="tag amarelo">Sem OS aberta</span>' : '—'}</td>
+        <td data-r="Motivo">${x.motivo ? `${esc(x.motivo)}${x.motivo_obs ? `<div class="muted">${esc(x.motivo_obs)}</div>` : ''}<div class="muted">desde ${dataHoraBR(x.motivo_desde)}</div>` : /^parado/.test(x.situacao) ? '<span class="tag vermelho">Informar</span>' : ''}</td>
+        ${ed ? `<td><button class="btn peq" data-mot="${x.id}">Motivo</button></td>` : ''}</tr>`).join('')}</tbody></table></div>
+      <p class="muted">Regras: atrelado segue o conjunto (se um está em manutenção, os dois contam como manutenção · atrelado); OS aberta ou cadastro "Em manutenção" = manutenção; ${grupo === 'cavalo' ? 'cavalo' : 'carreta'} sem engate e sem manutenção = parado, com o motivo informado pela torre. "Sem OS aberta" indica manutenção marcada só no cadastro.</p></div></div>`;
+  $('#pl-copiar').onclick = async () => { try { await navigator.clipboard.writeText(resumo); aviso('Resumo copiado.'); } catch (e) { aviso('Selecione o texto do resumo e copie.', true); } };
+  $('#pl-xls').onclick = () => ocupado($('#pl-xls'), async () => { await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'); const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([[resumo], [], ['Indicador', 'Quantidade'], ['Previstos', prev], ['Chegaram', chegaram], ['Em operação', n('operacao')], ['Manutenção · atrelados', n('manutencao_atrelado')], ['Manutenção', n('manutencao')], ['Parados', parados.length], ...Object.entries(porMotivo).map(([k, v]) => ['  ' + k, v]), ['Aguardando chegada', aguard]]), 'Resumo');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(it.map(x => ({ Frota: x.codigo, Placas: x.placas, Modelo: x.modelo, 'Situação': (PL_SIT[x.situacao] || [x.situacao])[0], Atrelado: x.par || '', 'Engate desde': x.engate_desde ? dataHoraBR(x.engate_desde) : '', 'OS aberta': x.os || '', Motivo: x.motivo || '', 'Obs. motivo': x.motivo_obs || '' }))), nome[1]);
+    XLSX.writeFile(wb, `Painel ${nome[1]} ${hojeISO()}.xlsx`); });
+  $$('[data-mot]', tela).forEach(b => b.onclick = async () => { const x = it.find(y => y.id === b.dataset.mot);
+    const r = await modal(`<form><h2>Motivo · ${esc(x.codigo || x.placas)}</h2><p class="muted">Situação: ${(PL_SIT[x.situacao] || [x.situacao])[0]}</p><div class="form">
+      <label class="campo largo">Motivo<select name="motivo"><option value="">— sem motivo (limpar) —</option>${PL_MOTIVOS.map(m => `<option ${m === x.motivo ? 'selected' : ''}>${m}</option>`).join('')}${x.motivo && !PL_MOTIVOS.includes(x.motivo) ? `<option selected>${esc(x.motivo)}</option>` : ''}</select></label>
+      <label class="campo largo">Observação<textarea name="obs" rows="2">${esc(x.motivo_obs || '')}</textarea></label></div>
+      <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Salvar</button></div></form>`);
+    if (!r) return; try { await api.rpc('frota_motivo_salvar', { p_eq: x.id, p_motivo: r.motivo_outro || r.motivo, p_obs: r.obs }); aviso('Motivo salvo.'); navegar(); } catch (err) { falha(err); } });
+}
+
+const plAbas = aba => `<div class="abas pl-abas">${[['', 'Conjuntos · status da frota'], ['cavalos', 'Cavalos'], ['carretas', 'Carretas']].map(([k, t]) =>
+  `<a href="#/operacao/painel${k ? '?aba=' + k : ''}" class="${aba === k ? 'ativa' : ''}">${t}</a>`).join('')}</div>`;
+async function plCarregarPontos() {
+  const ps = await api.listar('mapa_pontos', 'ativo=is.true&order=ordem,nome').catch(() => null);
+  if (ps && ps.length) PL_PONTOS.splice(0, PL_PONTOS.length, ...ps.map(x => [x.nome, +x.lat, +x.lng, x.tipo, x.id]));
+  return ps || [];
+}
 rota('/operacao/painel', async tela => {
   if (!document.getElementById('pl-css')) document.head.insertAdjacentHTML('beforeend', plCss);
+  document.body.classList.add('pl-largo'); window.addEventListener('hashchange', () => { if (!location.hash.startsWith('#/operacao/painel')) document.body.classList.remove('pl-largo'); }, { once: true });
   const P = estado.params, modo = P.get('modo') || 'agora', em = P.get('em') || '', ini = P.get('de') || '', fim = P.get('ate') || '';
-  const ed = tem('administrador', 'operacao');
+  const ed = tem('administrador', 'operacao'), aba = P.get('aba') || '';
+  if (aba === 'cavalos' || aba === 'carretas') return plComposicao(tela, aba === 'cavalos' ? 'cavalo' : 'carreta', ed);
+  const pontos = await plCarregarPontos();
   let fs, per = null, quando;
   try {
     if (modo === 'periodo' && ini && fim) {
@@ -298,7 +356,8 @@ rota('/operacao/painel', async tela => {
   const agoraLocal = dtLocal(new Date().toISOString()), ontemLocal = dtLocal(new Date(Date.now() - 864e5).toISOString());
   tela.innerHTML = `<div class="pl-wrap">
     <div class="topo"><div><h1>Painel logístico</h1><p class="sub">Status da frota hora a hora · telemetria Creare + ajustes da torre</p></div>
-      <div class="acoes"><button class="btn" data-exp="png">Imagem (PNG)</button><button class="btn" data-exp="pdf">PDF</button><button class="btn" data-exp="html">HTML</button><button class="btn" data-exp="xlsx">Excel</button>${ed ? '<button class="btn" id="pl-kml" title="Importar cercas/áreas de um arquivo KML (Creare, Google Earth)">Cercas (KML)</button>' : ''}</div></div>
+      <div class="acoes">${ed ? '<button class="btn" id="pl-pontos" title="Origem (fazenda), apoio e destino do mapa">Pontos do mapa</button>' : ''}<button class="btn" data-exp="png">Imagem (PNG)</button><button class="btn" data-exp="pdf">PDF</button><button class="btn" data-exp="html">HTML</button><button class="btn" data-exp="xlsx">Excel</button>${ed ? '<button class="btn" id="pl-kml" title="Importar cercas/áreas de um arquivo KML (Creare, Google Earth)">Cercas (KML)</button>' : ''}</div></div>
+    ${plAbas('')}
     <form class="filtros pl-barra" id="pl-f"><div class="pl-modo"><select name="modo"><option value="agora" ${modo === 'agora' ? 'selected' : ''}>Agora</option><option value="em" ${modo === 'em' ? 'selected' : ''}>Em uma data e hora</option><option value="periodo" ${modo === 'periodo' ? 'selected' : ''}>Período (de… até…)</option></select></div>
       <input type="datetime-local" name="em" value="${esc(em || agoraLocal)}" ${modo === 'em' ? '' : 'hidden'} aria-label="Data e hora">
       <input type="datetime-local" name="de" value="${esc(ini || ontemLocal)}" ${modo === 'periodo' ? '' : 'hidden'} aria-label="De"><input type="datetime-local" name="ate" value="${esc(fim || agoraLocal)}" ${modo === 'periodo' ? '' : 'hidden'} aria-label="Até">
@@ -375,6 +434,27 @@ rota('/operacao/painel', async tela => {
       contato_em: r.contato_em ? new Date(r.contato_em).toISOString() : null, chamado_creare: r.chamado_creare || null, explicacao: r.explicacao };
     try { let id = j.id; if (id) await api.alterar('apontamento_justificativas', `id=eq.${id}`, dados); else [{ id }] = await api.inserir('apontamento_justificativas', dados);
       if (r.arquivos?.length) await anexar('apont_justif', id, r.arquivos, 'Chamado / evidência'); aviso('Justificativa salva.'); navegar(); } catch (err) { falha(err); } });
+  $('#pl-pontos')?.addEventListener('click', async () => {
+    const lin = (x = {}) => `<div class="pl-pt" style="display:grid;grid-template-columns:2fr 1fr 2fr auto;gap:8px;align-items:end;margin-bottom:8px" data-id="${x.id || ''}">
+      <label class="campo">Nome<input name="nome" value="${esc(x.nome || '')}" placeholder="Ex.: Fazenda Santa Rita (Três Lagoas/MS)"></label>
+      <label class="campo">Tipo<select name="tipo">${['origem', 'apoio', 'destino'].map(t => `<option value="${t}" ${x.tipo === t ? 'selected' : ''}>${{ origem: 'Origem (fazenda)', apoio: 'Apoio / base', destino: 'Destino (fábrica)' }[t]}</option>`).join('')}</select></label>
+      <label class="campo">Coordenadas (lat, long)<input name="coord" value="${x.lat != null ? x.lat + ', ' + x.lng : ''}" placeholder="Cole do Google Maps: -20.78, -51.70"></label>
+      <button type="button" class="btn peq" data-tirar title="Tirar do mapa">×</button></div>`;
+    const r = await modal(`<form><h2>Pontos do mapa</h2><p class="muted">A origem deve ser a fazenda onde as frotas carregam. No Google Maps, clique com o botão direito no local e copie os números (latitude, longitude).</p>
+      <div id="pl-pts">${pontos.map(lin).join('')}</div><button type="button" class="btn peq" id="pl-pt-mais">+ Ponto</button>
+      <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Salvar</button></div></form>`, {
+      aoAbrir: el => { el.querySelector('#pl-pt-mais').onclick = () => el.querySelector('#pl-pts').insertAdjacentHTML('beforeend', lin());
+        el.querySelector('#pl-pts').addEventListener('click', e => { const b = e.target.closest('[data-tirar]'); if (b) { const d = b.closest('.pl-pt'); d.hidden = true; d.dataset.tirar = '1'; } }); } });
+    if (!r) return;
+    try { const ls = [...document.querySelectorAll('.pl-pt')]; let ordem = 0;
+      for (const d of ls) { const id = d.dataset.id, nome = d.querySelector('[name=nome]').value.trim(), tipo = d.querySelector('[name=tipo]').value;
+        const m = d.querySelector('[name=coord]').value.match(/(-?\d+(?:[.,]\d+)?)\s*[,; ]\s*(-?\d+(?:[.,]\d+)?)/);
+        if (d.dataset.tirar) { if (id) await api.alterar('mapa_pontos', `id=eq.${id}`, { ativo: false }); continue; }
+        if (!nome && !m) continue; if (!nome || !m) throw new Error(`Preencha nome e coordenadas de todos os pontos${nome ? ' (' + nome + ')' : ''}.`);
+        const dados = { nome, tipo, lat: +m[1].replace(',', '.'), lng: +m[2].replace(',', '.'), ordem: ++ordem };
+        if (Math.abs(dados.lat) > 90 || Math.abs(dados.lng) > 180) throw new Error(`Coordenadas inválidas em ${nome}.`);
+        if (id) await api.alterar('mapa_pontos', `id=eq.${id}`, dados); else await api.inserir('mapa_pontos', dados); }
+      aviso('Pontos do mapa salvos.'); navegar(); } catch (err) { falha(err); } });
   // exportações
   const nomeBase = `Painel logístico ${quando.replace(/[\/:]/g, '-').replace(/\s+/g, ' ')}`;
   const imagem = async () => { if (!window.html2canvas) await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js');
