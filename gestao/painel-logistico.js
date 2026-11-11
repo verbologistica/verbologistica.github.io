@@ -505,7 +505,7 @@ rota('/operacao/painel', async tela => {
       <label class="campo">Status<select name="status">${Object.entries(PL_ST).map(([k, t]) => `<option value="${k}" ${k === x.status ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
       <label class="campo">Atividade<select name="atividade"><option value="">—</option>${PL_ATIV.map(a => `<option ${a === x.atividade ? 'selected' : ''}>${a}</option>`).join('')}</select></label>
       <label class="campo">Local<input name="local" list="pl-locais" value="${esc(x.local || '')}"><datalist id="pl-locais">${PL_LOCAIS.map(l => `<option value="${esc(l)}">`).join('')}</datalist></label>
-      <label class="campo">Motorista<input name="motorista" value="${esc(x.motorista || '')}"></label>
+      <label class="campo">Motorista (logado no Creare)<input value="${esc(x.motorista || 'ninguém logado')}" disabled title="Vem do computador de bordo; para mudar, o motorista faz login no Creare"></label>
       <label class="campo largo">Observação<textarea name="observacao" rows="2">${esc(x.observacao || '')}</textarea></label>
       <label class="check largo"><input type="checkbox" name="travado" ${x.travado ? 'checked' : ''}> 🔒 Travar: o apontamento do Creare não muda esta frota até destravar (use para manutenção, sem motorista, sem composição…)</label></div>
       <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Salvar</button></div></form>`);
