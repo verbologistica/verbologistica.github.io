@@ -603,6 +603,7 @@ async function verTurma(t, ts) {
     <ul class="lista-simples">${ps.map(p => `<li><span>${esc(p.colab?.nome || '')}</span><span class="muted">${p.vencimento ? 'vence ' + dataBR(p.vencimento) : 'sem vencimento'}</span>
       ${editaRH() || (typeof editaSSMA === 'function' && editaSSMA()) ? `<label class="check"><input type="checkbox" name="ap_${p.id}" ${p.aprovado && p.presente ? 'checked' : ''}> presente/aprovado</label>` : ''}</li>`).join('')}</ul>
     <div>${anexos}</div>
+    ${podeTurma(t, ts) ? '<label class="campo largo" style="margin-top:8px">📎 Anexar lista de presença / certificados<input type="file" name="arquivos" multiple accept="image/*,application/pdf"></label>' : ''}
     ${t.observacoes ? `<p class="muted" style="white-space:pre-line">${esc(t.observacoes)}</p>` : ''}
     <div class="rodape"><button type="button" class="btn" value="lista">Lista de presença</button>${podeTurma(t, ts) ? '<button type="button" class="btn" value="editar">Editar turma</button><button type="button" class="btn perigo" value="cancelar">Cancelar turma</button>' : ''}<button type="button" class="btn" data-fechar>Fechar</button>${editaRH() || (typeof editaSSMA === 'function' && editaSSMA()) ? '<button class="btn prim" value="salvar">Salvar</button>' : ''}</div></form>`,
     { aoAbrir: (raiz, fechar) => {
@@ -613,7 +614,8 @@ async function verTurma(t, ts) {
       await gerarDocumento(m, null, { turma: { ...t, data: dataBR(t.data), treinamento: tr.nome, conteudo: tr.conteudo || '', carga_horaria: t.carga_horaria || tr.carga_horaria || '',
         tabela_participantes: `<table border="1" cellpadding="6" style="border-collapse:collapse;width:100%"><tr><th>#</th><th>Nome</th><th>CPF</th><th>Assinatura</th></tr>${ps.map((p, i) => `<tr><td>${i + 1}</td><td>${esc(p.colab?.nome || '')}</td><td>${esc(fmtCPF(p.colab?.cpf || ''))}</td><td style="width:40%"></td></tr>`).join('')}</table>` } }); }; } });
   if (!r || r._acao !== 'salvar') return;
-  try { for (const p of ps) { const ok = !!r['ap_' + p.id]; if (ok !== (p.aprovado && p.presente)) await api.alterar('treinamento_participantes', `id=eq.${p.id}`, { aprovado: ok, presente: ok }); } aviso('Atualizado.'); navegar(); }
+  try { if (r.arquivos?.length) await anexar('treinamento_turma', t.id, r.arquivos);
+    for (const p of ps) { const ok = !!r['ap_' + p.id]; if (ok !== (p.aprovado && p.presente)) await api.alterar('treinamento_participantes', `id=eq.${p.id}`, { aprovado: ok, presente: ok }); } aviso('Atualizado.'); navegar(); }
   catch (err) { falha(err); }
 }
 ABAS_RH_EXTRA.treinamentos = async (box, c) => {
