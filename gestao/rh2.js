@@ -303,7 +303,7 @@ async function telaTreinamentos(tela, area = null) {
         <p class="muted">✅ em dia · ⚠️ vence em 30 dias · ❌ vencido · ⏳ pendente · · não exigido para o cargo</p>` : '<div class="vazio">Nenhum colaborador com treinamento obrigatório. Defina a obrigatoriedade por cargo no catálogo.</div>'}</div>`}
       ${avisoLei('treinamentos')}`;
   } else if (aba === 'turmas') {
-    const tt = (await api.listar('treinamento_turmas', 'select=*,treinamento:treinamentos(nome),participantes:treinamento_participantes(id)&ativo=eq.true&order=data.desc&limit=300')).filter(t => idsT.has(t.treinamento_id));
+    const tt = (await api.listar('treinamento_turmas', 'select=*,treinamento:treinamentos(nome),participantes:treinamento_participantes(id)&participantes.ativo=eq.true&ativo=eq.true&order=data.desc&limit=300')).filter(t => idsT.has(t.treinamento_id));
     box.innerHTML = `<div class="cartao">${tt.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Nº</th><th>Data</th><th>Treinamento</th><th>Instrutor</th><th>Participantes</th><th>Custo</th></tr></thead><tbody>
       ${tt.map(t => `<tr class="clicavel" data-turma="${t.id}"><td data-r="Nº">${esc(t.numero || '')}</td><td data-r="Data">${dataBR(t.data)}</td><td data-r="Treinamento">${esc(t.treinamento?.nome || '')}</td>
         <td data-r="Instrutor">${esc([t.instrutor, t.instituicao].filter(Boolean).join(' · '))}</td><td data-r="Participantes">${(t.participantes || []).length}</td><td data-r="Custo">${t.custo != null ? brl(t.custo) : '—'}</td></tr>`).join('')}</tbody></table></div>` : '<div class="vazio">Nenhuma turma registrada.</div>'}</div>`;
@@ -555,6 +555,46 @@ async function formTurma(ts, treinamentoIni = '', colabIni = '') {
     aviso(`Turma ${t.numero} registrada com ${parts.length} participante(s).`); navegar();
   } catch (err) { falha(err); }
 }
+// SSMA edita só turmas de treinamentos da área SSMA; RH/DP/administrador editam todas
+const editaSSMAT = () => typeof editaSSMA === 'function' && editaSSMA();
+const podeTurma = (t, ts) => editaRH() || (editaSSMAT() && (ts.find(x => x.id === t.treinamento_id)?.area === 'SSMA'));
+async function editarTurma(t, ts, ps) {
+  const [cs, cgs] = await Promise.all([tem('administrador', 'rh', 'dp', 'diretoria') ? colabsRH('&status=in.(ativo,ferias,afastado,aviso_previo,em_admissao)') : api.rpc('organograma_dados').then(r => r || []), cargosL()]);
+  const atuais = new Map(ps.map(p => [p.colaborador_id, p])); ps.forEach(p => { if (!cs.some(c => c.id === p.colaborador_id)) cs.push({ id: p.colaborador_id, nome: p.colab?.nome || 'Colaborador' }); });
+  const tsOk = editaRH() ? ts : ts.filter(x => x.area === 'SSMA');
+  const r = await modal(`<form><h2>Editar turma ${esc(t.numero || '')}</h2><div class="form">
+    <label class="campo largo">Treinamento *<select name="treinamento_id" required>${tsOk.map(x => `<option value="${x.id}" ${x.id === t.treinamento_id ? 'selected' : ''}>${esc(x.nome)}</option>`).join('')}</select></label>
+    <label class="campo">Data *<input type="date" name="data" required value="${t.data || ''}"></label><label class="campo">Término<input type="date" name="data_fim" value="${t.data_fim || ''}"></label>
+    <label class="campo">Instrutor<input name="instrutor" value="${esc(t.instrutor || '')}"></label><label class="campo">Instituição<input name="instituicao" value="${esc(t.instituicao || '')}"></label>
+    <label class="campo">Local<input name="local" value="${esc(t.local || '')}"></label><label class="campo">Carga horária (h)<input name="carga_horaria" inputmode="decimal" value="${t.carga_horaria ?? ''}"></label>
+    <label class="campo">Custo (R$)<input name="custo" inputmode="decimal" value="${t.custo ?? ''}"></label>
+    <div class="largo"><div class="muted" style="margin-bottom:4px">Participantes (desmarcar tira a pessoa da turma)</div><input id="busca-part" placeholder="Filtrar por nome" style="margin-bottom:6px;width:100%">
+      <div class="chips" id="lista-part" style="max-height:220px;overflow:auto">${cs.map(c => `<label class="chip" data-nome="${esc((c.nome || '').toLowerCase())}"><input type="checkbox" name="p_${c.id}" ${atuais.has(c.id) ? 'checked' : ''}> ${esc(nomeColabOp(cs, cgs)(c))}</label>`).join('')}</div></div>
+    <label class="campo largo">Motivo da alteração *<input name="motivo" required placeholder="Ex.: data lançada errada, faltou participante"></label></div>
+    <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Salvar alterações</button></div></form>`,
+    { aoAbrir: raiz => { const b = $('#busca-part', raiz); b.oninput = () => $$('#lista-part label', raiz).forEach(l => (l.hidden = !l.dataset.nome.includes(b.value.toLowerCase()))); } });
+  if (!r) return;
+  const novos = cs.filter(c => r['p_' + c.id] && !atuais.has(c.id)), sair = ps.filter(p => !r['p_' + p.colaborador_id]);
+  if (ps.length - sair.length + novos.length === 0) return aviso('A turma precisa de pelo menos um participante. Para desfazer a turma inteira, use Cancelar turma.', true);
+  try {
+    const obs = [t.observacoes, `Alterada em ${dataHoraBR(new Date().toISOString())} por ${estado.usuario?.nome || ''}: ${r.motivo}`].filter(Boolean).join('\n');
+    await api.alterar('treinamento_turmas', `id=eq.${t.id}`, { treinamento_id: r.treinamento_id, data: r.data, data_fim: r.data_fim || null, instrutor: r.instrutor || null, instituicao: r.instituicao || null,
+      local: r.local || null, carga_horaria: num(r.carga_horaria), custo: num(r.custo), observacoes: obs });
+    for (const p of sair) await api.alterar('treinamento_participantes', `id=eq.${p.id}`, { ativo: false });
+    if (novos.length) await api.inserir('treinamento_participantes', novos.map(c => ({ turma_id: t.id, colaborador_id: c.id })));
+    await api.alterar('treinamento_participantes', `turma_id=eq.${t.id}&ativo=eq.true`, { ativo: true });   // recalcula os vencimentos com a data nova
+    aviso('Turma alterada.'); navegar();
+  } catch (err) { falha(err); }
+}
+async function cancelarTurma(t) {
+  const r = await modal(`<form><h2>Cancelar turma ${esc(t.numero || '')}</h2><p>${esc(t.treinamento?.nome || '')} · ${dataBR(t.data)}</p>
+    <p class="muted">A turma não é apagada: fica marcada como cancelada, com o motivo e quem cancelou. Os participantes voltam a aparecer com o treinamento pendente (ou com a turma anterior válida).</p>
+    <div class="form"><label class="campo largo">Motivo do cancelamento *<input name="motivo" required></label></div>
+    <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn perigo">Cancelar turma</button></div></form>`);
+  if (!r) return;
+  try { const obs = [t.observacoes, `Cancelada em ${dataHoraBR(new Date().toISOString())} por ${estado.usuario?.nome || ''}: ${r.motivo}`].filter(Boolean).join('\n');
+    await api.alterar('treinamento_turmas', `id=eq.${t.id}`, { ativo: false, observacoes: obs }); aviso('Turma cancelada.'); navegar(); } catch (err) { falha(err); }
+}
 async function verTurma(t, ts) {
   const ps = await api.listar('treinamento_participantes', `turma_id=eq.${t.id}&ativo=eq.true&select=*,colab:colaboradores(nome,cpf)`);
   const anexos = await htmlAnexos('treinamento_turma', t.id);
@@ -563,8 +603,12 @@ async function verTurma(t, ts) {
     <ul class="lista-simples">${ps.map(p => `<li><span>${esc(p.colab?.nome || '')}</span><span class="muted">${p.vencimento ? 'vence ' + dataBR(p.vencimento) : 'sem vencimento'}</span>
       ${editaRH() || (typeof editaSSMA === 'function' && editaSSMA()) ? `<label class="check"><input type="checkbox" name="ap_${p.id}" ${p.aprovado && p.presente ? 'checked' : ''}> presente/aprovado</label>` : ''}</li>`).join('')}</ul>
     <div>${anexos}</div>
-    <div class="rodape"><button type="button" class="btn" value="lista">Lista de presença</button><button type="button" class="btn" data-fechar>Fechar</button>${editaRH() || (typeof editaSSMA === 'function' && editaSSMA()) ? '<button class="btn prim" value="salvar">Salvar</button>' : ''}</div></form>`,
-    { aoAbrir: (raiz, fechar) => { $('[value=lista]', raiz).onclick = async () => { fechar(); const m = await modeloPorCodigo('RH-TRE-001'); if (!m) return;
+    ${t.observacoes ? `<p class="muted" style="white-space:pre-line">${esc(t.observacoes)}</p>` : ''}
+    <div class="rodape"><button type="button" class="btn" value="lista">Lista de presença</button>${podeTurma(t, ts) ? '<button type="button" class="btn" value="editar">Editar turma</button><button type="button" class="btn perigo" value="cancelar">Cancelar turma</button>' : ''}<button type="button" class="btn" data-fechar>Fechar</button>${editaRH() || (typeof editaSSMA === 'function' && editaSSMA()) ? '<button class="btn prim" value="salvar">Salvar</button>' : ''}</div></form>`,
+    { aoAbrir: (raiz, fechar) => {
+      $('[value=editar]', raiz)?.addEventListener('click', () => { fechar(); editarTurma(t, ts, ps); });
+      $('[value=cancelar]', raiz)?.addEventListener('click', () => { fechar(); cancelarTurma(t); });
+      $('[value=lista]', raiz).onclick = async () => { fechar(); const m = await modeloPorCodigo('RH-TRE-001'); if (!m) return;
       const tr = ts.find(x => x.id === t.treinamento_id) || {};
       await gerarDocumento(m, null, { turma: { ...t, data: dataBR(t.data), treinamento: tr.nome, conteudo: tr.conteudo || '', carga_horaria: t.carga_horaria || tr.carga_horaria || '',
         tabela_participantes: `<table border="1" cellpadding="6" style="border-collapse:collapse;width:100%"><tr><th>#</th><th>Nome</th><th>CPF</th><th>Assinatura</th></tr>${ps.map((p, i) => `<tr><td>${i + 1}</td><td>${esc(p.colab?.nome || '')}</td><td>${esc(fmtCPF(p.colab?.cpf || ''))}</td><td style="width:40%"></td></tr>`).join('')}</table>` } }); }; } });
@@ -574,12 +618,13 @@ async function verTurma(t, ts) {
 }
 ABAS_RH_EXTRA.treinamentos = async (box, c) => {
   const [mz, hist, ts] = await Promise.all([api.listar('v_matriz_treinamentos', `colaborador_id=eq.${c.id}&order=treinamento`),
-    api.listar('treinamento_participantes', `colaborador_id=eq.${c.id}&ativo=eq.true&select=*,turma:treinamento_turmas(numero,data,treinamento:treinamentos(nome))&order=criado_em.desc`),
+    api.listar('treinamento_participantes', `colaborador_id=eq.${c.id}&ativo=eq.true&select=*,turma:treinamento_turmas!inner(id,numero,data,data_fim,instrutor,instituicao,local,carga_horaria,custo,observacoes,ativo,treinamento_id,treinamento:treinamentos(nome))&turma.ativo=eq.true&order=criado_em.desc`),
     api.listar('treinamentos', 'ativo=eq.true&order=nome')]);
-  box.innerHTML = `<div class="topo" style="margin:0 0 8px"><h2 style="margin:0">Treinamentos</h2>${editaRH() ? '<button class="btn prim peq" id="reg-t">+ Registrar treinamento</button>' : ''}</div>
+  box.innerHTML = `<div class="topo" style="margin:0 0 8px"><h2 style="margin:0">Treinamentos</h2>${editaRH() || editaSSMAT() ? '<button class="btn prim peq" id="reg-t">+ Registrar treinamento</button>' : ''}</div>
     <h3>Obrigatórios do cargo</h3>${mz.length ? `<ul class="lista-simples">${mz.map(x => `<li><span>${SIT_TREIN[x.situacao][2]} <b>${esc(x.treinamento)}</b></span><span class="muted">${x.realizado ? 'feito ' + dataBR(x.realizado) : ''}${x.vencimento ? ' · vence ' + dataBR(x.vencimento) : ''}</span> <span class="tag ${SIT_TREIN[x.situacao][1]}">${SIT_TREIN[x.situacao][0]}</span></li>`).join('')}</ul>` : '<p class="muted">Nenhum treinamento obrigatório definido para o cargo.</p>'}
-    <h3>Histórico</h3>${hist.length ? `<ul class="lista-simples">${hist.map(p => `<li><span>${esc(p.turma?.treinamento?.nome || '')} <span class="muted">${esc(p.turma?.numero || '')}</span></span><span class="muted">${dataBR(p.turma?.data)}${p.aprovado ? '' : ' · não aprovado'}</span></li>`).join('')}</ul>` : '<p class="muted">Nenhum treinamento registrado.</p>'}`;
-  $('#reg-t', box)?.addEventListener('click', () => formTurma(ts, '', c.id));
+    <h3>Histórico</h3>${hist.length ? `<ul class="lista-simples">${hist.map(p => `<li class="clicavel" data-vturma="${p.turma?.id}" title="Ver a turma"><span>${esc(p.turma?.treinamento?.nome || '')} <span class="muted">${esc(p.turma?.numero || '')}</span></span><span class="muted">${dataBR(p.turma?.data)}${p.aprovado ? '' : ' · não aprovado'}</span></li>`).join('')}</ul>` : '<p class="muted">Nenhum treinamento registrado.</p>'}`;
+  $('#reg-t', box)?.addEventListener('click', () => formTurma(editaRH() ? ts : ts.filter(t => t.area === 'SSMA'), '', c.id));
+  $$('[data-vturma]', box).forEach(li => li.onclick = () => { const p = hist.find(x => x.turma?.id === li.dataset.vturma); if (p) verTurma(p.turma, ts); });
 };
 
 // ===================== Avaliações =====================
