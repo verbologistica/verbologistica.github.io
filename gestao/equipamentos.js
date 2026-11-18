@@ -126,6 +126,7 @@ async function formEquipamento(tela, e = null) {
         <label class="campo">Ano modelo<input name="ano_modelo" type="number" value="${e?.ano_modelo ?? ''}"></label>
         <label class="campo">Combustível<select name="combustivel"><option value=""></option>${['Diesel S10', 'Diesel S500', 'Gasolina', 'Etanol', 'Flex', 'GNV', 'Elétrico', 'Não se aplica'].map(o => `<option ${o === e?.combustivel ? 'selected' : ''}>${o}</option>`).join('')}</select></label>
         <label class="campo">Cor<input name="cor" value="${esc(e?.cor || '')}"></label>
+        <label class="campo">Situação<select name="situacao">${Object.entries(SITUACOES_EQ).map(([v, [t]]) => `<option value="${v}" ${v === (e?.situacao || 'operando') ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
         <label class="campo">Centro de custo<select name="centro_custo_id">${opcoes(ccs.filter(c => c.ativo), null, c => c.nome, e?.centro_custo_id, 'Nenhum')}</select></label>
         <label class="campo">Motorista principal<select name="motorista_padrao_id">${opcoes(users.filter(u => u.ativo), null, u => u.nome, e?.motorista_padrao_id, 'Nenhum')}</select></label>
         <label class="campo">Km atual<input name="km_atual" type="number" value="${e?.km_atual ?? ''}"></label>
@@ -195,7 +196,7 @@ async function formEquipamento(tela, e = null) {
     const dados = { codigo_frota: d.codigo_frota || null, tipo: d.tipo, tipo_outro: d.tipo === 'outro' ? d.tipo_outro : null, qtd_composicoes: cs.length,
       marca: d.marca || null, modelo: d.modelo || null, ano_fabricacao: d.ano_fabricacao ? Number(d.ano_fabricacao) : null, ano_modelo: d.ano_modelo ? Number(d.ano_modelo) : null,
       combustivel: d.combustivel || null, cor: d.cor || null, centro_custo_id: d.centro_custo_id || null, motorista_padrao_id: d.motorista_padrao_id || null,
-      km_atual: d.km_atual ? Number(d.km_atual) : null, horimetro: num(d.horimetro), observacoes: d.observacoes || null, ativo: d.ativo_sel !== '0' };
+      km_atual: d.km_atual ? Number(d.km_atual) : null, horimetro: num(d.horimetro), observacoes: d.observacoes || null, ativo: d.ativo_sel !== '0', situacao: d.situacao || e?.situacao || 'operando' };
     if (acao === 'desativar' || acao === 'ativar') dados.ativo = acao === 'ativar';
     await ocupado(ev.submitter, async () => {
       try {

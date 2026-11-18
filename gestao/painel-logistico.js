@@ -350,7 +350,7 @@ async function plComposicao(tela, grupo, ed) {
         <td data-r="Engate">${x.par ? `<b>${esc(x.par)}</b><div class="muted">desde ${dataBR ? dataBR(String(x.engate_desde).slice(0, 10)) : esc(x.engate_desde)}</div>` : '<span class="muted">—</span>'}</td>
         <td data-r="OS">${+x.os_abertas ? esc(x.os || x.os_abertas + ' OS') : x.situacao_cadastro === 'manutencao' ? '<span class="tag amarelo">Sem OS aberta</span>' : '—'}</td>
         <td data-r="Motivo">${x.motivo ? `${esc(x.motivo)}${x.motivo_obs ? `<div class="muted">${esc(x.motivo_obs)}</div>` : ''}<div class="muted">desde ${dataHoraBR(x.motivo_desde)}</div>` : /^parado/.test(x.situacao) ? '<span class="tag vermelho">Informar</span>' : ''}</td>
-        ${ed ? `<td><button class="btn peq" data-mot="${x.id}">Motivo</button></td>` : ''}</tr>`).join('')}</tbody></table></div>
+        ${ed ? `<td style="white-space:nowrap"><button class="btn peq" data-mot="${x.id}">Motivo</button> <button class="btn peq" data-sit="${x.id}">Situação</button></td>` : ''}</tr>`).join('')}</tbody></table></div>
       <p class="muted">Regras: atrelado segue o conjunto (se um está em manutenção, os dois contam como manutenção · atrelado); OS aberta ou cadastro "Em manutenção" = manutenção; ${grupo === 'cavalo' ? 'cavalo' : 'carreta'} sem engate e sem manutenção = parado, com o motivo informado pela torre. "Sem OS aberta" indica manutenção marcada só no cadastro.</p></div></div>`;
   $('#pl-copiar').onclick = async () => { try { await navigator.clipboard.writeText(resumo); aviso('Resumo copiado.'); } catch (e) { aviso('Selecione o texto do resumo e copie.', true); } };
   $('#pl-xls').onclick = () => ocupado($('#pl-xls'), async () => { await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'); const wb = XLSX.utils.book_new();
@@ -363,6 +363,13 @@ async function plComposicao(tela, grupo, ed) {
       <label class="campo largo">Observação<textarea name="obs" rows="2">${esc(x.motivo_obs || '')}</textarea></label></div>
       <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Salvar</button></div></form>`);
     if (!r) return; try { await api.rpc('frota_motivo_salvar', { p_eq: x.id, p_motivo: r.motivo_outro || r.motivo, p_obs: r.obs }); aviso('Motivo salvo.'); navegar(); } catch (err) { falha(err); } });
+  $$('[data-sit]', tela).forEach(b => b.onclick = async () => { const x = it.find(y => y.id === b.dataset.sit);
+    const OP = [['operando', 'Operando'], ['manutencao', 'Em manutenção'], ['parado', 'Parado'], ['aguardando_chegada', 'Aguardando chegada'], ['vendido', 'Vendido'], ['baixado', 'Baixado']];
+    const r = await modal(`<form><h2>Situação · ${esc(x.codigo || x.placas)}</h2><p class="muted">No painel: ${(PL_SIT[x.situacao] || [x.situacao])[0]} · no cadastro: ${esc((OP.find(o => o[0] === x.situacao_cadastro) || [0, x.situacao_cadastro || '—'])[1])}</p><div class="form">
+      <label class="campo largo">Situação no cadastro<select name="sit">${OP.map(([v, t]) => `<option value="${v}" ${v === x.situacao_cadastro ? 'selected' : ''}>${t}</option>`).join('')}</select></label></div>
+      <p class="muted">O painel também considera sozinho: OS aberta com equipamento parado = manutenção; engatado = em operação.</p>
+      <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Salvar</button></div></form>`);
+    if (!r) return; try { await api.rpc('frota_situacao_salvar', { p_eq: x.id, p_situacao: r.sit }); aviso('Situação salva.'); navegar(); } catch (err) { falha(err); } });
 }
 
 // ---------- Central de painéis: todos os painéis num menu só, cada um na sua guia; exportação/envio de todos juntos ----------
