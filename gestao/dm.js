@@ -28,6 +28,7 @@ const dmGrupo = l => l.cl === 'manutencao' ? 'Manutenção' : l.cl === 'atolado'
 const dmTipo = l => l.cl === 'manutencao' ? (l.resp === 'torre' ? 'Manutenção informada pela torre (sem apontamento)' : 'Manutenção apontada no Creare') : l.cl === 'nao_apontado' ? (DM_RESP[l.resp] || l.resp) : l.cl === 'lacuna' ? DM_RESP.lacuna : (DM_NOME[l.cl] || l.cl);
 const dmHoraSP = ts => new Date(ts).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).replace(',', '');
 const dmDiaCurto = d => d.slice(8, 10) + '/' + d.slice(5, 7);
+const dmNomeF = (frota, placa) => frota && frota !== placa ? `${frota} · ${placa}` : placa;
 
 function dmCalc(d) {
   const dias = d.dias || [], H = dias.reduce((t, x) => t + +x.h, 0);
@@ -41,7 +42,7 @@ function dmCalc(d) {
     const man = s('Manutenção'), at = s('Atolado'), sa = s('Sem apontamento'), par = s('Parada sem produção'), prod = s('Produtiva');
     const just = ls.filter(l => l.cl === 'nao_apontado' && l.resp !== 'sem').reduce((t, l) => t + +l.h, 0), torre = ls.filter(l => l.resp === 'torre').reduce((t, l) => t + +l.h, 0);
     const porDia = dias.map(x => { const m = ls.filter(l => l.dia === x.dia && l.cl === 'manutencao').reduce((t, l) => t + +l.h, 0); return { dia: x.dia, h: +x.h, man: m, dm: +x.h ? (+x.h - m) / +x.h : null }; });
-    return { placa, frota: frota || placa, H, man, at, sa, just, torre, par, prod, dm: H ? (H - man) / H : null, porDia };
+    return { placa, frota: dmNomeF(frota, placa), H, man, at, sa, just, torre, par, prod, dm: H ? (H - man) / H : null, porDia };
   });
   const C = fr.reduce((c, f) => { ['H', 'man', 'at', 'sa', 'just', 'par', 'prod'].forEach(k => (c[k] += f[k])); return c; }, { H: 0, man: 0, at: 0, sa: 0, just: 0, par: 0, prod: 0 });
   C.dm = C.H ? (C.H - C.man) / C.H : null;
@@ -74,7 +75,7 @@ function dmSvg(R, W = 900, Hh = 330) {
   const gw = pw / n, bw = Math.min(26, (gw - 8) / k), y = v => mt + ph * (1 - v);
   let s = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${Hh}" width="${W}" height="${Hh}" font-family="Helvetica,Arial,sans-serif"><rect width="${W}" height="${Hh}" fill="#fff"/>`;
   s += `<text x="${ml}" y="16" font-size="12" fill="#252E35">DM por dia (%) · ${dataBR(R.ini)} a ${dmHoraSP(R.fim)}</text>`;
-  R.fr.forEach((f, i) => { const lx = W - mr - (R.fr.length - i) * 90; s += `<rect x="${lx}" y="7" width="12" height="10" fill="${DM_CORES[i % DM_CORES.length]}"/><text x="${lx + 16}" y="16" font-size="11" fill="#252E35">${esc(f.frota)}</text>`; });
+  R.fr.forEach((f, i) => { const lx = W - mr - (R.fr.length - i) * 135; s += `<rect x="${lx}" y="7" width="12" height="10" fill="${DM_CORES[i % DM_CORES.length]}"/><text x="${lx + 16}" y="16" font-size="11" fill="#252E35">${esc(f.frota)}</text>`; });
   for (let v = 0; v <= 100; v += 20) s += `<line x1="${ml}" x2="${W - mr}" y1="${y(v / 100)}" y2="${y(v / 100)}" stroke="#E6EAEC"/><text x="${ml - 6}" y="${y(v / 100) + 4}" font-size="10" text-anchor="end" fill="#6B7378">${v}</text>`;
   R.dias.forEach((x, j) => {
     const gx = ml + j * gw + (gw - bw * k) / 2;
@@ -121,18 +122,18 @@ rota('/operacao/dm', async tela => {
     ${plAbas('dm')}
     ${R.fr.length ? `
     <div class="cartao"><h2>${esc(dmTitulo(R))}</h2><p class="muted" style="margin-top:-4px">${esc(dmPeriodo(R))}</p>
-      <div class="tabela-wrap"><table class="tabela compacta"><thead><tr>${kpiCab.map((c, i) => `<th${i ? ' class="num"' : ''}>${c}</th>`).join('')}</tr></thead><tbody>
+      <div style="overflow-x:auto"><table class="tabela compacta"><thead><tr>${kpiCab.map((c, i) => `<th${i ? ' class="num"' : ''}>${c}</th>`).join('')}</tr></thead><tbody>
       ${R.fr.map(f => { const l = kpiLin(f); return `<tr><td><b>${esc(l[0])}</b></td>${l.slice(1).map((v, i) => i === 2 ? tdDm(f.dm) : `<td class="num">${v}</td>`).join('')}</tr>`; }).join('')}
       ${R.fr.length > 1 ? `<tr style="font-weight:700;background:#F6EFDC"><td>Conjunto</td><td class="num">${dmF(R.C.H)}</td><td class="num">${dmF(R.C.man)}</td>${tdDm(R.C.dm)}<td class="num">${dmF(R.C.at)}</td><td class="num">${dmF(R.C.sa)}</td><td class="num">${dmF(R.C.par)}</td><td class="num">${dmF(R.C.prod)}</td><td class="num">${dmP(R.C.H ? R.C.prod / R.C.H : 0)}</td></tr>` : ''}
       </tbody></table></div></div>
     <div class="cartao"><div style="overflow-x:auto">${dmSvg(R).replace(/width="\d+" height="\d+"/, 'style="width:100%;min-width:640px;height:auto;display:block"')}</div></div>
     <div class="cartao"><h2>Destaques</h2><ul style="margin:0;padding-left:18px;line-height:1.6">${R.dest.map(t => `<li>${t}</li>`).join('')}</ul></div>
-    <div class="cartao"><h2>Horas por tipo de apontamento</h2><div class="tabela-wrap">${tabTipos()}</div></div>
+    <div class="cartao"><h2>Horas por tipo de apontamento</h2><div style="overflow-x:auto">${tabTipos()}</div></div>
     <div class="cartao"><h2>Sem apontamento: justificativas da torre</h2>
-      <div class="tabela-wrap"><table class="tabela compacta"><thead><tr><th>Frota</th><th class="num">Sem apontamento (h)</th><th class="num">Justificadas como manutenção → vão para Manutenção (h)</th><th class="num">Justificadas por outros motivos (h)</th><th class="num">Sem justificativa (h)</th></tr></thead><tbody>
+      <div style="overflow-x:auto"><table class="tabela compacta"><thead><tr><th>Frota</th><th class="num">Sem apontamento (h)</th><th class="num">Justificadas como manutenção → vão para Manutenção (h)</th><th class="num">Justificadas por outros motivos (h)</th><th class="num">Sem justificativa (h)</th></tr></thead><tbody>
       ${R.fr.map(f => `<tr><td><b>${esc(f.frota)}</b></td><td class="num">${dmF(f.sa + f.torre)}</td><td class="num">${dmF(f.torre)}</td><td class="num">${dmF(f.just)}</td><td class="num">${dmF(f.sa - f.just)}</td></tr>`).join('')}</tbody></table></div>
-      ${R.just.length ? `<div class="tabela-wrap" style="margin-top:10px"><table class="tabela compacta"><thead><tr><th>Frota</th><th>Início</th><th>Fim</th><th class="num">Horas</th><th>Responsável</th><th>Justificativa</th></tr></thead><tbody>
-      ${R.just.map(x => `<tr><td>${esc(x.frota)}</td><td class="nowrap">${dmHoraSP(x.inicio)}</td><td class="nowrap">${dmHoraSP(x.fim)}</td><td class="num">${dmF(x.h)}</td><td>${esc(DM_RESP_C[x.resp] || x.resp || '')}${x.em_manutencao ? ' <span class="tag vermelho">→ manutenção</span>' : ''}</td><td>${esc(x.explicacao || '')}${x.chamado ? ` <span class="muted">· chamado Creare ${esc(x.chamado)}</span>` : ''}</td></tr>`).join('')}
+      ${R.just.length ? `<div style="overflow-x:auto;margin-top:10px"><table class="tabela compacta"><thead><tr><th>Frota</th><th>Início</th><th>Fim</th><th class="num">Horas</th><th>Responsável</th><th>Justificativa</th></tr></thead><tbody>
+      ${R.just.map(x => `<tr><td>${esc(dmNomeF(x.frota, x.placa))}</td><td class="nowrap">${dmHoraSP(x.inicio)}</td><td class="nowrap">${dmHoraSP(x.fim)}</td><td class="num">${dmF(x.h)}</td><td>${esc(DM_RESP_C[x.resp] || x.resp || '')}${x.em_manutencao ? ' <span class="tag vermelho">→ manutenção</span>' : ''}</td><td>${esc(x.explicacao || '')}${x.chamado ? ` <span class="muted">· chamado Creare ${esc(x.chamado)}</span>` : ''}</td></tr>`).join('')}
       </tbody></table></div>` : '<p class="muted">Nenhuma justificativa no período.</p>'}</div>
     <div class="cartao"><h2>Critérios</h2><ul class="muted" style="margin:0;padding-left:18px;line-height:1.55">${DM_CRITERIOS.map(t => `<li>${esc(t)}</li>`).join('')}</ul></div>`
     : '<div class="cartao"><div class="vazio">Nenhuma frota com apontamento do Creare no período.</div></div>'}`;
@@ -185,8 +186,8 @@ async function dmPdf(R) {
   tabela(['Frota', 'Sem apontamento (h)', 'Justificadas como manutenção (vão para Manutenção) (h)', 'Justificadas por outros motivos (h)', 'Sem justificativa (h)'], R.fr.map(f => [f.frota, dmF(f.sa + f.torre), dmF(f.torre), dmF(f.just), dmF(f.sa - f.just)]),
     { columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right' } } });
   if (R.just.length) tabela(['Frota', 'Início', 'Fim', 'Horas', 'Responsável', 'Justificativa'],
-    R.just.map(x => [x.frota, dmHoraSP(x.inicio), dmHoraSP(x.fim), dmF(x.h), (DM_RESP_C[x.resp] || x.resp || '') + (x.em_manutencao ? ' → manutenção' : ''), (x.explicacao || '') + (x.chamado ? ` Chamado Creare ${x.chamado}.` : '')]),
-    { styles: { font: 'helvetica', fontSize: 7.3, textColor: C.texto, lineColor: C.borda, lineWidth: 0.15, cellPadding: 1.2, valign: 'top' }, columnStyles: { 0: { cellWidth: 17 }, 1: { cellWidth: 19 }, 2: { cellWidth: 19 }, 3: { cellWidth: 12, halign: 'right' }, 4: { cellWidth: 24 } }, rowPageBreak: 'avoid' });
+    R.just.map(x => [dmNomeF(x.frota, x.placa), dmHoraSP(x.inicio), dmHoraSP(x.fim), dmF(x.h), (DM_RESP_C[x.resp] || x.resp || '') + (x.em_manutencao ? ' → manutenção' : ''), (x.explicacao || '') + (x.chamado ? ` Chamado Creare ${x.chamado}.` : '')]),
+    { styles: { font: 'helvetica', fontSize: 7.3, textColor: C.texto, lineColor: C.borda, lineWidth: 0.15, cellPadding: 1.2, valign: 'top' }, columnStyles: { 0: { cellWidth: 22 }, 1: { cellWidth: 19 }, 2: { cellWidth: 19 }, 3: { cellWidth: 12, halign: 'right' }, 4: { cellWidth: 24 } }, rowPageBreak: 'avoid' });
   titulo3('Critérios'); DM_CRITERIOS.forEach(t => paragrafo(t, 8.2));
   y += 6; novaSeNec(12); doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...C.texto); doc.text('Ana Maria Rodrigues Santos', ML, y); y += 4;
   doc.setFont('helvetica', 'normal'); doc.text('Supervisora de Qualidade e Performance', ML, y);
