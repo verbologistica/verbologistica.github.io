@@ -412,6 +412,7 @@ const MENU = [
   ['grupo', 'Controle Operacional', 'monitor'],
   ['Painéis', '#/operacao/painel', [...P_OP, 'manutencao', 'ssma'], 'monitor', null, true],
   ['Painel do CCO', '#/operacao', [...P_OP, 'manutencao'], 'monitor', 'viagens_atrasadas', true],
+  ['DM das frotas', '#/operacao/dm', [...P_OP, 'manutencao', 'ssma'], 'monitor', null, true],
   ['Abastecimentos', '#/operacao/abastecimentos', [...P_OP, 'financeiro', 'comprador', 'manutencao'], 'combustivel', 'abast_alertas', true],
   ['Equipamentos', '#/cadastros/equipamentos', [...P_FIN, 'operacao', 'manutencao'], 'caminhao', null, true],
   ['Atrelamentos cavalo × carreta', '#/frota/atrelamentos', [...P_FIN, 'operacao', 'manutencao'], 'rota', null, true],
