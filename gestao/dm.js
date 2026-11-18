@@ -71,8 +71,8 @@ function dmCalc(d) {
 
 // gráfico de colunas: DM por dia e por frota, com rótulos e linha da meta
 function dmSvg(R, W = 900, Hh = 330) {
-  const ml = 46, mr = 12, mt = 34, mb = 30, pw = W - ml - mr, ph = Hh - mt - mb, n = R.dias.length || 1, k = R.fr.length || 1;
-  const gw = pw / n, bw = Math.min(26, (gw - 8) / k), y = v => mt + ph * (1 - v);
+  const ml = 46, mr = 66, mt = 40, mb = 30, pw = W - ml - mr, ph = Hh - mt - mb, n = R.dias.length || 1, k = R.fr.length || 1;
+  const gw = pw / n, bw = Math.min(26, (gw - 8) / k), y = v => mt + ph * (1 - v / 1.15);
   let s = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${Hh}" width="${W}" height="${Hh}" font-family="Helvetica,Arial,sans-serif"><rect width="${W}" height="${Hh}" fill="#fff"/>`;
   s += `<text x="${ml}" y="16" font-size="12" fill="#252E35">DM por dia (%) · ${dataBR(R.ini)} a ${dmHoraSP(R.fim)}</text>`;
   R.fr.forEach((f, i) => { const lx = W - mr - (R.fr.length - i) * 135; s += `<rect x="${lx}" y="7" width="12" height="10" fill="${DM_CORES[i % DM_CORES.length]}"/><text x="${lx + 16}" y="16" font-size="11" fill="#252E35">${esc(f.frota)}</text>`; });
@@ -81,11 +81,13 @@ function dmSvg(R, W = 900, Hh = 330) {
     const gx = ml + j * gw + (gw - bw * k) / 2;
     R.fr.forEach((f, i) => { const v = f.porDia[j]?.dm; if (v == null) return; const bx = gx + i * bw, by = y(v);
       s += `<rect x="${bx}" y="${by}" width="${bw - 2}" height="${mt + ph - by}" fill="${DM_CORES[i % DM_CORES.length]}"><title>${esc(f.frota)} ${dmDiaCurto(x.dia)}: ${dmP(v)}</title></rect>`;
-      s += `<text transform="translate(${bx + (bw - 2) / 2 + 3},${by - 3}) rotate(-90)" font-size="9" fill="${v < DM_META ? '#C62828' : '#252E35'}">${Math.round(v * 100)}</text>`; });
+      const cor = v < DM_META ? '#C62828' : '#252E35', rot = Math.round(v * 100);
+      s += bw - 2 >= 16 ? `<text x="${bx + (bw - 2) / 2}" y="${by - 4}" font-size="9" font-weight="bold" text-anchor="middle" fill="${cor}">${rot}</text>`
+        : `<text transform="translate(${bx + (bw - 2) / 2 + 3},${by - 3}) rotate(-90)" font-size="9" fill="${cor}">${rot}</text>`; });
     s += `<text x="${ml + j * gw + gw / 2}" y="${Hh - 10}" font-size="10" text-anchor="middle" fill="#252E35">${dmDiaCurto(x.dia)}</text>`;
   });
   s += `<line x1="${ml}" x2="${W - mr}" y1="${y(DM_META)}" y2="${y(DM_META)}" stroke="#C62828" stroke-width="1.6" stroke-dasharray="6 4"/>`;
-  s += `<text x="${W - mr - 4}" y="${y(DM_META) - 5}" font-size="11" font-weight="bold" text-anchor="end" fill="#C62828">Meta 96%</text>`;
+  s += `<text x="${W - mr + 6}" y="${y(DM_META) + 4}" font-size="11" font-weight="bold" fill="#C62828">Meta 96%</text>`;
   s += `<line x1="${ml}" x2="${W - mr}" y1="${mt + ph}" y2="${mt + ph}" stroke="#252E35"/><text transform="translate(12,${mt + ph / 2}) rotate(-90)" font-size="10" text-anchor="middle" fill="#252E35">DM do dia (%)</text></svg>`;
   return s;
 }
