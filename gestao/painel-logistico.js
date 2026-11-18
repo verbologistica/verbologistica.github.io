@@ -101,7 +101,7 @@ function plHtml(fs, c, quando, per, sa = []) {
   return `<div class="pl-painel" id="pl-painel">
     <div class="pl-topo"><img src="logo.png" alt="Verbo"><div class="pl-tit"><h1>PAINEL <b>LOGÍSTICO</b> · <em>STATUS DA FROTA</em></h1><p>RITMO OPERACIONAL · ATUALIZAÇÃO AUTOMÁTICA</p></div>
       <div class="pl-hora"><small>${per ? 'PERÍODO' : 'SITUAÇÃO EM'}</small>${esc(quando)}</div></div>
-    <div class="pl-grade"><div class="pl-col">
+    ${(r => r.length ? `<div style="margin:0 0 12px;padding:10px 14px;border-radius:10px;background:#B71C1C;color:#fff;font-weight:700;letter-spacing:.3px;animation:plPisca 1s step-start infinite alternate">⚠ ACIMA DE ${PL_VEL_MAX} km/h AGORA: ${r.map(f => `${esc(f.codigo)} · ${Math.round(+f.vel)} km/h${f.motorista ? ' · ' + esc(f.motorista) : ''}`).join('  |  ')}</div><style>@keyframes plPisca{50%{background:#7F0000}}</style>` : '')(fs.filter(plRapido))}<div class="pl-grade"><div class="pl-col">
       <div class="pl-l2">${card('#DDA936', 'caminhao', 'Total de frotas operacionais', c.total, 'grande')}${card('#2BB673', 'ok', 'Frotas disponíveis', c.disp, 'grande')}</div>
       <div class="pl-l2x"><div class="pl-grupo"><h4>EM TRÂNSITO</h4><div class="pl-l2">${card('#2BB673', 'caminhao', 'Carregado', c.carregado)}${card('#DDA936', 'caminhao', 'Vazio', c.vazio)}</div></div>
         <div class="pl-l2">${card('#2BB673', 'arvore', 'No horto', c.horto)}${card('#56A8E8', 'fabrica', 'Na fábrica', c.fabrica)}</div></div>
@@ -137,6 +137,8 @@ const PL_BASES = {
 const PL_RESP = { motorista: 'Motorista (não apontou)', creare: 'Problema no Creare / computador de bordo', outro: 'Outro motivo' };
 const PL_CERCA_COR = { cerca: '#2F80ED', fazenda: '#2BB673', fabrica: '#56A8E8', posto: '#F2994A', apoio: '#DDA936', outro: '#9B7BEA' };
 const plLigado = f => /LIGADO/i.test(f.estado || f.ignicao || '') && !/DESLIGADO/i.test(f.estado || f.ignicao || '');
+const PL_VEL_MAX = 80;   // km/h: aviso imediato no painel (leitura a cada minuto)
+const plRapido = f => (+f.vel || 0) > PL_VEL_MAX && f.posicao_em && Date.now() - new Date(f.posicao_em) < 10 * 60000;
 const plAndando = f => /ANDANDO/i.test(f.estado || '') || (+f.vel || 0) > 3;
 const plAtivTxt = t => { t = String(t || ''); return !t || /n[ãa]o apontado/i.test(t) ? null : /desloc.*vazio|vazio/i.test(t) ? 'Trânsito Vazio' : /desloc.*carreg|carregado/i.test(t) ? 'Trânsito Carregado' : /desloc|tr[aâ]nsito|viagem/i.test(t) ? 'Deslocamento'
   : /aguard.*nota|nota fiscal/i.test(t) ? 'Aguardando Nota' : /fila/i.test(t) ? 'Fila' : /carregamento|carregando/i.test(t) ? 'Carregando' : /descarga|descarreg/i.test(t) ? 'Descarga'
@@ -233,7 +235,7 @@ async function plMapa(el, fs, cercas, rastros) {
   const com = fs.filter(f => f.lat != null && f.lng != null), b = L.latLngBounds(pts);
   com.forEach(f => { const r = (rastros || {})[f.id], k = plCarga(f); if (r && r.length > 1) L.polyline(r, { color: k.real ? k.cor : plCorFrota(f), weight: 4, opacity: .85, dashArray: k.real === 'vazio' ? '7 7' : null }).addTo(gRastro); });
   com.forEach(f => {
-    L.marker([f.lat, f.lng], { icon: L.divIcon({ className: 'pl-cam', html: plCaminhaoSvg(f) + `<span class="pl-rot">${esc(f.codigo)}${plAndando(f) ? ' · ' + Math.round(+f.vel || 0) + ' km/h' : ''}${(k => k.real ? `<em style="display:block;font-style:normal;color:${k.cor}">${k.al.length ? '⚠ ' : ''}${esc(k.txt)}</em>` : '')(plCarga(f))}</span>`, iconSize: [38, 38], iconAnchor: [19, 21] }) })
+    L.marker([f.lat, f.lng], { icon: L.divIcon({ className: 'pl-cam', html: plCaminhaoSvg(f) + `<span class="pl-rot">${esc(f.codigo)}${plAndando(f) ? (plRapido(f) ? ` · <b style="color:#fff;background:#C62828;padding:0 4px;border-radius:4px">⚠ ${Math.round(+f.vel)} km/h</b>` : ' · ' + Math.round(+f.vel || 0) + ' km/h') : ''}${(k => k.real ? `<em style="display:block;font-style:normal;color:${k.cor}">${k.al.length ? '⚠ ' : ''}${esc(k.txt)}</em>` : '')(plCarga(f))}</span>`, iconSize: [38, 38], iconAnchor: [19, 21] }) })
       .on('mouseover click', e => plFlutua(plDica(f), e.originalEvent)).on('mousemove', e => plFlutua(null, e.originalEvent)).on('mouseout', () => plFlutua(false)).addTo(gFrotas);
     b.extend([f.lat, f.lng]); });
   gCercas.addTo(m); gRastro.addTo(m); gFrotas.addTo(m);
@@ -488,7 +490,7 @@ rota('/operacao/painel', async tela => {
         <td data-r="Local">${esc(f.local || '')}</td><td data-r="Motorista">${esc(f.motorista || '')}</td><td data-r="Observação">${esc(f.observacao || '')}</td>
         <td data-r="Apontamento motorista">${f.posicao_em ? `<b>${esc(plApont(f))}</b>${f.apont_desde ? `<div class="muted">desde ${dataHoraBR(f.apont_desde)}</div>` : ''}` : ''}</td>
         <td data-r="Telemetria">${esc(f.grupo || '')}</td>
-        <td data-r="Ignição / posição" class="muted">${f.posicao_em ? `<span style="color:${plLigado(f) ? '#1E8E57' : 'inherit'}">${esc(plMov(f))}</span>${f.endereco || f.local_creare ? '<br>' + esc(f.endereco || f.local_creare) : ''}<br>Leitura ${dataHoraBR(f.posicao_em)}` : ''}</td>
+        <td data-r="Ignição / posição" class="muted">${f.posicao_em ? `${plRapido(f) ? `<b style="color:#C62828">⚠ ACIMA DE ${PL_VEL_MAX} km/h</b><br>` : ''}<span style="color:${plLigado(f) ? '#1E8E57' : 'inherit'}">${esc(plMov(f))}</span>${f.endereco || f.local_creare ? '<br>' + esc(f.endereco || f.local_creare) : ''}<br>Leitura ${dataHoraBR(f.posicao_em)}` : ''}</td>
         ${ed && modo === 'agora' ? `<td><button class="btn peq" data-ed="${f.id}">Ajustar</button></td>` : ''}</tr>`).join('')}</tbody></table></div>
       <p class="muted">Sem a trava 🔒, a atividade acompanha o apontamento do motorista no Creare a cada coleta. Com a trava, vale o que a torre definiu até ela destravar.</p></div></div>`;
   const f = $('#pl-f');
