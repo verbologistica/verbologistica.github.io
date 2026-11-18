@@ -82,7 +82,7 @@ function dmSvg(R, W = 900, Hh = 330) {
     R.fr.forEach((f, i) => { const v = f.porDia[j]?.dm; if (v == null) return; const bx = gx + i * bw, by = y(v);
       s += `<rect x="${bx}" y="${by}" width="${bw - 2}" height="${mt + ph - by}" fill="${DM_CORES[i % DM_CORES.length]}"><title>${esc(f.frota)} ${dmDiaCurto(x.dia)}: ${dmP(v)}</title></rect>`;
       const cor = v < DM_META ? '#C62828' : '#252E35', rot = Math.round(v * 100);
-      s += bw - 2 >= 16 ? `<text x="${bx + (bw - 2) / 2}" y="${by - 4}" font-size="9" font-weight="bold" text-anchor="middle" fill="${cor}">${rot}</text>`
+      s += bw - 2 >= 16 ? `<text x="${bx + (bw - 2) / 2}" y="${by - 4}" font-size="9" font-weight="bold" text-anchor="middle" fill="${cor}" stroke="#fff" stroke-width="3" paint-order="stroke">${rot}</text>`
         : `<text transform="translate(${bx + (bw - 2) / 2 + 3},${by - 3}) rotate(-90)" font-size="9" fill="${cor}">${rot}</text>`; });
     s += `<text x="${ml + j * gw + gw / 2}" y="${Hh - 10}" font-size="10" text-anchor="middle" fill="#252E35">${dmDiaCurto(x.dia)}</text>`;
   });
@@ -167,7 +167,7 @@ async function dmPdf(R) {
   doc.text(`${dmPeriodo(R)} · Guararapes/SP, ${new Date().toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' })}`, ML, y); y += 5;
   const lin = f => [f.frota, dmF(f.H), dmF(f.man), dmP(f.dm), dmF(f.at), dmF(f.sa), dmF(f.par), dmF(f.prod), dmP(f.H ? f.prod / f.H : 0)];
   const body = R.fr.map(lin); if (R.fr.length > 1) body.push(lin({ ...R.C, frota: 'Total da frota' }));
-  tabela(['Frota', 'Horas do período', 'Manu-tenção', 'DM (meta 96%)', 'Atolado / ag. SOS', 'Sem apontam.', 'Paradas sem produção', 'Horas produtivas', '% produtivo'], body, {
+  tabela(['Frota', 'Horas do período', 'Manutenção', 'DM (meta 96%)', 'Atolado / ag. SOS', 'Sem apontam.', 'Paradas sem produção', 'Horas produtivas', '% produtivo'], body, {
     styles: { font: 'helvetica', fontSize: 8.6, textColor: C.texto, lineColor: C.borda, lineWidth: 0.15, cellPadding: 1.8, halign: 'center' }, headStyles: { fillColor: C.escuro, textColor: 255, fontStyle: 'bold', fontSize: 7.2, halign: 'center', valign: 'middle' },
     didParseCell: c => { if (c.section !== 'body') return; const f = c.row.index < R.fr.length ? R.fr[c.row.index] : R.C;
       if (c.column.index === 3) { c.cell.styles.fontStyle = 'bold'; c.cell.styles.fontSize = 10; c.cell.styles.textColor = f.dm != null && f.dm < DM_META ? C.verm : C.verde; }
