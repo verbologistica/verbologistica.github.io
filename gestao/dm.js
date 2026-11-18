@@ -156,7 +156,7 @@ async function dmPdf(R) {
     styles: { font: 'helvetica', fontSize: 7.8, textColor: C.texto, lineColor: C.borda, lineWidth: 0.15, cellPadding: 1.3, valign: 'top' },
     headStyles: { fillColor: C.escuro, textColor: 255, fontStyle: 'bold', fontSize: 7.4, lineWidth: 0 }, willDrawPage: moldura, ...opts }); y = doc.lastAutoTable.finalY + 5; };
   const titulo3 = t => { novaSeNec(12); doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.setTextColor(...C.texto); doc.text(t, ML, y); y += 4.5; };
-  const paragrafo = (html, fs = 8.6) => { const t = html.replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+  const paragrafo = (html, fs = 8.6) => { const t = html.replace(/−/g, '-').replace(/→/g, '>').replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
     doc.setFont('helvetica', 'normal'); doc.setFontSize(fs); doc.setTextColor(...C.texto); const l = doc.splitTextToSize(t, LU); novaSeNec(l.length * fs * 0.42); doc.text(l, ML, y); y += l.length * fs * 0.42 + 1.2; };
   moldura();
   let y = 46;
@@ -186,7 +186,7 @@ async function dmPdf(R) {
   tabela(['Frota', 'Sem apontamento (h)', 'Justificadas como manutenção (vão para Manutenção) (h)', 'Justificadas por outros motivos (h)', 'Sem justificativa (h)'], R.fr.map(f => [f.frota, dmF(f.sa + f.torre), dmF(f.torre), dmF(f.just), dmF(f.sa - f.just)]),
     { columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right' } } });
   if (R.just.length) tabela(['Frota', 'Início', 'Fim', 'Horas', 'Responsável', 'Justificativa'],
-    R.just.map(x => [dmNomeF(x.frota, x.placa), dmHoraSP(x.inicio), dmHoraSP(x.fim), dmF(x.h), (DM_RESP_C[x.resp] || x.resp || '') + (x.em_manutencao ? ' → manutenção' : ''), (x.explicacao || '') + (x.chamado ? ` Chamado Creare ${x.chamado}.` : '')]),
+    R.just.map(x => [dmNomeF(x.frota, x.placa), dmHoraSP(x.inicio), dmHoraSP(x.fim), dmF(x.h), (DM_RESP_C[x.resp] || x.resp || '') + (x.em_manutencao ? ' (conta como manutenção)' : ''), (x.explicacao || '') + (x.chamado ? ` Chamado Creare ${x.chamado}.` : '')]),
     { styles: { font: 'helvetica', fontSize: 7.3, textColor: C.texto, lineColor: C.borda, lineWidth: 0.15, cellPadding: 1.2, valign: 'top' }, columnStyles: { 0: { cellWidth: 22 }, 1: { cellWidth: 19 }, 2: { cellWidth: 19 }, 3: { cellWidth: 12, halign: 'right' }, 4: { cellWidth: 24 } }, rowPageBreak: 'avoid' });
   titulo3('Critérios'); DM_CRITERIOS.forEach(t => paragrafo(t, 8.2));
   y += 6; novaSeNec(12); doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...C.texto); doc.text('Ana Maria Rodrigues Santos', ML, y); y += 4;
