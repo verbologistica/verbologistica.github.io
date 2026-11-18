@@ -124,7 +124,7 @@ rota('/operacao/dm', async tela => {
     <div class="cartao"><h2>${esc(dmTitulo(R))}</h2><p class="muted" style="margin-top:-4px">${esc(dmPeriodo(R))}</p>
       <div style="overflow-x:auto"><table class="tabela compacta"><thead><tr>${kpiCab.map((c, i) => `<th${i ? ' class="num"' : ''}>${c}</th>`).join('')}</tr></thead><tbody>
       ${R.fr.map(f => { const l = kpiLin(f); return `<tr><td><b>${esc(l[0])}</b></td>${l.slice(1).map((v, i) => i === 2 ? tdDm(f.dm) : `<td class="num">${v}</td>`).join('')}</tr>`; }).join('')}
-      ${R.fr.length > 1 ? `<tr style="font-weight:700;background:#F6EFDC"><td>Conjunto</td><td class="num">${dmF(R.C.H)}</td><td class="num">${dmF(R.C.man)}</td>${tdDm(R.C.dm)}<td class="num">${dmF(R.C.at)}</td><td class="num">${dmF(R.C.sa)}</td><td class="num">${dmF(R.C.par)}</td><td class="num">${dmF(R.C.prod)}</td><td class="num">${dmP(R.C.H ? R.C.prod / R.C.H : 0)}</td></tr>` : ''}
+      ${R.fr.length > 1 ? `<tr style="font-weight:700;background:#F6EFDC"><td>Total da frota</td><td class="num">${dmF(R.C.H)}</td><td class="num">${dmF(R.C.man)}</td>${tdDm(R.C.dm)}<td class="num">${dmF(R.C.at)}</td><td class="num">${dmF(R.C.sa)}</td><td class="num">${dmF(R.C.par)}</td><td class="num">${dmF(R.C.prod)}</td><td class="num">${dmP(R.C.H ? R.C.prod / R.C.H : 0)}</td></tr>` : ''}
       </tbody></table></div></div>
     <div class="cartao"><div style="overflow-x:auto">${dmSvg(R).replace(/width="\d+" height="\d+"/, 'style="width:100%;min-width:640px;height:auto;display:block"')}</div></div>
     <div class="cartao"><h2>Destaques</h2><ul style="margin:0;padding-left:18px;line-height:1.6">${R.dest.map(t => `<li>${t}</li>`).join('')}</ul></div>
@@ -164,7 +164,7 @@ async function dmPdf(R) {
   doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(...C.cinza);
   doc.text(`${dmPeriodo(R)} · Guararapes/SP, ${new Date().toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' })}`, ML, y); y += 5;
   const lin = f => [f.frota, dmF(f.H), dmF(f.man), dmP(f.dm), dmF(f.at), dmF(f.sa), dmF(f.par), dmF(f.prod), dmP(f.H ? f.prod / f.H : 0)];
-  const body = R.fr.map(lin); if (R.fr.length > 1) body.push(lin({ ...R.C, frota: 'Conjunto' }));
+  const body = R.fr.map(lin); if (R.fr.length > 1) body.push(lin({ ...R.C, frota: 'Total da frota' }));
   tabela(['Frota', 'Horas do período', 'Manu-tenção', 'DM (meta 96%)', 'Atolado / ag. SOS', 'Sem apontam.', 'Paradas sem produção', 'Horas produtivas', '% produtivo'], body, {
     styles: { font: 'helvetica', fontSize: 8.6, textColor: C.texto, lineColor: C.borda, lineWidth: 0.15, cellPadding: 1.8, halign: 'center' }, headStyles: { fillColor: C.escuro, textColor: 255, fontStyle: 'bold', fontSize: 7.2, halign: 'center', valign: 'middle' },
     didParseCell: c => { if (c.section !== 'body') return; const f = c.row.index < R.fr.length ? R.fr[c.row.index] : R.C;
