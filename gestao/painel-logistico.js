@@ -711,9 +711,9 @@ rota('/operacao/gestao', async tela => {
   if (!document.getElementById('pl-css')) document.head.insertAdjacentHTML('beforeend', plCss);
   plLargo();
   const P = estado.params, hoje = hojeISO(), ini = P.get('de') || new Date(Date.now() - 6 * 864e5).toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' }), fim = P.get('ate') || hoje;
-  let g, ult;
-  try { [g, ult] = await Promise.all([api.rpc('gestao_operacional', { p_ini: new Date(ini + 'T00:00:00').toISOString(), p_fim: new Date(fim + 'T23:59:59').toISOString() }),
-    api.listar('creare_apontamentos', 'select=inicio,importado_em&order=inicio.desc&limit=1').catch(() => [])]); } catch (err) { falha(err); return; }
+  let g, ult, lei;
+  try { [g, ult, lei] = await Promise.all([api.rpc('gestao_operacional', { p_ini: new Date(ini + 'T00:00:00').toISOString(), p_fim: new Date(fim + 'T23:59:59').toISOString() }),
+    api.listar('creare_apontamentos', 'select=inicio,importado_em&order=inicio.desc&limit=1').catch(() => []), api.rpc('tlm_leitura', {}).catch(() => null)]); } catch (err) { falha(err); return; }
   g = g || {}; const op = g.operacoes || {}, pc = g.por_categoria || {}, tot = Object.values(pc).reduce((t, v) => t + +v, 0) || 0, de = g.deslocamento || {};
   const fila = (+pc.fila_carregamento || 0) + (+pc.fila_descarga || 0) + (+pc.fila_balanca || 0);
   const pctV = (+de.vazio_km + +de.carregado_km) ? Math.round(+de.vazio_km * 100 / (+de.vazio_km + +de.carregado_km)) : 0;
@@ -749,7 +749,7 @@ rota('/operacao/gestao', async tela => {
       <div class="acoes"><button class="btn" data-gexp="png">Imagem (PNG)</button><button class="btn" data-gexp="pdf">PDF</button><button class="btn" id="go-xls">Excel</button></div></div>
     <form class="filtros pl-barra" id="go-f"><label>De <input type="date" name="de" value="${ini}"></label><label>Até <input type="date" name="ate" value="${fim}"></label><button class="btn prim">Ver</button>
       <button type="button" class="btn" data-per="1">Ontem</button><button type="button" class="btn" data-per="7">Últimos 7 dias</button><button type="button" class="btn" data-per="mes">Este mês</button>
-      <span class="muted">${ult?.[0] ? 'Apontamentos até ' + dataHoraBR(ult[0].inicio) + ' · importado ' + dataHoraBR(ult[0].importado_em) : 'Sem apontamentos importados'}</span></form>
+      <span class="muted">${lei?.e09_em ? 'Conferido no Creare em ' + dataHoraBR(lei.e09_em) + ' (a cada 15 min)' : 'Ainda sem conferência automática'}${ult?.[0] ? ' · último apontamento ' + dataHoraBR(ult[0].inicio) : ''}</span></form>
     ${plAbas('operacional')}
     <div id="go-exp"><div class="pl-painel">
       <div class="pl-topo" style="margin-bottom:14px"><img src="logo.png" alt="Verbo"><div class="pl-tit"><h1>GESTÃO <b>OPERACIONAL</b></h1><p>APONTAMENTOS DOS MOTORISTAS · CREARE</p></div><div class="pl-hora"><small>PERÍODO</small>${dataBR(ini)} a ${dataBR(fim)}</div></div>
@@ -821,9 +821,9 @@ rota('/operacao/seguranca', async tela => {
   if (!document.getElementById('pl-css')) document.head.insertAdjacentHTML('beforeend', plCss);
   plLargo();
   const P = estado.params, hoje = hojeISO(), ini = P.get('de') || new Date(Date.now() - 6 * 864e5).toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' }), fim = P.get('ate') || hoje, tf = P.get('tipo') || '';
-  let ev, ult;
-  try { [ev, ult] = await Promise.all([api.listar('seguranca_eventos', `inicio=gte.${new Date(ini + 'T00:00:00').toISOString()}&inicio=lte.${new Date(fim + 'T23:59:59').toISOString()}&order=inicio.desc&limit=5000&select=*,eq:equipamentos(codigo_frota)`),
-    api.listar('seguranca_eventos', 'select=importado_em&order=importado_em.desc&limit=1').catch(() => [])]); } catch (err) { falha(err); return; }
+  let ev, ult, lei;
+  try { [ev, ult, lei] = await Promise.all([api.listar('seguranca_eventos', `inicio=gte.${new Date(ini + 'T00:00:00').toISOString()}&inicio=lte.${new Date(fim + 'T23:59:59').toISOString()}&order=inicio.desc&limit=5000&select=*,eq:equipamentos(codigo_frota)`),
+    api.listar('seguranca_eventos', 'select=importado_em&order=importado_em.desc&limit=1').catch(() => []), api.rpc('tlm_leitura', {}).catch(() => null)]); } catch (err) { falha(err); return; }
   ev = ev || []; const fr = e => e.eq?.codigo_frota || e.placa, de = t => ev.filter(e => e.tipo === t);
   const vel = de('velocidade'), cc = de('conducao_continua'), ml = de('motor_ligado'), fad = ev.filter(e => e.fonte === 'goawake'), fadVal = fad.filter(e => e.acao === 'Válido');
   const porCls = Object.entries(fadVal.reduce((o, e) => { const k = e.local || '—'; o[k] = (o[k] || 0) + 1; return o; }, {})).sort((a, b) => b[1] - a[1]);
@@ -852,7 +852,7 @@ rota('/operacao/seguranca', async tela => {
       <div class="acoes"><button class="btn" data-sexp="png">Imagem (PNG)</button><button class="btn" data-sexp="pdf">PDF</button><button class="btn" id="sg-xls">Excel</button></div></div>
     <form class="filtros pl-barra" id="sg-f"><label>De <input type="date" name="de" value="${ini}"></label><label>Até <input type="date" name="ate" value="${fim}"></label><button class="btn prim">Ver</button>
       <button type="button" class="btn" data-per="1">Ontem</button><button type="button" class="btn" data-per="7">Últimos 7 dias</button><button type="button" class="btn" data-per="mes">Este mês</button>
-      <span class="muted">${ult?.[0] ? 'Importado do Creare em ' + dataHoraBR(ult[0].importado_em) : 'Ainda sem importação'}</span></form>
+      <span class="muted">${lei?.seg_em ? 'Creare conferido em ' + dataHoraBR(lei.seg_em) + ' (a cada 10 min)' : 'Creare: ainda sem conferência automática'}${lei?.ga_em ? ' · câmera em ' + dataHoraBR(lei.ga_em) + ' (a cada 2 min)' : ''}</span></form>
     ${plAbas('seguranca')}
     <div id="sg-exp"><div class="pl-painel">
       <div class="pl-topo" style="margin-bottom:14px"><img src="logo.png" alt="Verbo"><div class="pl-tit"><h1>SEGURANÇA NA <b>CONDUÇÃO</b></h1><p>CREARE · GOAWAKE</p></div><div class="pl-hora"><small>PERÍODO</small>${dataBR(ini)} a ${dataBR(fim)}</div></div>
