@@ -59,7 +59,18 @@ async function contextoDocumento(colaboradorId, empEscolhida = null, resp = null
   }
   return ctx;
 }
-const lacunasDoModelo = html => [...new Set([...String(html || '').matchAll(/\{\{\?([^}]+)\}\}/g)].map(m => m[1].trim()))];
+const lacunasDoModelo = html => [...new Set([...String(html || '').matchAll(/\{\{\s*\?([^}]+?)\s*\}\}/g)].map(m => m[1].trim()))];
+// tipo de cada lacuna pelo próprio texto: "(a, b ou c)" vira lista; datas, CPF, clínica, equipamento e observações têm campo próprio
+function lacunaInfo(l) {
+  const m = l.match(/^(.*?)\s*\(([^)]*)\)\s*$/), base = (m ? m[1] : l).trim(), par = m ? m[2].trim() : '';
+  let ops = par && !/^(ex\.?|conforme)/i.test(par) && /,| ou /.test(par) ? par.split(/\s*,\s*|\s+ou\s+/).map(x => x.trim()).filter(Boolean).map(x => x[0].toUpperCase() + x.slice(1)) : null;
+  if (/prazo de guarda/i.test(base)) ops = ['6 meses', '12 meses', '24 meses'];
+  const rot = ops || /^ex\.?/i.test(par) ? base : l;
+  const tipo = /nome do candidato/i.test(l) ? 'cand_nome' : /cpf do candidato/i.test(l) ? 'cand_cpf' : /endere[çc]o da cl[ií]nica/i.test(l) ? 'endclinica'
+    : /^(cl[ií]nica|laborat)/i.test(l) ? 'clinica' : /equipamento|placa/i.test(l) ? 'equip' : /data e hor/i.test(l) ? 'datahora'
+    : /^data\b|prazo para entrega/i.test(l) ? 'data' : /\bcpf\b/i.test(l) ? 'cpf' : /observa|exames complementares/i.test(l) ? 'longo' : 'texto';
+  return { rot, tipo, ops, dica: /exames complementares/i.test(l) ? 'Conforme o PCMSO; deixe em branco se não houver' : '' };
+}
 function preencherModelo(html, ctx, respostas = {}) {
   const vazio = /<!--sem-timbrado-->/.test(html || '') ? '' : '__________';   // formulários oficiais: campo vazio fica em branco
   return String(html || '').replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_, chave) => {
@@ -136,27 +147,81 @@ async function gerarDocumento(modelo, colaboradorId = null, extra = {}) {
     const xml = Object.keys(zip.files).filter(n => /^word\/(document|header\d*|footer\d*)\.xml$/.test(n)).map(n => zip.file(n).asText().replace(/<[^>]+>/g, '')).join(' ');
     lacunas = lacunasDoModelo(xml);
   }
-  const cols = await api.listar('v_colaboradores_basico', 'select=id,nome,matricula,cargo&order=nome').catch(() => []);
-  const emps = await empresasL().catch(() => []);
+  // o que o modelo usa → só mostra os campos necessários, já preenchidos ou em lista
+  const usaColab = /\{\{\s*colaborador\.|lista_documentos_admissionais/.test(modelo.conteudo_html || '') || ehWord;
+  const L = lacunas.map(lacunaInfo), precisa = t => L.some(x => x.tipo === t);
+  const [cols, emps, cands, forns, eqs] = await Promise.all([
+    usaColab ? api.listar('v_colaboradores_basico', 'select=id,nome,matricula,cargo&order=nome').catch(() => []) : [],
+    empresasL().catch(() => []),
+    precisa('cand_nome') || precisa('cand_cpf') ? api.listar('candidatos', 'select=id,nome,cpf,cargo_pretendido&ativo=eq.true&order=nome').catch(() => []) : [],
+    precisa('clinica') ? api.listar('fornecedores', 'select=id,razao_social,nome_fantasia,logradouro,numero,bairro,cidade,uf,cep,categoria,categorias&ativo=eq.true&order=razao_social').catch(() => []) : [],
+    precisa('equip') ? api.listar('v_frotas_painel', 'select=id,codigo_frota,placa,modelo&order=codigo_frota').catch(() => []) : []]);
+  const nomeForn = f => f.nome_fantasia || f.razao_social;
+  const endForn = f => [[f.logradouro, f.numero].filter(Boolean).join(', '), f.bairro, [f.cidade, f.uf].filter(Boolean).join('/'), f.cep && 'CEP ' + f.cep].filter(Boolean).join(', ');
+  // só clínicas / laboratórios (pelo nome) e as que já atenderam exames da Verbo; se não houver nenhuma, mostra todos os fornecedores
+  const usadas = new Set((forns.length ? await api.listar('exames_ocupacionais', 'select=clinica_id&clinica_id=not.is.null').catch(() => []) : []).map(x => x.clinica_id));
+  const ehClinica = f => usadas.has(f.id) || /cl[ií]nic|laborat|medicina|ocupacion|toxicol|diagn[oó]st|exames?\b/i.test([f.razao_social, f.nome_fantasia].join(' '));
+  const fornOrd = forns.some(ehClinica) ? forns.filter(ehClinica) : forns;
+  const setorEmp = SETOR_MODELO_EMP[modelo.setor] || modelo.setor;
+  // quem assina: primeiro o responsável do setor do modelo; depois quem tem o setor no cargo (ex.: "Supervisora Administrativa e RH")
+  const chaveSetor = { RH: /\bRH\b|recursos humanos/i, DP: /\bDP\b|departamento pessoal/i }[modelo.setor] || new RegExp(String(modelo.setor || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+  const nota = x => (x.setor === setorEmp ? 2 : 0) + (chaveSetor.test(x.cargo || '') ? 1 : 0);
+  const respsDe = e => [...(e?.responsaveis || [])].sort((a, b) => nota(b) - nota(a));
+  const opResp = e => respsDe(e).map((x, k) => `<option value="${k}">${esc(x.nome)}${x.cargo ? ' · ' + esc(x.cargo) : ''}${x.setor ? ' (' + esc(x.setor) + ')' : ''}</option>`).join('') +
+    `<option value="eu">${esc(estado.usuario.nome)} (eu)</option>`;
+  const campoLacuna = (x, k) => {
+    const nm = 'l_' + k, rot = esc(x.rot);
+    if (x.tipo === 'cand_nome' || x.tipo === 'cand_cpf') return `<label class="campo"${cands.length ? ' data-cand-manual hidden' : ''}>${rot}<input name="${nm}"${x.tipo === 'cand_cpf' ? ' inputmode="numeric" data-cpf placeholder="000.000.000-00"' : ''}></label>`;
+    if (x.tipo === 'endclinica') return `<label class="campo largo">${rot}<input name="${nm}" placeholder="Preenchido ao escolher a clínica"></label>`;
+    if (x.tipo === 'clinica') return `<label class="campo largo">${rot}<select name="${nm}" data-clinica><option value="">Escolha…</option>${fornOrd.map(f => `<option value="${esc(nomeForn(f))}" data-end="${esc(endForn(f))}">${esc(nomeForn(f))}${f.cidade ? ' · ' + esc(f.cidade) : ''}</option>`).join('')}<option value="__outro">Outra (digitar)</option></select><input name="${nm}_outro" placeholder="Nome da clínica / laboratório" hidden></label>`;
+    if (x.tipo === 'equip') return `<label class="campo largo">${rot}<select name="${nm}"><option value="">Escolha…</option>${eqs.map(e => { const t = [e.codigo_frota, e.placa, e.modelo].filter(Boolean).join(' · '); return `<option>${esc(t)}</option>`; }).join('')}</select></label>`;
+    if (x.ops) return `<label class="campo${x.ops.length > 3 ? ' largo' : ''}">${rot}<select name="${nm}" required><option value="">Escolha…</option>${x.ops.map(o => `<option>${esc(o)}</option>`).join('')}</select></label>`;
+    if (x.tipo === 'datahora') return `<label class="campo">${rot}<input type="datetime-local" name="${nm}" required></label>`;
+    if (x.tipo === 'data') return `<label class="campo">${rot}<input type="date" name="${nm}" required></label>`;
+    if (x.tipo === 'cpf') return `<label class="campo">${rot}<input name="${nm}" inputmode="numeric" data-cpf placeholder="000.000.000-00"></label>`;
+    if (x.tipo === 'longo') return `<label class="campo largo">${rot}<textarea name="${nm}" rows="2" placeholder="${esc(x.dica || 'Opcional')}"></textarea></label>`;
+    return `<label class="campo${/item/i.test(x.rot) ? '' : ' largo'}">${rot}<input name="${nm}"></label>`;
+  };
+  const e0 = emps[0];
   const r = await modal(`<form><h2>Gerar: ${esc(modelo.titulo)}</h2><div class="form">
-      ${emps.length ? `<label class="campo largo">CNPJ que emite o documento<select name="empresa">${emps.map(e => `<option value="${e.id}">${esc(rotEmpresa(e))}</option>`).join('')}</select></label>
-      <label class="campo">Responsável (${esc(SETOR_MODELO_EMP[modelo.setor] || modelo.setor || 'setor')})<input name="r_nome"></label>
-      <label class="campo">Cargo<input name="r_cargo"></label><label class="campo">CPF<input name="r_cpf" inputmode="numeric"></label><label class="campo">E-mail<input name="r_email" type="email"></label>` : ''}
-      <label class="campo largo">Colaborador<select name="colab"><option value="">Nenhum (preencher à mão)</option>
-        ${cols.map(c => `<option value="${c.id}" ${c.id === colaboradorId ? 'selected' : ''}>${esc(c.nome)}${c.cargo ? ' · ' + esc(c.cargo) : ''}</option>`).join('')}</select></label>
-      ${lacunas.map((l, i) => `<label class="campo largo">${esc(l)}<input name="l_${i}"></label>`).join('')}
-      ${!lacunas.length ? '<p class="muted largo">Este modelo não tem lacunas: os dados vêm do cadastro.</p>' : ''}</div>
+      ${emps.length > 1 ? `<label class="campo largo">Empresa (CNPJ)<select name="empresa">${emps.map(e => `<option value="${e.id}">${esc(rotEmpresa(e))}</option>`).join('')}</select></label>`
+        : emps.length ? `<input type="hidden" name="empresa" value="${e0.id}"><div class="campo largo"><span style="display:block">Empresa</span><b style="display:block;padding:8px 0">${esc(rotEmpresa(e0))}</b></div>` : ''}
+      ${emps.length ? `<label class="campo largo">Quem assina pela empresa<select name="resp">${opResp(e0)}</select><small class="muted" id="g-resp"></small></label>` : ''}
+      ${cands.length ? `<label class="campo largo">Candidato<select name="cand" required><option value="">Escolha o candidato…</option>${cands.map(c => `<option value="${c.id}">${esc(c.nome)}${c.cargo_pretendido ? ' · ' + esc(c.cargo_pretendido) : ''}</option>`).join('')}<option value="__outro">Não está na lista (digitar)</option></select></label>` : ''}
+      ${usaColab ? `<label class="campo largo">Colaborador<select name="colab"><option value="">Escolha o colaborador…</option>
+        ${cols.map(c => `<option value="${c.id}" ${c.id === colaboradorId ? 'selected' : ''}>${esc(c.nome)}${c.cargo ? ' · ' + esc(c.cargo) : ''}</option>`).join('')}</select></label>` : ''}
+      ${L.map(campoLacuna).join('')}
+      ${!lacunas.length && !usaColab ? '<p class="muted largo">Este modelo não pede nada: os dados vêm do cadastro.</p>' : ''}</div>
     <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button>
       ${ehWord ? '<button class="btn prim" value="docx">Gerar Word (.docx)</button>' : '<button class="btn" value="doc">Baixar Word</button><button class="btn prim" value="pdf">Gerar PDF</button>'}</div></form>`, {
-    aoAbrir: raiz => { const f = $('form', raiz); if (!f.empresa) return;
-      const sinc = () => { const e = emps.find(x => x.id === f.empresa.value), rp = respDoSetor(e, modelo.setor);
-        f.r_nome.value = rp?.nome || estado.usuario.nome || ''; f.r_cargo.value = rp?.cargo || ''; f.r_cpf.value = rp?.cpf ? fmtCPF(rp.cpf) : ''; f.r_email.value = rp?.email || ''; };
-      f.empresa.addEventListener('change', sinc); sinc(); } });
+    validar: d => /\{\{\s*colaborador\./.test(modelo.conteudo_html || '') && !d.colab ? 'Escolha o colaborador.' : null,
+    aoAbrir: raiz => { const f = $('form', raiz);
+      $$('[data-cpf]', f).forEach(i => i.addEventListener('input', () => { const d = i.value.replace(/\D/g, '').slice(0, 11); i.value = d.replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})\.(\d{3})(\d)/, '$1.$2.$3').replace(/\.(\d{3})(\d{1,2})$/, '.$1-$2'); }));
+      $$('[data-clinica]', f).forEach(sel => sel.addEventListener('change', () => {
+        const op = sel.selectedOptions[0], outro = f.elements[sel.name + '_outro']; outro.hidden = sel.value !== '__outro';
+        const iEnd = L.findIndex(x => x.tipo === 'endclinica'); if (iEnd >= 0 && op?.dataset.end) f.elements['l_' + iEnd].value = op.dataset.end; }));
+      if (f.cand) f.cand.addEventListener('change', () => $$('[data-cand-manual]', f).forEach(l => { l.hidden = f.cand.value !== '__outro'; }));
+      if (!f.resp) return;
+      const empAtual = () => emps.find(x => x.id === f.empresa.value) || e0;
+      const info = () => { const x = f.resp.value === 'eu' ? null : respsDe(empAtual())[+f.resp.value];
+        $('#g-resp', f).textContent = x ? [x.cargo, x.cpf && 'CPF ' + fmtCPF(x.cpf), x.email].filter(Boolean).join(' · ') : 'Assina como usuário do sistema'; };
+      if (f.empresa.tagName === 'SELECT') f.empresa.addEventListener('change', () => { f.resp.innerHTML = opResp(empAtual()); info(); });
+      f.resp.addEventListener('change', info); info(); } });
   if (!r) return;
   try {
     const empSel = emps.find(e => e.id === r.empresa) || null;
-    const ctx = Object.assign(await contextoDocumento(r.colab || null, empSel, empSel ? { nome: r.r_nome, cargo: r.r_cargo, cpf: soDigitos(r.r_cpf), email: r.r_email } : null), extra);
-    const respostas = Object.fromEntries(lacunas.map((l, i) => [l, r['l_' + i]]));
+    const rpSel = empSel && r.resp !== 'eu' ? respsDe(empSel)[+r.resp] : null;
+    const respObj = empSel ? (rpSel ? { nome: rpSel.nome, cargo: rpSel.cargo || '', cpf: soDigitos(rpSel.cpf || ''), email: rpSel.email || '' } : { nome: estado.usuario.nome, cargo: '', cpf: '', email: '' }) : null;
+    const ctx = Object.assign(await contextoDocumento(r.colab || null, empSel, respObj), extra);
+    const cand = cands.find(c => c.id === r.cand);
+    const resp_ = (x, k) => { let v = r['l_' + k] || '';
+      if (x.tipo === 'cand_nome' && cand) v = cand.nome;
+      if (x.tipo === 'cand_cpf' && cand) v = cand.cpf ? fmtCPF(cand.cpf) : '';
+      if (x.tipo === 'clinica' && v === '__outro') v = r['l_' + k + '_outro'] || '';
+      if (x.tipo === 'data' && /^\d{4}-\d\d-\d\d$/.test(v)) v = dataBR(v);
+      if (x.tipo === 'datahora' && v) v = dataBR(v.slice(0, 10)) + ' às ' + v.slice(11, 16);
+      return v; };
+    const respostas = Object.fromEntries(lacunas.map((l, k) => [l, resp_(L[k], k)]));
     const nomeArq = `${modelo.codigo ? modelo.codigo + ' ' : ''}${modelo.titulo}${ctx.colaborador ? ' - ' + ctx.colaborador.nome : ''}`.replace(/[\\/:*?"<>|]/g, '');
     if (ehWord) {
       const plano = { ...ctx, colaborador: ctx.colaborador || {}, lista_documentos_admissionais: (ctx.lista_documentos_admissionais || '').replace(/<li>/g, '• ').replace(/<[^>]+>/g, '\n').replace(/\n+/g, '\n').trim() };
