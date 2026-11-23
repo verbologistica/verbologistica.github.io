@@ -108,7 +108,6 @@ function paginaDocumento(titulo, corpoHtml, ctx, codigo) {
     <div class="tb-cab"><img class="fx" src="${base}doc-cabecalho.jpg?v=3" alt=""><img class="lg" src="${base}doc-logo.png?v=3" alt=""></div><img class="tb-marca" src="${base}doc-marca.png?v=3" alt="">
     <div class="tb-rod"><div class="t"><b>${nome}</b>${l1.map(t => `<i>|</i>${t}`).join('')}<br>${l2.join('<i>|</i>')}</div><img class="barra" src="${base}doc-rodape.jpg?v=3" alt=""></div>
     <table class="tb-pag"><thead><tr><td></td></tr></thead><tfoot><tr><td></td></tr></tfoot><tbody><tr><td>
-      <div class="tb-of">CORRESPONDÊNCIA OFICIAL<span>${esc(ctx.responsavel?.cargo || '')}</span></div>
       ${corpoHtml}${codigo ? `<div class="tb-cod">${esc(codigo)}</div>` : ''}</td></tr></tbody></table></body></html>`;
 }
 // Relatórios (tabelas largas): página simples, em paisagem
