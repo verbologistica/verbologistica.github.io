@@ -407,7 +407,7 @@ const MENU = [
   ['POPs e documentos', '#/qualidade/documentos', null, 'livro_ok', 'qual_docs_ler', true],
   ['grupo', 'Operação', 'caminhao'],
   ['Viagens', '#/operacao/viagens', [...P_OP, 'financeiro', 'manutencao'], 'rota', 'viagens_em_transito', true],
-  ['Controle de jornada', '#/operacao/jornadas', [...P_OP, 'rh', 'dp'], 'prancheta', 'jornada_alertas', true],
+  ['Controle de jornada', '#/operacao/jornadas/creare', [...P_OP, 'rh', 'dp'], 'prancheta', 'jornada_alertas', true],
   ['Ocorrências e multas', '#/operacao/ocorrencias', [...P_OP, 'rh', 'dp', 'financeiro'], 'cone', 'multas_indicar', true],
   ['grupo', 'Controle Operacional', 'monitor'],
   ['Painéis', '#/operacao/painel', [...P_OP, 'manutencao', 'ssma'], 'monitor', null, true],
