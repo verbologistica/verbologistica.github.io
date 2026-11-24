@@ -2,7 +2,25 @@
 'use strict';
 
 const editaOp = () => tem('administrador', 'operacao');
-const ST_VIA = { planejada: ['Programada', 'azul'], em_transito: ['Em trânsito', 'amarelo'], entregue: ['Entregue', 'verde'], cancelada: ['Cancelada', ''] };
+const ST_VIA = { planejada: ['Programada', 'azul'], em_transito: ['Em trânsito', 'amarelo'], entregue: ['Entregue', 'verde'], em_conferencia: ['Em conferência com o cliente', 'azul'],
+  conferida: ['Conferida', 'verde'], faturada: ['Faturada', 'verde'], recebida: ['Recebida', 'verde'], cancelada: ['Cancelada', ''] };
+const VIA_REALIZADA = ['entregue', 'em_conferencia', 'conferida', 'faturada', 'recebida'];
+// XML do CT-e: preenche chave, número, valor, NF, origem/destino, peso declarado e tomador
+function lerXmlCte(texto) {
+  const x = new DOMParser().parseFromString(texto, 'text/xml'); if (x.getElementsByTagName('parsererror').length) throw new Error('O arquivo não é um XML válido.');
+  const g = (n, raiz = x) => raiz.getElementsByTagName(n)[0]?.textContent?.trim() || '';
+  const inf = x.getElementsByTagName('infCte')[0]; if (!inf) throw new Error('Este XML não é de um CT-e.');
+  const chave = soDigitos(inf.getAttribute('Id') || g('chCTe'));
+  const nfs = [...x.getElementsByTagName('infNFe')].map(n => g('chave', n)).filter(Boolean).map(c => String(Number(c.slice(25, 34))));
+  const docs = ['rem', 'exped', 'receb', 'dest'].map(t => x.getElementsByTagName(t)[0]);
+  const t3 = g('toma', x.getElementsByTagName('toma3')[0] || x.getElementsByTagName('toma03')[0] || x);
+  const tomaEl = x.getElementsByTagName('toma4')[0] || docs[+t3] || null;
+  const qs = [...x.getElementsByTagName('infQ')].map(q => ({ un: g('cUnid', q), tp: g('tpMed', q), v: Number(g('qCarga', q)) }));
+  const qp = qs.find(q => /peso/i.test(q.tp) && q.v) || qs.find(q => ['01', '02'].includes(q.un) && q.v);
+  return { chave, numero: g('nCT'), serie: g('serie'), emissao: g('dhEmi'), valor: Number(g('vTPrest') || g('vRec')) || null, nfs,
+    origem: [g('xMunIni'), g('UFIni')].filter(Boolean).join('/'), destino: [g('xMunFim'), g('UFFim')].filter(Boolean).join('/'),
+    peso_t: qp ? (qp.un === '01' ? qp.v / 1000 : qp.v) : null, tomador_doc: tomaEl ? soDigitos(g('CNPJ', tomaEl) || g('CPF', tomaEl)) : '', tomador: tomaEl ? g('xNome', tomaEl) : '' };
+}
 const EV_JOR = { inicio_jornada: ['Início da jornada', '🟢'], direcao: ['Direção', '🚚'], descanso: ['Descanso', '☕'], refeicao: ['Refeição', '🍽️'], espera: ['Espera (carga/descarga)', '⏳'], trabalho: ['Outro trabalho', '🔧'], fim_jornada: ['Fim da jornada', '🔴'] };
 const TIPO_OCO = { atraso: 'Atraso', avaria_carga: 'Avaria de carga', falta_carga: 'Falta de carga', quebra_veiculo: 'Quebra do veículo', sinistro: 'Sinistro / colisão', roubo: 'Roubo / furto', reclamacao_cliente: 'Reclamação do cliente', multa: 'Multa de trânsito' };
 const ST_OCO = { aberta: ['Aberta', 'amarelo'], em_tratativa: ['Em tratativa', 'azul'], encerrada: ['Encerrada', 'verde'] };
@@ -65,11 +83,16 @@ rota('/operacao', async tela => {
 // ações da viagem (usadas na lista, no detalhe e no painel do CCO)
 async function viagemIniciar(v) {
   const eq = v.equipamento_id ? await api.um('equipamentos', `id=eq.${v.equipamento_id}&select=km_atual`).catch(() => null) : null;
-  const r = await modal(`<form><h2>▶ Iniciar ${esc(v.numero)}</h2><p class="muted">${esc(v.origem)} → ${esc(v.destino)}</p><div class="form"><label class="campo">Km de saída<input name="km" inputmode="numeric" value="${eq?.km_atual ?? ''}"></label><label class="campo">Saída<input type="datetime-local" name="quando" value="${dtLocal(new Date().toISOString())}"></label></div>
+  const r = await modal(`<form><h2>▶ Iniciar ${esc(v.numero)}</h2><p class="muted">${esc(v.origem)} → ${esc(v.destino)}</p><div class="form">${v.cte_chave ? '' : `
+    <label class="campo largo">XML do CT-e (obrigatório: a viagem só sai com o CT-e)<input type="file" name="xml" accept=".xml,text/xml" required></label>`}<label class="campo">Km de saída<input name="km" inputmode="numeric" value="${eq?.km_atual ?? ''}"></label><label class="campo">Saída<input type="datetime-local" name="quando" value="${dtLocal(new Date().toISOString())}"></label></div>
     <p class="muted">O sistema confere: equipamento sem OS que o pare, ASO do motorista e CNH válida. Lembre o motorista de fazer o checklist pré-uso.</p>
     <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Iniciar viagem</button></div></form>`);
   if (!r) return false;
-  await api.alterar('viagens', `id=eq.${v.id}`, { status: 'em_transito', km_saida: r.km ? Number(soDigitos(r.km)) : null, saida_em: r.quando ? new Date(r.quando).toISOString() : null });
+  let doCte = {};
+  if (!v.cte_chave) { const f = r.xml?.[0]; if (!f) return aviso('Anexe o XML do CT-e.', true), false; const c = lerXmlCte(await f.text());
+    doCte = { cte_chave: c.chave, cte_numero: c.numero || v.cte_numero, valor_frete: c.valor ?? v.valor_frete, nf_numero: c.nfs.join(', ') || v.nf_numero, cte_xml: c, cte_emissao: c.emissao || null }; }
+  await api.alterar('viagens', `id=eq.${v.id}`, { status: 'em_transito', km_saida: r.km ? Number(soDigitos(r.km)) : null, saida_em: r.quando ? new Date(r.quando).toISOString() : null, ...doCte });
+  if (r.xml?.[0]) await anexar('viagem', v.id, [r.xml[0]], 'CT-e').catch(() => {});
   aviso('Viagem iniciada.'); return true;
 }
 async function viagemEntregar(v) {
@@ -77,12 +100,12 @@ async function viagemEntregar(v) {
   const ms = ids.length ? await api.listar('colaboradores', `id=in.(${ids.join(',')})&select=id,nome`).catch(() => []) : [];
   const outros = (await motoristas().catch(() => [])).filter(m => m.motorista && !ids.includes(m.id));
   const r = await modal(`<form><h2>✓ Entrega de ${esc(v.numero)}</h2><p class="muted">${esc(v.origem)} → ${esc(v.destino)}</p><div class="form"><label class="campo">Km de chegada<input name="km" inputmode="numeric"></label><label class="campo">Chegada<input type="datetime-local" name="quando" value="${dtLocal(new Date().toISOString())}"></label>
-    <label class="campo largo">Motorista que fez a entrega<select name="mot_entrega">${ms.map(m => `<option value="${m.id}" ${m.id === v.motorista_id ? 'selected' : ''}>${esc(m.nome)}${m.id === v.motorista_id ? ' (saiu com a viagem)' : ''}</option>`).join('')}${outros.length ? `<optgroup label="Outro motorista">${outros.map(m => `<option value="${m.id}">${esc(m.nome)}</option>`).join('')}</optgroup>` : ''}</select></label>
+    <label class="campo largo">Motorista na descarga<select name="mot_entrega">${ms.map(m => `<option value="${m.id}" ${m.id === v.motorista_id ? 'selected' : ''}>${esc(m.nome)}${m.id === v.motorista_id ? ' (saiu com a viagem)' : ''}</option>`).join('')}${outros.length ? `<optgroup label="Outro motorista">${outros.map(m => `<option value="${m.id}">${esc(m.nome)}</option>`).join('')}</optgroup>` : ''}</select></label>
     <label class="campo largo">Canhoto / comprovante de entrega (pode enviar vários)<input type="file" name="arquivos" multiple accept="image/*,application/pdf"></label></div>
     <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Registrar entrega</button></div></form>`);
   if (!r) return false;
-  const me = r.mot_entrega || v.motorista_id, apoio = [...new Set([...(v.motoristas_apoio || []), ...(me && me !== v.motorista_id ? [me] : [])])];
-  await api.alterar('viagens', `id=eq.${v.id}`, { status: 'entregue', km_chegada: r.km ? Number(soDigitos(r.km)) : null, chegada_em: r.quando ? new Date(r.quando).toISOString() : null, motorista_entrega_id: me || null, motoristas_apoio: apoio });
+  const me = r.mot_entrega || v.motorista_id;
+  await api.alterar('viagens', `id=eq.${v.id}`, { status: 'entregue', km_chegada: r.km ? Number(soDigitos(r.km)) : null, chegada_em: r.quando ? new Date(r.quando).toISOString() : null, motorista_entrega_id: me || null });
   if (r.arquivos?.length) await anexar('viagem', v.id, r.arquivos, 'Comprovante de entrega'); aviso('Entrega registrada.'); return true;
 }
 const botaoAcaoViagem = (v, ok) => !ok ? '' : v.status === 'planejada' ? `<button class="btn prim peq" data-via-ini="${v.id}">▶ Iniciar viagem</button>` : v.status === 'em_transito' ? `<button class="btn ok peq" data-via-ent="${v.id}">✓ Registrar entrega</button>` : '';
@@ -95,16 +118,18 @@ rota('/operacao/viagens', async tela => {
   const sts = pLista('status', 'todas'), st = sts[0], q = (estado.params.get('q') || '').toLowerCase();
   const fV = temTodos(sts) ? '' : filtroOu(sts.map(s => s === 'abertas' ? 'status=in.(planejada,em_transito)' : 'status=eq.' + s));
   let vs = await api.listar('viagens', `ativo=eq.true${fV ? '&' + fV : ''}&select=*,cl:clientes(nome),eq:equipamentos(codigo_frota),m:colaboradores!viagens_motorista_id_fkey(nome)&order=saida_prevista.desc.nullslast,criado_em.desc&limit=400`);
-  if (q) vs = vs.filter(v => [v.numero, v.origem, v.destino, v.cl?.nome, v.m?.nome, v.eq?.codigo_frota, v.documentos].join(' ').toLowerCase().includes(q));
+  if (q) vs = vs.filter(v => [v.numero, v.origem, v.destino, v.cl?.nome, v.m?.nome, v.eq?.codigo_frota, v.documentos, v.nf_numero, v.cte_numero].join(' ').toLowerCase().includes(q));
+  const idsDesc = [...new Set(vs.filter(v => v.motorista_entrega_id && v.motorista_entrega_id !== v.motorista_id).map(v => v.motorista_entrega_id))];
+  const nomesDesc = idsDesc.length ? Object.fromEntries((await api.listar('colaboradores', `id=in.(${idsDesc.join(',')})&select=id,nome`).catch(() => [])).map(c => [c.id, c.nome])) : {};
   tela.innerHTML = `
     <div class="topo"><div><h1>Viagens</h1><p class="sub">${vs.length} viagem(ns) · frete ${brl(vs.reduce((a, v) => a + Number(v.valor_frete || 0), 0))}</p></div><div class="acoes"><a class="btn" href="#/operacao/viagens/painel">📊 Painel de viagens</a>${editaOp() ? '<a class="btn prim" href="#/operacao/viagens/nova">+ Nova viagem</a>' : ''}</div></div>
     <div class="cartao" style="padding:10px 14px"><b>Como funciona:</b> <span class="tag azul">Programada</span> → <b>▶ Iniciar viagem</b> → <span class="tag amarelo">Em trânsito</span> → <b>✓ Registrar entrega</b> → <span class="tag verde">Entregue</span>
       ${(() => { const p = vs.filter(v => v.status === 'planejada').length, t = vs.filter(v => v.status === 'em_transito').length; return p || t ? `<span class="muted"> · ${p} aguardando início · ${t} em trânsito</span>` : ''; })()}</div>
     <form class="filtros" id="filtros"><select name="status"><option value="abertas">Programadas e em trânsito</option>${Object.entries(ST_VIA).map(([k, [t]]) => `<option value="${k}" ${k === st ? 'selected' : ''}>${t}</option>`).join('')}<option value="todas" ${st === 'todas' ? 'selected' : ''}>Todas</option></select>
       <input name="q" value="${esc(estado.params.get('q') || '')}" placeholder="Nº, cliente, cidade, motorista, CT-e"><button class="btn">Filtrar</button></form>
-    <div class="cartao">${vs.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Nº</th><th>Cliente</th><th>Rota</th><th>Equipamento</th><th>Motorista</th><th>Saída</th><th>Chegada</th><th class="num">Km</th><th class="num">Frete</th><th>Situação</th><th>Próximo passo</th></tr></thead><tbody>
+    <div class="cartao">${vs.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Nº</th><th>Cliente</th><th>Rota</th><th>Equipamento</th><th>Motorista (carga → descarga)</th><th>Saída</th><th>Chegada</th><th class="num">Km</th><th class="num">Frete</th><th>Situação</th><th>Próximo passo</th></tr></thead><tbody>
       ${vs.map(v => `<tr class="clicavel" onclick="location.hash='#/operacao/viagens/ver/${v.id}'"><td data-r="Nº" class="mono"><b>${esc(v.numero)}</b></td><td data-r="Cliente">${esc(v.cl?.nome || '—')}</td><td data-r="Rota">${esc(v.origem)} → ${esc(v.destino)}</td>
-        <td data-r="Equipamento">${esc(v.eq?.codigo_frota || '—')}</td><td data-r="Motorista">${esc(v.m?.nome || '—')}${(v.motoristas_apoio || []).length ? ` <span class="muted">+${v.motoristas_apoio.length}</span>` : ''}</td><td data-r="Saída">${dataHoraBR(v.saida_em || v.saida_prevista) || '—'}</td><td data-r="Chegada">${dataHoraBR(v.chegada_em || v.chegada_prevista) || '—'}</td>
+        <td data-r="Equipamento">${esc(v.eq?.codigo_frota || '—')}</td><td data-r="Motorista">${esc(v.m?.nome || '—')}${v.motorista_entrega_id && v.motorista_entrega_id !== v.motorista_id ? ` <span class="muted">→ descarga: ${esc(nomesDesc[v.motorista_entrega_id] || '')}</span>` : ''}</td><td data-r="Saída">${dataHoraBR(v.saida_em || v.saida_prevista) || '—'}</td><td data-r="Chegada">${dataHoraBR(v.chegada_em || v.chegada_prevista) || '—'}</td>
         <td data-r="Km" class="num">${v.km_chegada && v.km_saida ? (v.km_chegada - v.km_saida).toLocaleString('pt-BR') : '—'}</td><td data-r="Frete" class="num">${v.valor_frete ? brl(v.valor_frete) : '—'}</td>
         <td data-r="Situação">${tagSt(ST_VIA, v.status)}${v.status === 'em_transito' && v.chegada_prevista && new Date(v.chegada_prevista) < new Date() ? ' <span class="tag vermelho">atrasada</span>' : ''}</td><td data-r="Próximo passo">${botaoAcaoViagem(v, editaOp()) || '—'}</td></tr>`).join('')}</tbody></table></div>` : '<div class="vazio">Nenhuma viagem.</div>'}</div>`;
   ligarAcoesViagem(tela, vs);
@@ -120,16 +145,18 @@ async function formViagem(tela, v = null) {
       <label class="campo">Origem *<input name="origem" required value="${esc(v?.origem || '')}"></label><label class="campo">Destino *<input name="destino" required value="${esc(v?.destino || '')}"></label>
       <label class="campo">Saída prevista<input type="datetime-local" name="saida_prevista" value="${dtLocal(v?.saida_prevista)}"></label><label class="campo">Chegada prevista<input type="datetime-local" name="chegada_prevista" value="${dtLocal(v?.chegada_prevista)}"></label>
       <label class="campo">Equipamento<select name="equipamento_id"><option value="">A definir</option>${eqs.map(e => `<option value="${e.id}" ${e.id === v?.equipamento_id ? 'selected' : ''} ${e.situacao === 'manutencao' ? 'disabled' : ''}>${esc(rotuloEq(e))}${e.situacao === 'manutencao' ? ' (em manutenção)' : ''}</option>`).join('')}</select></label>
-      <label class="campo">Motorista<select name="motorista_id"><option value="">A definir</option>${mot.map(m => { const venc = m.cnh_validade && m.cnh_validade < hojeISO();
+      <label class="campo">Motorista no carregamento<select name="motorista_id"><option value="">A definir</option>${mot.map(m => { const venc = m.cnh_validade && m.cnh_validade < hojeISO();
         return `<option value="${m.id}" ${m.id === v?.motorista_id ? 'selected' : ''} ${venc ? 'disabled' : ''}>${esc(m.nome)}${m.cnh_categoria ? ' · CNH ' + esc(m.cnh_categoria) : ''}${venc ? ' (CNH vencida)' : ''}</option>`; }).join('')}</select></label>
-      <div class="campo largo"><span>Outros motoristas da viagem (revezamento / quem pode entregar)</span><div class="vb-chk" style="display:flex;flex-wrap:wrap;gap:6px 14px;max-height:140px;overflow:auto">${mot.filter(m => m.id !== v?.motorista_id).map(m => `<label class="check"><input type="checkbox" name="apoio" value="${m.id}" ${(v?.motoristas_apoio || []).includes(m.id) ? 'checked' : ''}> ${esc(m.nome)}</label>`).join('')}</div></div>
+      <label class="campo">Motorista na descarga<select name="motorista_entrega_id"><option value="">O mesmo do carregamento</option>${mot.map(m => `<option value="${m.id}" ${v?.motorista_entrega_id && v.motorista_entrega_id !== v.motorista_id && m.id === v.motorista_entrega_id ? 'selected' : ''}>${esc(m.nome)}</option>`).join('')}</select></label>
       <label class="campo largo">Carga<input name="carga" value="${esc(v?.carga || '')}" placeholder="Ex.: eucalipto em toras, celulose"></label>
       <label class="campo">Peso (t)<input name="peso_t" inputmode="decimal" value="${v?.peso_t ?? ''}"></label><label class="campo">Valor do frete (R$)<input name="valor_frete" inputmode="decimal" value="${v?.valor_frete ?? ''}"></label>
       <label class="campo">Centro de custo<select name="centro_custo_id">${opcoes(ccs.filter(c => c.ativo), null, c => c.nome, v?.centro_custo_id, '—')}</select></label>
       <div class="largo"><h3 style="margin:8px 0 4px">Documentos fiscais</h3></div>
+      <label class="campo largo" style="background:#F6EFDC;padding:10px;border-radius:8px">Importar XML do CT-e <span class="muted" style="font-weight:400">· preenche chave, nº do CT-e, valor do frete, nota fiscal, origem/destino e peso declarado, e anexa o XML</span>
+        <input type="file" id="cte-xml" accept=".xml,text/xml"><input type="hidden" name="cte_xml_json"><small id="cte-xml-ok" class="muted"></small></label>
       <label class="campo">Nº da nota fiscal<input name="nf_numero" value="${esc(v?.nf_numero || '')}" placeholder="Mais de uma: separe com vírgula"></label>
       <label class="campo">Nº do CT-e<input name="cte_numero" inputmode="numeric" value="${esc(v?.cte_numero || '')}"></label>
-      <label class="campo largo">Chave de acesso do CT-e (44 dígitos)<input name="cte_chave" inputmode="numeric" maxlength="60" value="${esc(v?.cte_chave || '')}" placeholder="Cole ou digite os 44 números"></label>
+      <label class="campo largo">Chave de acesso do CT-e (44 dígitos) *<input name="cte_chave" inputmode="numeric" maxlength="60" value="${esc(v?.cte_chave || '')}" placeholder="Importe o XML ou cole os 44 números"></label>
       <label class="campo">Nº do MDF-e<input name="mdfe_numero" inputmode="numeric" value="${esc(v?.mdfe_numero || '')}"></label>
       <label class="campo">Outros documentos<input name="documentos" value="${esc(v?.documentos || '')}" placeholder="Ex.: ordem de carregamento"></label>
       <label class="campo">Anexar nota fiscal (PDF, XML ou foto)<input type="file" name="arq_nf" multiple accept=".pdf,.xml,image/*"></label>
@@ -141,8 +168,19 @@ async function formViagem(tela, v = null) {
       <label class="campo largo">Observações<textarea name="observacao" rows="2">${esc(v?.observacao || '')}</textarea></label></div>
       <p class="muted">Equipamentos em manutenção e motoristas com CNH vencida não aparecem para escolha. Ao iniciar a viagem, o sistema também confere o ASO do motorista.</p>
       <div class="acoes"><button class="btn prim">Salvar</button><a class="btn" href="javascript:history.back()">Cancelar</a></div></form>`;
+  let xmlArq = null;
+  $('#cte-xml').addEventListener('change', async ev => { const f = ev.target.files[0]; if (!f) return; const form = $('#f-via');
+    try { const c = lerXmlCte(await f.text()); xmlArq = f;
+      const put = (n, val, soVazio = false) => { if (val == null || val === '' || !form.elements[n]) return; if (soVazio && form.elements[n].value) return; form.elements[n].value = val; };
+      put('cte_chave', c.chave); put('cte_numero', c.numero); put('valor_frete', c.valor != null ? String(c.valor).replace('.', ',') : ''); put('nf_numero', c.nfs.join(', '));
+      put('origem', c.origem, true); put('destino', c.destino, true); put('peso_t', c.peso_t != null ? String(c.peso_t).replace('.', ',') : '', true);
+      if (c.tomador_doc) { const cli = cls.find(x => soDigitos(x.documento || '') === c.tomador_doc); if (cli) form.cliente_id.value = cli.id; }
+      form.cte_xml_json.value = JSON.stringify(c);
+      $('#cte-xml-ok').textContent = `CT-e ${c.numero} · ${brl(c.valor || 0)} · NF ${c.nfs.join(', ') || '—'}${c.tomador ? ' · tomador ' + c.tomador : ''} — confira e salve.`;
+    } catch (err) { xmlArq = null; ev.target.value = ''; aviso(err.message, true); } });
   $('#f-via').onsubmit = async e => { e.preventDefault(); const d = formDados(e.target);
     const chave = soDigitos(d.cte_chave || ''); if (chave && chave.length !== 44) return aviso(`A chave de acesso do CT-e tem 44 números (foram digitados ${chave.length}).`, true);
+    if (!chave && (d.saida_em || d.chegada_em)) return aviso('Informe a chave do CT-e (ou importe o XML): ela é obrigatória para a viagem sair ou ser lançada como realizada.', true);
     const saidaEm = d.saida_em ? new Date(d.saida_em) : null, chegadaEm = d.chegada_em ? new Date(d.chegada_em) : null, agora = Date.now() + 6e5;
     if (chegadaEm && !saidaEm) return aviso('Para lançar a chegada, informe também a saída realizada.', true);
     if ((saidaEm && saidaEm > agora) || (chegadaEm && chegadaEm > agora)) return aviso('Saída e chegada realizadas não podem ser no futuro.', true);
@@ -152,11 +190,13 @@ async function formViagem(tela, v = null) {
     if ((saidaEm || chegadaEm) && (!d.equipamento_id || !d.motorista_id)) return aviso('Para lançar saída/chegada, informe o equipamento e o motorista.', true);
     const kmS = d.km_saida ? Number(soDigitos(d.km_saida)) : null, kmC = d.km_chegada ? Number(soDigitos(d.km_chegada)) : null;
     if (kmS != null && kmC != null && kmC < kmS) return aviso('Km de chegada menor que o de saída.', true);
-    const stNovo = chegadaEm ? 'entregue' : saidaEm ? 'em_transito' : (v?.status || 'planejada');
-    const arqNf = [...(e.target.arq_nf?.files || [])], arqCte = [...(e.target.arq_cte?.files || [])];
+    const stNovo = v && VIA_REALIZADA.includes(v.status) && v.status !== 'entregue' ? v.status : chegadaEm ? 'entregue' : saidaEm ? 'em_transito' : (v?.status || 'planejada');
+    const arqNf = [...(e.target.arq_nf?.files || [])], arqCte = [...(e.target.arq_cte?.files || []), ...(xmlArq ? [xmlArq] : [])];
+    const cx = d.cte_xml_json ? JSON.parse(d.cte_xml_json) : null;
     const dados = { cliente_id: d.cliente_id || null, origem: d.origem, destino: d.destino, saida_prevista: d.saida_prevista ? new Date(d.saida_prevista).toISOString() : null, chegada_prevista: d.chegada_prevista ? new Date(d.chegada_prevista).toISOString() : null,
       equipamento_id: d.equipamento_id || null, motorista_id: d.motorista_id || null, carga: d.carga || null, peso_t: num(d.peso_t), valor_frete: num(d.valor_frete), documentos: d.documentos || null, centro_custo_id: d.centro_custo_id || null, observacao: d.observacao || null,
-      motoristas_apoio: [...e.target.querySelectorAll('input[name=apoio]:checked')].map(x => x.value).filter(x => x !== (d.motorista_id || null)),
+      motorista_entrega_id: d.motorista_entrega_id || (chegadaEm ? d.motorista_id || null : null),
+      ...(cx ? { cte_xml: cx, cte_emissao: cx.emissao || null } : {}),
       nf_numero: (d.nf_numero || '').trim() || null, cte_numero: (d.cte_numero || '').trim() || null, cte_chave: chave || null, mdfe_numero: (d.mdfe_numero || '').trim() || null,
       saida_em: saidaEm ? saidaEm.toISOString() : null, chegada_em: chegadaEm ? chegadaEm.toISOString() : null, km_saida: kmS, km_chegada: kmC, status: stNovo };
     await ocupado(e.submitter, async () => { try { let id = v?.id; if (v) await api.alterar('viagens', `id=eq.${id}`, dados); else [{ id }] = await api.inserir('viagens', dados);
@@ -178,12 +218,15 @@ rota('/operacao/viagens/ver/:id', async (tela, id) => {
   tela.innerHTML = `
     <div class="topo"><div><h1>${esc(v.numero)} · ${esc(v.origem)} → ${esc(v.destino)}</h1><p class="sub">${tagSt(ST_VIA, v.status)} · ${esc(v.cl?.nome || 'sem cliente')}</p></div>
       <div class="acoes">${(ed || souMot) && v.status === 'planejada' ? '<button class="btn prim" id="via-sair">Iniciar viagem</button>' : ''}${(ed || souMot) && v.status === 'em_transito' ? '<button class="btn prim" id="chegar">Registrar entrega</button>' : ''}
-        ${ed && ['planejada', 'em_transito', 'entregue'].includes(v.status) ? `<a class="btn" href="#/operacao/viagens/editar/${id}">${v.status === 'entregue' ? 'Corrigir dados / datas' : 'Editar'}</a>` : ''}${ed && ['planejada', 'em_transito'].includes(v.status) ? '<button class="btn perigo" id="cancelar">Cancelar</button>' : ''}${ed && v.ativo !== false ? '<button class="btn perigo" id="via-excluir" title="Para viagem lançada errada: sai das listas e relatórios, com motivo registrado">Excluir</button>' : ''}
+        ${ed && ['planejada', 'em_transito', 'entregue', 'em_conferencia'].includes(v.status) ? `<a class="btn" href="#/operacao/viagens/editar/${id}">${VIA_REALIZADA.includes(v.status) ? 'Corrigir dados / datas' : 'Editar'}</a>` : ''}${ed && ['planejada', 'em_transito'].includes(v.status) ? '<button class="btn perigo" id="cancelar">Cancelar</button>' : ''}${ed && v.ativo !== false ? '<button class="btn perigo" id="via-excluir" title="Para viagem lançada errada: sai das listas e relatórios, com motivo registrado">Excluir</button>' : ''}
         <button class="btn" id="ordem">Ordem de viagem</button><a class="btn" href="#/operacao/ocorrencias/nova?viagem=${id}">+ Ocorrência</a><a class="btn" href="#/operacao/viagens">Voltar</a></div></div>
     ${passo ? `<div class="cartao" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;border-left:5px solid var(--${passo[0] === 'azul' ? 'azul, #2F80ED' : 'ouro, #DDA936'})"><div style="flex:1;min-width:220px"><b style="font-size:16px">${passo[1]}</b><div class="muted">${passo[2]}</div></div>${passo[3]}</div>` : ''}
-    <div class="cartao"><div class="form">${[['Equipamento', v.eq && rotuloEq(v.eq)], ['Motorista', v.m?.nome], ['Outros motoristas', (v.motoristas_apoio || []).map(i => nomesMot[i]).filter(Boolean).join(', ') || null], ['Entregue por', v.motorista_entrega_id ? nomesMot[v.motorista_entrega_id] : null], ['Saída prevista', dataHoraBR(v.saida_prevista)], ['Chegada prevista', dataHoraBR(v.chegada_prevista)],
+    <div class="cartao"><div class="form">${[['Equipamento', v.eq && rotuloEq(v.eq)], ['Motorista no carregamento', v.m?.nome], ['Motorista na descarga', VIA_REALIZADA.includes(v.status) ? (v.motorista_entrega_id ? nomesMot[v.motorista_entrega_id] || v.m?.nome : v.m?.nome) : null], ['Saída prevista', dataHoraBR(v.saida_prevista)], ['Chegada prevista', dataHoraBR(v.chegada_prevista)],
       ['Saiu em', dataHoraBR(v.saida_em)], ['Chegou em', dataHoraBR(v.chegada_em)], ['Km', [v.km_saida != null && 'saída ' + v.km_saida.toLocaleString('pt-BR'), v.km_chegada != null && 'chegada ' + v.km_chegada.toLocaleString('pt-BR'), v.km_chegada && v.km_saida && '= ' + (v.km_chegada - v.km_saida).toLocaleString('pt-BR') + ' km'].filter(Boolean).join(' · ')],
-      ['Carga', [v.carga, v.peso_t && v.peso_t + ' t'].filter(Boolean).join(' · ')], ['Nota fiscal', v.nf_numero], ['CT-e', v.cte_numero], ['Chave do CT-e', v.cte_chave], ['MDF-e', v.mdfe_numero], ['Outros documentos', v.documentos], ['Frete', v.valor_frete && brl(v.valor_frete)], ['Centro de custo', v.cc?.nome], ['Observações', v.observacao], ['Cancelamento', v.motivo_cancelamento]]
+      ['Carga', [v.carga, v.peso_t && (Number(v.peso_t).toLocaleString('pt-BR') + ' t' + (v.peso_conferido ? ' (balança do cliente)' : ' (provisório, até a conferência)'))].filter(Boolean).join(' · ')],
+      ['Peso bruto / tara', v.peso_bruto_t != null ? `${Number(v.peso_bruto_t).toLocaleString('pt-BR')} t / ${Number(v.tara_t || 0).toLocaleString('pt-BR')} t` : null], ['Volume', v.volume_m3 != null ? Number(v.volume_m3).toLocaleString('pt-BR') + ' m³' : null],
+      ['Projeto / talhão', [v.projeto, v.talhao].filter(Boolean).join(' · ') || null], ['Distância', v.dist_total_km != null ? `${Number(v.dist_total_km).toLocaleString('pt-BR')} km (asfalto ${Number(v.dist_asfalto_km || 0).toLocaleString('pt-BR')} · chão ${Number(v.dist_chao_km || 0).toLocaleString('pt-BR')})` : null],
+      ['Ordem de busca', v.ordem_busca || null], ['Nota fiscal', v.nf_numero], ['CT-e', v.cte_numero], ['Chave do CT-e', v.cte_chave], ['MDF-e', v.mdfe_numero], ['Outros documentos', v.documentos], ['Frete', v.valor_frete && brl(v.valor_frete)], ['Centro de custo', v.cc?.nome], ['Observações', v.observacao], ['Cancelamento', v.motivo_cancelamento]]
       .filter(([, x]) => x !== null && x !== undefined).map(([k, x]) => `<div><div class="muted">${k}</div><b>${x ? esc(x) : '—'}</b></div>`).join('')}<div class="largo" id="anx-via"></div></div></div>
     <div class="cartao"><h2>Ocorrências</h2>${ocs.length ? `<ul class="lista-simples">${ocs.map(o => `<li class="clicavel" onclick="location.hash='#/operacao/ocorrencias/ver/${o.id}'"><span><b>${esc(o.numero)}</b> ${esc(TIPO_OCO[o.tipo] || o.tipo)} · ${dataHoraBR(o.data_hora)}<div class="muted">${esc(o.descricao)}</div></span>${tagSt(ST_OCO, o.status)}</li>`).join('')}</ul>` : '<div class="vazio">Nenhuma ocorrência.</div>'}</div>
     <div class="cartao"><h2>Jornada registrada na viagem</h2>${evs.length ? `<ul class="lista-simples">${evs.map(e => `<li><span>${EV_JOR[e.tipo][1]} ${EV_JOR[e.tipo][0]}${e.local ? ' · ' + esc(e.local) : ''}</span><span class="muted">${dataHoraBR(e.data_hora)}</span></li>`).join('')}</ul>` : '<div class="vazio">O motorista ainda não registrou eventos vinculados a esta viagem.</div>'}</div>`;

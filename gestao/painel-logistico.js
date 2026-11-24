@@ -621,11 +621,11 @@ rota('/operacao/viagens/painel', async tela => {
   let vs, dias;
   try {
     [vs, dias] = await Promise.all([
-      api.listar('viagens', `ativo=eq.true&status=neq.cancelada&or=(and(status.eq.entregue,chegada_em.gte.${iniTs},chegada_em.lte.${fimTs}),and(status.in.(planejada,em_transito),or(saida_em.lte.${fimTs},saida_prevista.lte.${fimTs},saida_prevista.is.null)))&${sel}&order=chegada_em.desc.nullsfirst,saida_prevista.desc&limit=2000`),
+      api.listar('viagens', `ativo=eq.true&status=neq.cancelada&or=(and(status.in.(entregue,em_conferencia,conferida,faturada,recebida),chegada_em.gte.${iniTs},chegada_em.lte.${fimTs}),and(status.in.(planejada,em_transito),or(saida_em.lte.${fimTs},saida_prevista.lte.${fimTs},saida_prevista.is.null)))&${sel}&order=chegada_em.desc.nullsfirst,saida_prevista.desc&limit=2000`),
       api.rpc('viagens_meta_dias', { p_ini: ini, p_fim: fim })]);
   } catch (err) { falha(err); return; }
   const diaBR = ts => ts ? new Date(ts).toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' }) : null;
-  const feitas = vs.filter(v => v.status === 'entregue'), abertas = vs.filter(v => v.status !== 'entregue');
+  const REAL_ = ['entregue', 'em_conferencia', 'conferida', 'faturada', 'recebida'], feitas = vs.filter(v => REAL_.includes(v.status)), abertas = vs.filter(v => !REAL_.includes(v.status));
   const fat = feitas.reduce((t, v) => t + Number(v.valor_frete || 0), 0), fatAberto = abertas.reduce((t, v) => t + Number(v.valor_frete || 0), 0);
   const porDia = (dias || []).map(d => ({ ...d, feitas: feitas.filter(v => diaBR(v.chegada_em) === d.dia).length, fat: feitas.filter(v => diaBR(v.chegada_em) === d.dia).reduce((t, v) => t + Number(v.valor_frete || 0), 0) }));
   const ateHoje = porDia.filter(d => d.dia <= hoje);
