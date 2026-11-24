@@ -407,6 +407,7 @@ const MENU = [
   ['POPs e documentos', '#/qualidade/documentos', null, 'livro_ok', 'qual_docs_ler', true],
   ['grupo', 'Operação', 'caminhao'],
   ['Viagens', '#/operacao/viagens', [...P_OP, 'financeiro', 'manutencao'], 'rota', 'viagens_em_transito', true],
+  ['Fechamento com o cliente', '#/operacao/fechamentos', [...P_OP, 'financeiro'], 'calendario_ok', 'vf_operacao', true],
   ['Controle de jornada', '#/operacao/jornadas/creare', [...P_OP, 'rh', 'dp'], 'prancheta', 'jornada_alertas', true],
   ['Ocorrências e multas', '#/operacao/ocorrencias', [...P_OP, 'rh', 'dp', 'financeiro'], 'cone', 'multas_indicar', true],
   ['grupo', 'Controle Operacional', 'monitor'],
@@ -452,6 +453,7 @@ const MENU = [
   ['Painel do financeiro', '#/financeiro/painel', P_FIN, 'painel', null, true],
   ['Contas a pagar', '#/financeiro/pagar', [...P_FIN, 'comprador'], 'cartao', 'sem_comprovante', true],
   ['Contas a receber', '#/financeiro/receber', P_FIN, 'receber', null, true],
+  ['Validar fechamento de viagens', '#/operacao/fechamentos?etapa=no_financeiro', P_FIN, 'checklist', 'vf_financeiro', true],
   ['Despesas e reembolsos', '#/financeiro/reembolsos', [...P_FIN, 'aprovador'], 'recibo', 'reembolsos_a_pagar', true],
   ['Adiantamentos', '#/financeiro/adiantamentos', P_FIN, 'dinheiro', 'prestacao_vencida', true],
   ['Fundo Fixo', '#/financeiro/fundo', P_FIN, 'moedas', null, true],
@@ -655,6 +657,8 @@ function ligarMenu(raiz) {
 let _ultimoMelhor = null;
 async function desenharCasca() {
   const pend = {};
+  // abre os fechamentos de viagens dos períodos encerrados (dias 06 e 21) e avisa atrasos — no máximo a cada 30 min
+  if (Date.now() - (desenharCasca._vf || 0) > 18e5) { desenharCasca._vf = Date.now(); await api.rpc('vf_gerar').catch(() => null); }
   try { (await api.rpc('minhas_pendencias')).forEach(p => (pend[p.tipo] = Number(p.quantidade))); } catch {}
   try { pend.acoes_pendentes = (await api.rpc('minhas_acoes')).length; } catch {}
   pend.aprovar = (pend.aprovar || 0) + (pend.vagas_aprovar || 0);

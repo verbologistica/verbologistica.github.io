@@ -1,0 +1,219 @@
+// ===================== Fechamento de viagens com o cliente =====================
+// Períodos 06–20 (aberto no dia 21) e 21–05 (aberto no dia 06). O sistema abre sozinho e avisa (vf_gerar).
+// Operação importa a planilha do cliente e confere → fecha e envia ao financeiro → financeiro decide divergências e valida.
+// Viagem validada fica "Conferida" e travada; só muda por estorno (pedido pela operação, aprovado pelo financeiro/administrador).
+const ST_VF = { aberto: ['Aguardando planilha do cliente', 'amarelo'], em_conferencia: ['Operação conferindo', 'azul'], no_financeiro: ['Com o financeiro', 'azul'], validado: ['Validado', 'verde'] };
+const SIT_VFI = { ok: ['Confere', 'verde'], divergente: ['Divergência', 'vermelho'], sem_viagem: ['Não está no sistema', 'vermelho'], fora_planilha: ['Não veio na planilha', 'amarelo'] };
+const vfOp = () => tem('administrador', 'operacao'), vfFin = () => tem('administrador', 'financeiro');
+const vfPer = f => `${dataBR(f.periodo_ini)} a ${dataBR(f.periodo_fim)}`;
+const vfAtrasado = f => ['aberto', 'em_conferencia'].includes(f.status) && f.prazo < hojeISO();
+
+// ---------- leitura da planilha do cliente (nomes de coluna das abas MS e PR) ----------
+const vfNorm = s => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+const VF_COLS = { ordem_busca: ['ordem_busca', 'ordem_de_busca'], nf: ['dcr_nota_fiscal', 'nota_fiscal', 'nf', 'numero_nf'],
+  chegada: ['data_chegada_balanca_com_hora', 'data_chegada_balanca'], saida: ['data_saida_patio_com_hora', 'data_saida_patio'],
+  tipo_conjunto: ['dcr_tipo_conjunto', 'tipo_de_conjunto', 'tipo_conjunto'], placa: ['dcr_equipamento_cavalo', 'equipamento_cavalo', 'placa', 'placa_cavalo'],
+  peso_bruto: ['peso_bruto'], tara: ['tara'], peso_liquido: ['peso_liquido'], volume: ['vlr_volume', 'volume'], projeto: ['nom_projeto', 'projeto'], talhao: ['cd_talhao', 'talhao'],
+  dist_total: ['vlr_distancia', 'distancia_total'], dist_asfalto: ['vlr_distancia_asfalto', 'distancia_asfalto'], dist_chao: ['vlr_distancia_chao', 'distancia_chao'],
+  regiao: ['dcr_regiao', 'regional', 'regiao'], cte: ['cte', 'numero_cte', 'n_cte'], chave: ['chave_de_acesso', 'chave_acesso', 'chave_cte'], valor: ['valor_cte', 'valor_do_cte', 'valor_frete'] };
+const VF_NUM = ['peso_bruto', 'tara', 'peso_liquido', 'volume', 'dist_total', 'dist_asfalto', 'dist_chao', 'valor'];
+const vfNum = v => { if (v == null || v === '') return null; if (typeof v === 'number') return v; const s = String(v).trim().replace(/[^\d,.-]/g, '');
+  const n = Number(s.includes(',') ? s.replace(/\./g, '').replace(',', '.') : s); return Number.isFinite(n) ? n : null; };
+const vfData = v => { if (v == null || v === '') return null;
+  if (typeof v === 'number') return new Date(Math.round((v - 25569) * 86400) * 1000).toISOString().slice(0, 19);   // número de série do Excel (hora local do cliente)
+  const s = String(v).trim(), m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})(?:\D+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+  if (m) { const a = m[3].length === 2 ? '20' + m[3] : m[3]; return `${a}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}T${(m[4] || '0').padStart(2, '0')}:${m[5] || '00'}:${m[6] || '00'}`; }
+  return /^\d{4}-\d{2}-\d{2}/.test(s) ? s.replace(' ', 'T').slice(0, 19) : null; };
+async function vfLerPlanilha(arq) {
+  await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');
+  const wb = XLSX.read(await arq.arrayBuffer(), { type: 'array' }), linhas = [], abas = [];
+  for (const nome of wb.SheetNames) {
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[nome], { header: 1, raw: true, defval: null });
+    let hi = -1, mapa = null;
+    for (let i = 0; i < Math.min(rows.length, 6) && hi < 0; i++) {
+      const h = (rows[i] || []).map(vfNorm), m = {};
+      for (const [k, al] of Object.entries(VF_COLS)) { const j = h.findIndex(x => al.includes(x)); if (j >= 0) m[k] = j; }
+      if ((m.nf != null || m.chave != null) && Object.keys(m).length >= 4) { hi = i; mapa = m; }
+    }
+    if (hi < 0) continue;
+    let n = 0;
+    for (const r of rows.slice(hi + 1)) {
+      const o = {}; for (const [k, j] of Object.entries(mapa)) o[k] = r[j];
+      if ((o.nf == null || o.nf === '') && (o.chave == null || o.chave === '')) continue;
+      for (const k of VF_NUM) o[k] = vfNum(o[k]);
+      o.chegada = vfData(o.chegada); o.saida = vfData(o.saida);
+      for (const k of ['ordem_busca', 'nf', 'tipo_conjunto', 'placa', 'projeto', 'talhao', 'regiao', 'cte', 'chave']) o[k] = o[k] == null ? null : String(o[k]).trim();
+      o.aba = nome; linhas.push(o); n++;
+    }
+    abas.push(`${nome}: ${n}`);
+  }
+  if (!linhas.length) throw new Error('Não achei viagens na planilha. Confira se é o relatório do cliente (colunas de nota fiscal, chave de acesso, peso e valor do CT-e).');
+  return { linhas, abas };
+}
+
+// ---------- lista ----------
+rota('/operacao/fechamentos', async tela => {
+  await api.rpc('vf_gerar').catch(() => null);
+  const et = estado.params.get('etapa') || '';
+  let fs = await api.listar('viagem_fechamentos', 'select=*,cl:clientes(nome)&order=periodo_ini.desc,criado_em.desc&limit=200');
+  const vs = fs.length ? await api.listar('viagens', `fechamento_id=in.(${fs.map(f => f.id).join(',')})&select=fechamento_id,valor_frete`).catch(() => []) : [];
+  const tot = {}; vs.forEach(v => { const t = tot[v.fechamento_id] ||= { n: 0, v: 0 }; t.n++; t.v += Number(v.valor_frete || 0); });
+  const cont = k => fs.filter(f => f.status === k).length;
+  if (et) fs = fs.filter(f => et.split(',').includes(f.status));
+  tela.innerHTML = `
+    <div class="topo"><div><h1>Fechamento de viagens com o cliente</h1><p class="sub">Períodos de 06 a 20 e de 21 a 05 · o sistema abre o fechamento sozinho nos dias 21 e 06 e avisa a operação</p></div>
+      <div class="acoes"><a class="btn" href="#/operacao/viagens">Viagens</a></div></div>
+    <div class="grade" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">
+      <a class="cartao kpi ${cont('aberto') ? 'alerta' : ''}" href="#/operacao/fechamentos?etapa=aberto"><div class="n">${cont('aberto')}</div><div class="r">aguardando a planilha do cliente</div></a>
+      <a class="cartao kpi" href="#/operacao/fechamentos?etapa=em_conferencia"><div class="n">${cont('em_conferencia')}</div><div class="r">com a operação conferindo</div></a>
+      <a class="cartao kpi ${cont('no_financeiro') ? 'alerta' : ''}" href="#/operacao/fechamentos?etapa=no_financeiro"><div class="n">${cont('no_financeiro')}</div><div class="r">com o financeiro para validar</div></a>
+      <a class="cartao kpi" href="#/operacao/fechamentos?etapa=validado"><div class="n">${cont('validado')}</div><div class="r">validados</div></a></div>
+    <div class="cartao" style="padding:10px 14px"><b>Como funciona:</b> <span class="tag amarelo">Aguardando planilha</span> → operação <b>importa a planilha do cliente</b> e confere →
+      <span class="tag azul">Com o financeiro</span> → financeiro decide as divergências e <b>valida</b> → <span class="tag verde">Validado</span> (viagens ficam <b>Conferida</b> e travadas).
+      <div class="muted" style="margin-top:4px">Peso, volume, projeto, talhão, distâncias e horário da balança vêm da planilha do cliente automaticamente. Diferença de valor de até R$ 0,05 é aceita sozinha.</div></div>
+    <form class="filtros" id="filtros"><select name="etapa"><option value="">Todas as situações</option>${Object.entries(ST_VF).map(([k, [t]]) => `<option value="${k}" ${k === et ? 'selected' : ''}>${t}</option>`).join('')}</select><button class="btn">Filtrar</button></form>
+    <div class="cartao">${fs.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Período</th><th>Cliente</th><th class="num">Viagens</th><th class="num">Frete</th><th>Prazo da operação</th><th>Situação</th></tr></thead><tbody>
+      ${fs.map(f => `<tr class="clicavel" onclick="location.hash='#/operacao/fechamentos/ver/${f.id}'"><td data-r="Período"><b>${vfPer(f)}</b></td><td data-r="Cliente">${esc(f.cl?.nome || 'Sem cliente')}</td>
+        <td data-r="Viagens" class="num">${tot[f.id]?.n || 0}</td><td data-r="Frete" class="num">${brl(tot[f.id]?.v || 0)}</td>
+        <td data-r="Prazo">${dataBR(f.prazo)}${vfAtrasado(f) ? ' <span class="tag vermelho">atrasado</span>' : ''}</td><td data-r="Situação">${tagSt(ST_VF, f.status)}</td></tr>`).join('')}</tbody></table></div>`
+      : '<div class="vazio">Nenhum fechamento. O primeiro é aberto pelo sistema no dia 21 (período de 06 a 20) ou no dia 06 (período de 21 a 05).</div>'}</div>`;
+  $('#filtros').onsubmit = e => { e.preventDefault(); const v = e.target.etapa.value; location.hash = '#/operacao/fechamentos' + (v ? '?etapa=' + v : ''); };
+});
+
+// ---------- detalhe ----------
+const vfFmt = (campo, x) => x == null || x === '' ? '—' : campo === 'valor_frete' ? brl(x) : campo === 'chegada_em' ? dataHoraBR(x) : esc(String(x));
+rota('/operacao/fechamentos/ver/:id', async (tela, id) => {
+  const [f] = await api.listar('viagem_fechamentos', `id=eq.${id}&select=*,cl:clientes(nome,documento)`);
+  if (!f) { tela.innerHTML = '<div class="cartao vazio">Fechamento não encontrado.</div>'; return; }
+  const its = await api.listar('viagem_fechamento_itens', `fechamento_id=eq.${id}&order=linha.asc.nullslast,criado_em.asc`);
+  const idsIt = [...new Set(its.map(i => i.viagem_id).filter(Boolean))];
+  const vs = await api.listar('viagens', `or=(fechamento_id.eq.${id}${idsIt.length ? `,id.in.(${idsIt.join(',')})` : ''})&select=id,numero,nf_numero,cte_numero,cte_chave,chegada_em,valor_frete,peso_t,status,equipamento_id,eq:equipamentos(codigo_frota)&order=chegada_em`);
+  const V = Object.fromEntries(vs.map(v => [v.id, v]));
+  const op = vfOp(), fin = vfFin(), st = f.status;
+  const n = k => its.filter(i => i.situacao === k).length, pend = its.filter(i => i.situacao === 'divergente' && !i.decisao).length;
+  const daPlanilha = its.filter(i => i.dados), somaCli = daPlanilha.reduce((a, i) => a + Number(i.dados.valor || 0), 0), pesoCli = daPlanilha.reduce((a, i) => a + Number(i.dados.peso_liquido || 0), 0);
+  const somaSis = its.filter(i => i.viagem_id && i.situacao !== 'fora_planilha').reduce((a, i) => a + Number(V[i.viagem_id]?.valor_frete || 0), 0);
+  const noFech = vs.filter(v => v.status !== 'entregue' || its.some(i => i.viagem_id === v.id));
+  const passos = [['aberto', 'Planilha do cliente'], ['em_conferencia', 'Conferência da operação'], ['no_financeiro', 'Validação do financeiro'], ['validado', 'Validado']];
+  const ix = passos.findIndex(p => p[0] === st);
+  const ult = k => [...(f.historico || [])].reverse().find(h => h.acao?.startsWith(k));
+  tela.innerHTML = `
+    <div class="topo"><div><h1>Fechamento ${vfPer(f)}</h1><p class="sub">${esc(f.cl?.nome || 'Sem cliente')} · prazo da operação ${dataBR(f.prazo)}${vfAtrasado(f) ? ' <span class="tag vermelho">atrasado</span>' : ''} · ${tagSt(ST_VF, st)}</p></div>
+      <div class="acoes">${op && ['aberto', 'em_conferencia'].includes(st) ? `<button class="btn ${st === 'aberto' ? 'prim' : ''}" id="vf-imp">📥 ${st === 'aberto' ? 'Importar planilha do cliente' : 'Importar planilha de novo'}</button><input type="file" id="vf-arq" accept=".xlsx,.xls,.csv" hidden>` : ''}
+        ${op && st === 'em_conferencia' ? '<button class="btn prim" id="vf-env">Fechar e enviar ao financeiro</button>' : ''}
+        ${fin && st === 'no_financeiro' ? '<button class="btn" id="vf-dev">Devolver à operação</button><button class="btn prim" id="vf-val">✓ Validar fechamento</button>' : ''}
+        ${st === 'validado' && fin ? '<button class="btn perigo" id="vf-est">Estornar fechamento</button>' : st === 'validado' && op ? '<button class="btn" id="vf-pest">Pedir estorno</button>' : ''}
+        ${its.length ? '<button class="btn" id="vf-pdf">PDF da conferência</button>' : ''}<a class="btn" href="#/operacao/fechamentos">Voltar</a></div></div>
+    <div class="cartao" style="display:flex;gap:6px;flex-wrap:wrap;padding:10px 14px">${passos.map(([k, t], i) => `<div style="flex:1;min-width:150px;padding:8px 10px;border-radius:8px;${i < ix ? 'background:#E8F4EC;color:#1E8E57' : i === ix ? 'background:#F6EFDC;font-weight:700' : 'background:#F3F4F5;color:#8A9095'}">${i < ix ? '✓ ' : i + 1 + '. '}${t}</div>`).join('')}</div>
+    ${f.devolucao_motivo && st === 'em_conferencia' ? `<div class="cartao" style="border-left:5px solid #C62828"><b>Devolvido pelo financeiro:</b> ${esc(f.devolucao_motivo)}</div>` : ''}
+    ${st === 'aberto' ? `<div class="cartao" style="border-left:5px solid #DDA936"><b>Próximo passo (operação):</b> importe o relatório que o cliente enviou (Excel). O sistema casa cada linha com a viagem pela <b>chave do CT-e</b> (depois pela nota fiscal e, por último, placa + data), confere todos os campos e atualiza peso, volume, projeto, talhão, distâncias e horário da balança.</div>` : ''}
+    ${st === 'em_conferencia' && n('sem_viagem') ? `<div class="cartao" style="border-left:5px solid #C62828"><b>${n('sem_viagem')} viagem(ns) da planilha não estão no sistema.</b> Lance essas viagens (com o XML do CT-e) e importe a planilha de novo. Sem isso o fechamento não pode ser enviado ao financeiro.</div>` : ''}
+    ${st === 'no_financeiro' && fin ? `<div class="cartao" style="border-left:5px solid #DDA936"><b>Próximo passo (financeiro):</b> ${pend ? `decida as <b>${pend}</b> divergência(s) abaixo (aceitar o dado do cliente ou contestar) e valide.` : 'tudo decidido: valide o fechamento.'} Viagem contestada ou que não veio na planilha volta para o próximo fechamento.</div>` : ''}
+    ${its.length ? `<div class="grade" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr))">
+      <div class="cartao kpi"><div class="n">${daPlanilha.length}</div><div class="r">viagens na planilha${f.planilha_nome ? ` <span class="muted">(${esc(f.planilha_nome)})</span>` : ''}</div></div>
+      <div class="cartao kpi"><div class="n">${n('ok')}</div><div class="r">conferem</div></div>
+      <div class="cartao kpi ${n('divergente') ? 'alerta' : ''}"><div class="n">${n('divergente')}</div><div class="r">com divergência${n('divergente') ? ` · ${pend} sem decisão` : ''}</div></div>
+      <div class="cartao kpi ${n('sem_viagem') ? 'alerta' : ''}"><div class="n">${n('sem_viagem')}</div><div class="r">não estão no sistema</div></div>
+      <div class="cartao kpi"><div class="n">${n('fora_planilha')}</div><div class="r">do sistema não vieram na planilha</div></div></div>
+    <div class="cartao"><div class="form">
+      <div><div class="muted">Valor pelo cliente</div><b>${brl(somaCli)}</b></div><div><div class="muted">Valor no sistema (viagens casadas)</div><b>${brl(somaSis)}</b></div>
+      <div><div class="muted">Diferença</div><b style="color:${Math.abs(somaCli - somaSis) > 0.05 ? '#C62828' : '#1E8E57'}">${brl(somaCli - somaSis)}</b></div><div><div class="muted">Peso líquido (balança do cliente)</div><b>${pesoCli.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} t</b></div></div></div>` : ''}
+    <div class="cartao"><h2>${its.length ? 'Conferência linha a linha' : 'Viagens do período no sistema'}</h2>
+      ${its.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Linha</th><th>Viagem</th><th>NF</th><th>CT-e</th><th>Placa</th><th>Chegada (balança)</th><th class="num">Peso líq.</th><th class="num">Valor cliente</th><th>Situação</th><th>O que difere</th><th>Decisão</th></tr></thead><tbody>
+        ${its.map(i => { const v = V[i.viagem_id], d = i.dados || {}, dvs = (i.divergencias || []);
+          return `<tr><td data-r="Linha">${i.linha ?? '—'}</td><td data-r="Viagem">${v ? `<a href="#/operacao/viagens/ver/${v.id}"><b>${esc(v.numero)}</b></a> <span class="muted">${esc(v.eq?.codigo_frota || '')}</span>` : '—'}${i.casou_por ? `<div class="muted" style="font-size:11px">pela ${esc(i.casou_por)}</div>` : ''}</td>
+            <td data-r="NF">${esc(d.nf || v?.nf_numero || '—')}</td><td data-r="CT-e">${esc(d.cte || v?.cte_numero || '—')}</td><td data-r="Placa">${esc(d.placa || '—')}</td>
+            <td data-r="Chegada">${d.chegada ? dataHoraBR(d.chegada) : v?.chegada_em ? dataHoraBR(v.chegada_em) : '—'}</td><td data-r="Peso líq." class="num">${d.peso_liquido != null ? Number(d.peso_liquido).toLocaleString('pt-BR') + ' t' : '—'}</td>
+            <td data-r="Valor cliente" class="num">${d.valor != null ? brl(d.valor) : '—'}</td><td data-r="Situação">${tagSt(SIT_VFI, i.situacao)}</td>
+            <td data-r="O que difere">${dvs.length ? dvs.map(x => `<div${x.auto ? ' class="muted"' : ''}>${esc(x.rotulo)}: ${vfFmt(x.campo, x.sistema)} → <b>${vfFmt(x.campo, x.cliente)}</b>${x.auto ? ' <span class="tag">ajustado</span>' : ''}</div>`).join('') : '—'}</td>
+            <td data-r="Decisão">${i.decisao ? `<span class="tag ${i.decisao === 'aceitar' ? 'verde' : 'vermelho'}">${i.decisao === 'aceitar' ? 'Aceito o dado do cliente' : 'Contestado'}</span>${i.decisao_obs ? `<div class="muted">${esc(i.decisao_obs)}</div>` : ''}${fin && st === 'no_financeiro' ? ` <button class="btn peq" data-dec="${i.id}">Mudar</button>` : ''}`
+              : i.situacao === 'divergente' && fin && st === 'no_financeiro' ? `<button class="btn ok peq" data-ac="${i.id}">Aceitar</button> <button class="btn perigo peq" data-dec="${i.id}">Contestar</button>`
+              : i.situacao === 'fora_planilha' ? '<span class="muted">vai para o próximo fechamento</span>' : '—'}</td></tr>`; }).join('')}</tbody></table></div>`
+      : noFech.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Viagem</th><th>NF</th><th>CT-e</th><th>Chegada</th><th class="num">Frete</th><th>Situação</th></tr></thead><tbody>
+        ${noFech.map(v => `<tr class="clicavel" onclick="location.hash='#/operacao/viagens/ver/${v.id}'"><td data-r="Viagem"><b>${esc(v.numero)}</b> <span class="muted">${esc(v.eq?.codigo_frota || '')}</span></td><td data-r="NF">${esc(v.nf_numero || '—')}</td><td data-r="CT-e">${esc(v.cte_numero || '—')}</td>
+          <td data-r="Chegada">${dataHoraBR(v.chegada_em) || '—'}</td><td data-r="Frete" class="num">${brl(v.valor_frete || 0)}</td><td data-r="Situação">${tagSt(ST_VIA, v.status)}</td></tr>`).join('')}</tbody></table></div>
+        <p class="muted">Total: ${noFech.length} viagem(ns) · ${brl(noFech.reduce((a, v) => a + Number(v.valor_frete || 0), 0))}</p>` : '<div class="vazio">Nenhuma viagem neste fechamento.</div>'}</div>
+    <div class="cartao"><h2>Histórico</h2>${(f.historico || []).length ? `<ul class="lista-simples">${[...f.historico].reverse().map(h => `<li><span><b>${esc(h.acao)}</b>${h.obs ? ` · ${esc(h.obs)}` : ''}<div class="muted">${dataHoraBR(h.em)}${h.nome ? ' · ' + esc(h.nome) : ''}</div></span></li>`).join('')}</ul>` : '<div class="muted">—</div>'}
+      <div id="anx-vf" style="margin-top:8px"></div></div>`;
+  htmlAnexos('viagem_fechamento', id).then(h => { const el = $('#anx-vf'); if (el) el.innerHTML = h; }).catch(() => {});
+
+  // importar planilha
+  $('#vf-imp')?.addEventListener('click', () => $('#vf-arq').click());
+  $('#vf-arq')?.addEventListener('change', async ev => { const arq = ev.target.files[0]; ev.target.value = ''; if (!arq) return;
+    try { const { linhas, abas } = await vfLerPlanilha(arq);
+      const dts = linhas.map(l => l.chegada).filter(Boolean).sort(), fora = linhas.filter(l => l.chegada && (l.chegada.slice(0, 10) < f.periodo_ini || l.chegada.slice(0, 10) > f.periodo_fim)).length;
+      const ok = await modal(`<form><h2>📥 Importar planilha do cliente</h2><p><b>${esc(arq.name)}</b> · ${linhas.length} viagem(ns) lida(s) <span class="muted">(${esc(abas.join(' · '))})</span></p>
+        <p>Chegadas de ${dts.length ? dataHoraBR(dts[0]) : '—'} a ${dts.length ? dataHoraBR(dts.at(-1)) : '—'} · valor total ${brl(linhas.reduce((a, l) => a + Number(l.valor || 0), 0))} · peso líquido ${linhas.reduce((a, l) => a + Number(l.peso_liquido || 0), 0).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} t</p>
+        ${fora ? `<p class="muted">⚠️ ${fora} linha(s) com chegada fora do período ${vfPer(f)}: o sistema procura a viagem mesmo assim.</p>` : ''}
+        ${st === 'em_conferencia' ? '<p class="muted">A conferência anterior é substituída (fica guardada no backup).</p>' : ''}
+        <p class="muted">O peso, volume, projeto, talhão, distâncias e horário da balança das viagens encontradas passam a ser os do cliente.</p>
+        <div class="rodape"><button type="button" class="btn" data-fechar>Cancelar</button><button class="btn prim">Importar e conferir</button></div></form>`);
+      if (!ok) return;
+      const r = await api.rpc('vf_importar', { p_fid: id, p_linhas: linhas, p_arquivo: arq.name });
+      await anexar('viagem_fechamento', id, [arq], 'Planilha do cliente').catch(() => {});
+      aviso(`Conferido: ${r.ok} ok · ${r.divergente} com divergência · ${r.sem_viagem} fora do sistema · ${r.fora_planilha} fora da planilha.`); navegar();
+    } catch (err) { falha(err); } });
+
+  $('#vf-env')?.addEventListener('click', e => ocupado(e.target, async () => {
+    if (n('sem_viagem')) return aviso('Lance as viagens que faltam no sistema e importe a planilha de novo antes de fechar.', true);
+    if (!await confirmar(`Fechar a conferência e enviar ao financeiro?${n('fora_planilha') ? ` ${n('fora_planilha')} viagem(ns) que não vieram na planilha voltam para o próximo fechamento quando o financeiro validar.` : ''}`, { botao: 'Enviar ao financeiro' })) return;
+    try { await api.rpc('vf_enviar', { p_fid: id }); aviso('Enviado ao financeiro.'); navegar(); } catch (err) { falha(err); } }));
+
+  $$('[data-ac]', tela).forEach(b => b.onclick = () => ocupado(b, async () => { try { await api.rpc('vf_decidir', { p_item: b.dataset.ac, p_decisao: 'aceitar' }); navegar(); } catch (err) { falha(err); } }));
+  $$('[data-dec]', tela).forEach(b => b.onclick = async () => {
+    const r = await modal(`<form><h2>Decisão sobre a divergência</h2><div class="form">
+      <label class="campo largo">Decisão<select name="dec"><option value="contestar">Contestar com o cliente (a viagem volta para o próximo fechamento)</option><option value="aceitar">Aceitar o dado do cliente (o sistema é corrigido)</option></select></label>
+      <label class="campo largo">Motivo / observação<textarea name="obs" placeholder="Obrigatório para contestar"></textarea></label></div>
+      <div class="rodape"><button type="button" class="btn" data-fechar>Cancelar</button><button class="btn prim">Salvar</button></div></form>`, { validar: d => d.dec === 'contestar' && !d.obs ? 'Informe o motivo da contestação.' : null });
+    if (!r) return; try { await api.rpc('vf_decidir', { p_item: b.dataset.dec, p_decisao: r.dec, p_obs: r.obs || null }); navegar(); } catch (err) { falha(err); } });
+
+  $('#vf-dev')?.addEventListener('click', async () => { const m = await confirmar('Devolver o fechamento à operação?', { comMotivo: true, botao: 'Devolver' }); if (!m) return;
+    try { await api.rpc('vf_devolver', { p_fid: id, p_motivo: m }); aviso('Devolvido à operação.'); navegar(); } catch (err) { falha(err); } });
+  $('#vf-val')?.addEventListener('click', e => ocupado(e.target, async () => {
+    if (pend) return aviso(`Decida as ${pend} divergência(s) antes de validar.`, true);
+    if (!await confirmar(`Validar o fechamento ${vfPer(f)}? As viagens aceitas ficam "Conferida" e travadas; contestadas e as que não vieram na planilha voltam para o próximo fechamento.`, { botao: 'Validar' })) return;
+    try { const r = await api.rpc('vf_validar', { p_fid: id }); aviso(`Validado: ${r.conferidas} viagem(ns) conferida(s)${r.voltaram ? `, ${r.voltaram} voltaram para o próximo fechamento` : ''}.`); navegar(); } catch (err) { falha(err); } }));
+  $('#vf-pest')?.addEventListener('click', async () => { const m = await confirmar('Pedir estorno deste fechamento ao financeiro?', { comMotivo: true, botao: 'Pedir estorno' }); if (!m) return;
+    try { await api.rpc('vf_pedir_estorno', { p_fid: id, p_motivo: m }); aviso('Pedido de estorno enviado ao financeiro.'); navegar(); } catch (err) { falha(err); } });
+  $('#vf-est')?.addEventListener('click', async () => { const m = await confirmar('Estornar o fechamento? As viagens voltam para "Em conferência" e o fechamento volta para a operação.', { comMotivo: true, botao: 'Estornar' }); if (!m) return;
+    try { await api.rpc('vf_estornar', { p_fid: id, p_motivo: m }); aviso('Fechamento estornado.'); navegar(); } catch (err) { falha(err); } });
+  $('#vf-pdf')?.addEventListener('click', e => ocupado(e.target, () => vfPdf(f, its, V, { somaCli, somaSis, pesoCli, n, ult }).catch(falha)));
+});
+
+// ---------- PDF da conferência (papel timbrado, paisagem) ----------
+async function vfPdf(f, its, V, S) {
+  await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+  await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js');
+  const E = (await empresasL().catch(() => []))[0] || {}, IMG = await imagensTimbrado(true);
+  const doc = new window.jspdf.jsPDF({ unit: 'mm', format: 'a4', orientation: 'landscape' });
+  const ML = 20, MR = 277, TOPO = 40, BASE = 181, txt = s => String(s ?? '').replace(/→/g, '>').replace(/[✓✔]/g, '').replace(/⚠️?/g, '!');
+  const C = { texto: [37, 46, 53], cinza: [107, 115, 120], escuro: [37, 46, 53], verm: [198, 40, 40], verde: [30, 142, 87], creme: [246, 239, 220], borda: [215, 219, 222] };
+  const feitas = new Set(), moldura = () => { const pg = doc.getCurrentPageInfo().pageNumber; if (!feitas.has(pg)) { feitas.add(pg); molduraTimbrado(doc, E, IMG); } };
+  let y = 44;
+  const tabela = (head, body, opts = {}) => { doc.autoTable({ startY: y, margin: { left: ML, right: 297 - MR, top: TOPO + 4, bottom: 210 - BASE }, theme: 'grid', head: [head], body,
+    styles: { font: 'helvetica', fontSize: 7.4, textColor: C.texto, lineColor: C.borda, lineWidth: 0.15, cellPadding: 1.2, valign: 'top' },
+    headStyles: { fillColor: C.escuro, textColor: 255, fontStyle: 'bold', fontSize: 7.2, lineWidth: 0 }, willDrawPage: moldura, ...opts }); y = doc.lastAutoTable.finalY + 5; };
+  const titulo = t => { if (y + 12 > BASE) { doc.addPage(); moldura(); y = TOPO + 4; } doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.setTextColor(...C.texto); doc.text(t, ML, y); y += 4; };
+  moldura();
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(...C.texto); doc.text(`Conferência de viagens com o cliente · ${vfPer(f)}`, ML, y); y += 5;
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(...C.cinza);
+  doc.text(txt(`${f.cl?.nome || 'Sem cliente'}${f.cl?.documento ? ' · CNPJ ' + fmtCNPJ(f.cl.documento) : ''} · situação: ${ST_VF[f.status]?.[0] || f.status} · planilha: ${f.planilha_nome || '-'} · emitido em ${new Date().toLocaleString('pt-BR')}`), ML, y); y += 6;
+  tabela(['Viagens na planilha', 'Conferem', 'Com divergência', 'Não estão no sistema', 'Não vieram na planilha', 'Valor pelo cliente', 'Valor no sistema', 'Diferença', 'Peso líquido'],
+    [[its.filter(i => i.dados).length, S.n('ok'), S.n('divergente'), S.n('sem_viagem'), S.n('fora_planilha'), brl(S.somaCli), brl(S.somaSis), brl(S.somaCli - S.somaSis), S.pesoCli.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + ' t']],
+    { styles: { font: 'helvetica', fontSize: 8.6, halign: 'center', textColor: C.texto, lineColor: C.borda, lineWidth: 0.15 }, headStyles: { fillColor: C.escuro, textColor: 255, fontStyle: 'bold', fontSize: 7, halign: 'center' } });
+  titulo('Conferência linha a linha');
+  tabela(['Linha', 'Viagem', 'NF', 'CT-e', 'Placa', 'Chegada (balança)', 'Peso líq. (t)', 'Valor cliente', 'Valor sistema', 'Situação', 'Decisão'],
+    its.map(i => { const v = V[i.viagem_id], d = i.dados || {};
+      return [i.linha ?? '-', v ? `${v.numero}${v.eq?.codigo_frota ? ' · ' + v.eq.codigo_frota : ''}` : '-', d.nf || v?.nf_numero || '-', d.cte || v?.cte_numero || '-', d.placa || '-',
+        d.chegada ? dataHoraBR(d.chegada) : v?.chegada_em ? dataHoraBR(v.chegada_em) : '-', d.peso_liquido != null ? Number(d.peso_liquido).toLocaleString('pt-BR') : '-',
+        d.valor != null ? brl(d.valor) : '-', v ? brl(v.valor_frete || 0) : '-', SIT_VFI[i.situacao]?.[0] || i.situacao,
+        i.decisao ? (i.decisao === 'aceitar' ? 'Aceito' : 'Contestado') + (i.decisao_obs ? ': ' + i.decisao_obs : '') : i.situacao === 'fora_planilha' ? 'Próximo fechamento' : '-']; }),
+    { didParseCell: c => { if (c.section !== 'body' || c.column.index !== 9) return; const s = its[c.row.index]?.situacao; c.cell.styles.fontStyle = 'bold'; c.cell.styles.textColor = s === 'ok' ? C.verde : s === 'fora_planilha' ? C.cinza : C.verm; } });
+  const difs = its.flatMap(i => (i.divergencias || []).map(x => [V[i.viagem_id]?.numero || '-', txt(x.rotulo), txt(vfFmt(x.campo, x.sistema)).replace(/&[a-z#0-9]+;/g, ''), txt(vfFmt(x.campo, x.cliente)).replace(/&[a-z#0-9]+;/g, ''), x.auto ? 'Ajustado automaticamente' : i.decisao === 'aceitar' ? 'Aceito o dado do cliente' : i.decisao === 'contestar' ? 'Contestado' : 'Pendente']));
+  if (difs.length) { titulo('Diferenças encontradas'); tabela(['Viagem', 'Campo', 'No sistema', 'Pelo cliente', 'Tratamento'], difs); }
+  titulo('Responsáveis');
+  const h1 = S.ult('Conferência fechada'), h2 = S.ult('Validado');
+  tabela(['Etapa', 'Responsável', 'Data'], [['Conferência (operação)', h1?.nome || '-', h1 ? dataHoraBR(h1.em) : '-'], ['Validação (financeiro)', h2?.nome || '-', h2 ? dataHoraBR(h2.em) : '-']]);
+  paginarTimbrado(doc, true);
+  doc.save(`Conferência viagens ${f.periodo_ini} a ${f.periodo_fim}.pdf`);
+}
