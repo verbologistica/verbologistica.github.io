@@ -79,7 +79,7 @@ rota('/operacao/jornadas/creare', async tela => {
   const corAl = { crit: 'vermelho', alto: 'amarelo', medio: '' };
   tela.innerHTML = `
     <div class="topo"><div><h1>Controle de jornada</h1><p class="sub">Montado automaticamente dos apontamentos dos motoristas no Creare · visão inicial, ainda sem a escala</p></div>
-      <div class="acoes"><a class="btn" href="#/operacao/jornadas">Registro manual</a></div></div>
+      <div class="acoes"><a class="btn" href="#/operacao/jornadas/km">Km por motorista</a><a class="btn" href="#/operacao/jornadas">Registro manual</a></div></div>
     <form class="filtros" id="jc-f"><label>De <input type="date" name="ini" value="${ini}"></label><label>Até <input type="date" name="fim" value="${fim}"></label>
       <select name="mot"><option value="">Todos os motoristas</option>${nomes.map(n => `<option ${n === mot ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>
       <label class="check"><input type="checkbox" name="alertas" ${soAl ? 'checked' : ''}> Só com alerta</label><button class="btn prim">Ver</button></form>
