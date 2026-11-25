@@ -122,8 +122,8 @@ rota('/operacao/viagens', async tela => {
   const fV = temTodos(sts) ? '' : filtroOu(sts.map(s => s === 'abertas' ? 'status=in.(planejada,em_transito)' : 'status=eq.' + s));
   let vs = await api.listar('viagens', `ativo=eq.true${fV ? '&' + fV : ''}&select=*,cl:clientes(nome),eq:equipamentos(codigo_frota),m:colaboradores!viagens_motorista_id_fkey(nome)&order=saida_prevista.desc.nullslast,criado_em.desc&limit=400`);
   if (q) vs = vs.filter(v => [v.numero, v.origem, v.destino, v.cl?.nome, v.m?.nome, v.eq?.codigo_frota, v.documentos, v.nf_numero, v.cte_numero].join(' ').toLowerCase().includes(q));
-  const cteF = soDigitos(estado.params.get('cte') || '').replace(/^0+/, '');
-  if (cteF) vs = vs.filter(v => cteF.split(/\D+/).includes(soDigitos(v.cte_numero || '').replace(/^0+/, '')) || String(v.cte_chave || '').endsWith(cteF) && cteF.length > 8);
+  const ctes = (estado.params.get('cte') || '').split(/[^\d]+/).map(x => x.replace(/^0+/, '')).filter(Boolean);
+  if (ctes.length) vs = vs.filter(v => ctes.some(c => c === soDigitos(v.cte_numero || '').replace(/^0+/, '') || (c.length > 8 && String(v.cte_chave || '').endsWith(c))));
   const kmC = vs.length ? Object.fromEntries((await api.rpc('viagens_km_creare', { p_ids: vs.map(v => v.id) }).catch(() => []) || []).map(x => [x.id, Number(x.km)])) : {};
   const idsDesc = [...new Set(vs.filter(v => v.motorista_entrega_id && v.motorista_entrega_id !== v.motorista_id).map(v => v.motorista_entrega_id))];
   const nomesDesc = idsDesc.length ? Object.fromEntries((await api.listar('colaboradores', `id=in.(${idsDesc.join(',')})&select=id,nome`).catch(() => [])).map(c => [c.id, c.nome])) : {};
@@ -132,7 +132,7 @@ rota('/operacao/viagens', async tela => {
     <div class="cartao" style="padding:10px 14px"><b>Como funciona:</b> <span class="tag azul">Programada</span> → <b>▶ Iniciar viagem</b> → <span class="tag amarelo">Em trânsito</span> → <b>✓ Registrar entrega</b> → <span class="tag verde">Entregue</span>
       ${(() => { const p = vs.filter(v => v.status === 'planejada').length, t = vs.filter(v => v.status === 'em_transito').length; return p || t ? `<span class="muted"> · ${p} aguardando início · ${t} em trânsito</span>` : ''; })()}</div>
     <form class="filtros" id="filtros"><select name="status"><option value="abertas">Programadas e em trânsito</option>${Object.entries(ST_VIA).map(([k, [t]]) => `<option value="${k}" ${k === st ? 'selected' : ''}>${t}</option>`).join('')}<option value="todas" ${st === 'todas' ? 'selected' : ''}>Todas</option></select>
-      <input name="cte" value="${esc(estado.params.get('cte') || '')}" placeholder="Nº do CT-e" inputmode="numeric" style="max-width:130px">
+      <input name="cte" value="${esc(estado.params.get('cte') || '')}" placeholder="Nº do CT-e (vários: 24, 25, 30)" title="Um ou mais números de CT-e, separados por vírgula ou espaço" style="min-width:220px">
       <input name="q" value="${esc(estado.params.get('q') || '')}" placeholder="Nº, cliente, cidade, motorista, NF"><button class="btn">Filtrar</button></form>
     <div class="cartao">${vs.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Nº</th><th>CT-e</th><th>Cliente</th><th>Rota</th><th>Equipamento</th><th>Motorista (carga → descarga)</th><th>Saída</th><th>Chegada</th><th class="num" title="Km rodado entre a saída e a chegada (digitado ou pelo Creare)">Km</th><th class="num">Frete</th><th>Situação</th><th>Próximo passo</th></tr></thead><tbody>
       ${vs.map(v => `<tr class="clicavel" onclick="location.hash='#/operacao/viagens/ver/${v.id}'"><td data-r="Nº" class="mono"><b>${esc(v.numero)}</b></td><td data-r="CT-e" class="mono">${esc(v.cte_numero || '—')}</td><td data-r="Cliente">${esc(v.cl?.nome || '—')}</td><td data-r="Rota">${esc(v.origem)} → ${esc(v.destino)}</td>
