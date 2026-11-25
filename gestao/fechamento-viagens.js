@@ -99,8 +99,8 @@ rota('/operacao/fechamentos/ver/:id', async (tela, id) => {
   const noFech = vs.filter(v => v.status !== 'entregue' || its.some(i => i.viagem_id === v.id));
   const casadas = [...new Set(its.filter(i => i.viagem_id && i.situacao !== 'fora_planilha').map(i => i.viagem_id))].map(k => V[k]).filter(Boolean), baseV = casadas.length ? casadas : noFech;
   const icmsTot = baseV.reduce((a, v) => a + Number(v.icms_valor || 0), 0), semIcms = baseV.filter(v => v.icms_valor == null).length, pedTot = baseV.reduce((a, v) => a + (PED[v.id] || 0), 0), freteTot = baseV.reduce((a, v) => a + Number(v.valor_frete || 0), 0);
-  const passos = [['aberto', 'Planilha do cliente'], ['em_conferencia', 'Conferência da operação'], ['no_financeiro', 'Validação do financeiro'], ['validado', 'Validado'], ['faturado', 'Faturado'], ['recebido', 'Recebido']];
-  const ix = st === 'validado' ? (recebido ? 6 : f.fatura_numero ? 4 : 3) : passos.findIndex(p => p[0] === st);
+  const passos = [['aberto', 'Planilha do cliente'], ['em_conferencia', 'Conferência da operação'], ['no_financeiro', 'Validação'], ['faturar', 'Faturamento'], ['receber', 'Recebimento']];
+  const ix = st === 'validado' ? (recebido ? 5 : f.fatura_numero ? 4 : 3) : passos.findIndex(p => p[0] === st);
   const ult = k => [...(f.historico || [])].reverse().find(h => h.acao?.startsWith(k));
   tela.innerHTML = `
     <div class="topo"><div><h1>Fechamento ${vfPer(f)}</h1><p class="sub">${esc(f.cl?.nome || 'Sem cliente')} · prazo da operação ${dataBR(f.prazo)}${vfAtrasado(f) ? ' <span class="tag vermelho">atrasado</span>' : ''} · ${tagSt(ST_VF, st)}</p></div>
@@ -108,7 +108,7 @@ rota('/operacao/fechamentos/ver/:id', async (tela, id) => {
         ${op && st === 'em_conferencia' ? '<button class="btn prim" id="vf-env">Fechar e enviar ao financeiro</button>' : ''}
         ${val && st === 'no_financeiro' ? '<button class="btn" id="vf-dev">Devolver à operação</button><button class="btn prim" id="vf-val">✓ Validar fechamento</button>' : ''}
         ${st === 'validado' && val ? '<button class="btn perigo" id="vf-est">Estornar fechamento</button>' : st === 'validado' && op ? '<button class="btn" id="vf-pest">Pedir estorno</button>' : ''}
-        ${op || fin ? '<button class="btn" id="vf-xml">Importar XMLs dos CT-e</button><input type="file" id="vf-xmls" accept=".xml,text/xml" multiple hidden>' : ''}${its.length ? '<button class="btn" id="vf-pdf">PDF da conferência</button>' : ''}<a class="btn" href="#/operacao/fechamentos">Voltar</a></div></div>
+        ${op || fin ? '<button class="btn" id="vf-xml">Importar XMLs dos CT-e</button><input type="file" id="vf-xmls" accept=".xml,text/xml" multiple hidden>' : ''}${st === 'validado' ? '<button class="btn prim" id="vf-pdfc" title="Só o essencial: viagens, CT-e, peso, valores, ICMS e pedágio. Sem a conferência interna.">PDF para o cliente</button>' : ''}${its.length ? '<button class="btn" id="vf-pdf" title="Uso interno: conferência linha a linha, diferenças e responsáveis">PDF da conferência (interno)</button>' : ''}<a class="btn" href="#/operacao/fechamentos">Voltar</a></div></div>
     <div class="cartao" style="display:flex;gap:6px;flex-wrap:wrap;padding:10px 14px">${passos.map(([k, t], i) => `<div style="flex:1;min-width:150px;padding:8px 10px;border-radius:8px;${i < ix ? 'background:#E8F4EC;color:#1E8E57' : i === ix ? 'background:#F6EFDC;font-weight:700' : 'background:#F3F4F5;color:#8A9095'}">${i < ix ? '✓ ' : i + 1 + '. '}${t}</div>`).join('')}</div>
     ${f.devolucao_motivo && st === 'em_conferencia' ? `<div class="cartao" style="border-left:5px solid #C62828"><b>Devolvido pelo financeiro:</b> ${esc(f.devolucao_motivo)}</div>` : ''}
     ${st === 'aberto' ? `<div class="cartao" style="border-left:5px solid #DDA936"><b>Próximo passo (operação):</b> importe o relatório que o cliente enviou (Excel). O sistema casa cada linha com a viagem pela <b>chave do CT-e</b> (depois pela nota fiscal e, por último, placa + data), confere todos os campos e atualiza peso, volume, projeto, talhão, distâncias e horário da balança.</div>` : ''}
@@ -214,6 +214,7 @@ rota('/operacao/fechamentos/ver/:id', async (tela, id) => {
       if (r.arquivos?.length) { await anexar('viagem_fechamento', id, r.arquivos, 'Fatura/boleto').catch(() => {}); if (tit) await anexar('titulo', tit.id, r.arquivos, 'Fatura/boleto').catch(() => {}); }
       aviso('Faturamento registrado.'); navegar(); } catch (err) { falha(err); } });
   $('#vf-pdf')?.addEventListener('click', e => ocupado(e.target, () => vfPdf(f, its, V, { somaCli, somaSis, pesoCli, n, ult, PED, comp: { frete: freteTot, icms: icmsTot, semIcms, ped: pedTot } }).catch(falha)));
+  $('#vf-pdfc')?.addEventListener('click', e => ocupado(e.target, () => vfPdfCliente(f, its, V, PED).catch(falha)));
 });
 
 // ---------- importação em lote dos XMLs dos CT-e (fechamento e lista de viagens) ----------
@@ -245,6 +246,47 @@ async function importarXmlsCte(fs, fechId = null, btn = null) {
 }
 
 // ---------- PDF da conferência (papel timbrado, paisagem) ----------
+// PDF para o cliente: só o essencial (sem conferência interna, diferenças nem responsáveis)
+async function vfPdfCliente(f, its, V, PED) {
+  await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+  await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js');
+  const E = (await empresasL().catch(() => []))[0] || {}, IMG = await imagensTimbrado(true);
+  const doc = new window.jspdf.jsPDF({ unit: 'mm', format: 'a4', orientation: 'landscape' });
+  const ML = 20, MR = 277, TOPO = 40, BASE = 181;
+  const C = { texto: [37, 46, 53], cinza: [107, 115, 120], escuro: [37, 46, 53], borda: [215, 219, 222], creme: [246, 239, 220] };
+  const feitas = new Set(), moldura = () => { const pg = doc.getCurrentPageInfo().pageNumber; if (!feitas.has(pg)) { feitas.add(pg); molduraTimbrado(doc, E, IMG); } };
+  const rows = its.filter(i => i.viagem_id && V[i.viagem_id] && i.situacao !== 'fora_planilha' && i.situacao !== 'sem_viagem' && i.decisao !== 'contestar')
+    .sort((a, b) => String((a.dados || {}).chegada || V[a.viagem_id].chegada_em).localeCompare(String((b.dados || {}).chegada || V[b.viagem_id].chegada_em)));
+  const vs = [...new Map(rows.map(i => [i.viagem_id, i])).values()];
+  let tf = 0, ti = 0, tp = 0, tpeso = 0;
+  const body = vs.map((i, k) => { const v = V[i.viagem_id], d = i.dados || {}, fr = Number(v.valor_frete || 0), ic = v.icms_valor != null ? Number(v.icms_valor) : null, pd = PED?.[v.id] || 0, ps = Number(d.peso_liquido ?? v.peso_t ?? 0);
+    tf += fr; ti += ic || 0; tp += pd; tpeso += ps;
+    return [k + 1, d.nf || v.nf_numero || '-', d.cte || v.cte_numero || '-', d.placa || '-', v.saida_em ? dataHoraBR(v.saida_em) : '-', d.chegada ? dataHoraBR(d.chegada) : v.chegada_em ? dataHoraBR(v.chegada_em) : '-',
+      ps.toLocaleString('pt-BR', { maximumFractionDigits: 3 }), brl(fr), ic != null ? brl(ic) : '-', ic != null ? brl(fr - ic) : '-', pd ? brl(pd) : '-']; });
+  let y = 44;
+  moldura();
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(...C.texto); doc.text(`Demonstrativo de fretes · ${vfPer(f)}`, ML, y); y += 5;
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(...C.cinza);
+  doc.text(`${f.cl?.nome || ''}${f.cl?.documento ? ' · CNPJ ' + fmtCNPJ(f.cl.documento) : ''} · emitido em ${new Date().toLocaleDateString('pt-BR')}`, ML, y); y += 6;
+  const resumo = { styles: { font: 'helvetica', fontSize: 9, halign: 'center', textColor: C.texto, lineColor: C.borda, lineWidth: 0.15 }, headStyles: { fillColor: C.escuro, textColor: 255, fontStyle: 'bold', fontSize: 7.4, halign: 'center' } };
+  doc.autoTable({ startY: y, margin: { left: ML, right: 297 - MR, top: TOPO + 4, bottom: 210 - BASE }, theme: 'grid', willDrawPage: moldura,
+    head: [['Viagens', 'Peso líquido', 'Valor dos CT-e (frete com ICMS)', 'ICMS embutido', 'Frete sem ICMS', 'Pedágio (ida e volta)']],
+    body: [[vs.length, tpeso.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + ' t', brl(tf), brl(ti), brl(tf - ti), brl(tp)]], ...resumo });
+  y = doc.lastAutoTable.finalY + 6;
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.setTextColor(...C.texto); doc.text('Viagens do período', ML, y); y += 3;
+  doc.autoTable({ startY: y, margin: { left: ML, right: 297 - MR, top: TOPO + 4, bottom: 210 - BASE }, theme: 'grid', willDrawPage: moldura,
+    head: [['#', 'NF', 'CT-e', 'Placa', 'Saída', 'Chegada (balança)', 'Peso líq. (t)', 'Valor do CT-e', 'ICMS', 'Frete sem ICMS', 'Pedágio']],
+    body, foot: [['', '', '', '', '', 'Total', tpeso.toLocaleString('pt-BR', { maximumFractionDigits: 3 }), brl(tf), brl(ti), brl(tf - ti), brl(tp)]],
+    styles: { font: 'helvetica', fontSize: 7.8, textColor: C.texto, lineColor: C.borda, lineWidth: 0.15, cellPadding: 1.3 },
+    headStyles: { fillColor: C.escuro, textColor: 255, fontStyle: 'bold', fontSize: 7.6 }, footStyles: { fillColor: C.creme, textColor: C.texto, fontStyle: 'bold' },
+    columnStyles: { 6: { halign: 'right' }, 7: { halign: 'right' }, 8: { halign: 'right' }, 9: { halign: 'right' }, 10: { halign: 'right' } }, showFoot: 'lastPage' });
+  y = doc.lastAutoTable.finalY + 5; if (y + 10 > BASE) { doc.addPage(); moldura(); y = TOPO + 4; }
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(7.8); doc.setTextColor(...C.cinza);
+  doc.text(doc.splitTextToSize('O ICMS já está incluído no valor de cada CT-e; a coluna "Frete sem ICMS" mostra o rateio. O pedágio é reembolsado à parte do frete e considera as passagens de ida e volta de cada viagem, conforme o extrato do Sem Parar.', MR - ML), ML, y);
+  paginarTimbrado(doc, true);
+  doc.save(`Demonstrativo de fretes ${f.periodo_ini} a ${f.periodo_fim}.pdf`);
+}
+
 async function vfPdf(f, its, V, S) {
   await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
   await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js');
