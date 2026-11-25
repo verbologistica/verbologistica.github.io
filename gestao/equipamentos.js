@@ -63,12 +63,17 @@ rota('/cadastros/equipamentos', async tela => {
   const comQuem = e => { const g = engs.find(x => x.cavalo_id === e.id || x.carreta_id === e.id); if (!g) return PAPEL_EQ(e.tipo) ? '<span class="tag amarelo">Desatrelado</span>' : '<span class="muted">—</span>';
     const oid = g.cavalo_id === e.id ? g.carreta_id : g.cavalo_id; return `<a href="#/cadastros/equipamentos/ver/${oid}" onclick="event.stopPropagation()"><b>${esc((g.cavalo_id === e.id ? g.carreta_codigo : g.cavalo_codigo) || '—')}</b></a><div class="muted">desde ${dataBR(g.inicio)}</div>`; };
   const st = {}; venc.forEach(v => { (st[v.equipamento_id] ||= { vencido: 0, vence_30: 0 }); if (v.faixa in st[v.equipamento_id]) st[v.equipamento_id][v.faixa]++; });
-  const lista_ = eqs.filter(e => !q || [e.codigo_frota, nomeTipoEq(e), e.marca, e.modelo, ...e.comps.map(c => c.placa + ' ' + (c.codigo_frota || ''))].join(' ').toLowerCase().includes(q));
+  // vários termos: separados por vírgula/ponto e vírgula, ou por espaço quando são placas/códigos (ex.: "VER-001, VER-004" ou "SMI2J64 SME7H28")
+  const semH = t => t.replace(/[-\s]/g, '');
+  let termos = q.split(/[,;\n]+/).map(t => t.trim()).filter(Boolean);
+  if (termos.length === 1 && /\s/.test(termos[0]) && termos[0].split(/\s+/).every(t => /\d/.test(t))) termos = termos[0].split(/\s+/);
+  const lista_ = eqs.filter(e => { if (!termos.length) return true; const txt = [e.codigo_frota, nomeTipoEq(e), e.marca, e.modelo, ...e.comps.map(c => c.placa + ' ' + (c.codigo_frota || ''))].join(' ').toLowerCase();
+    return termos.some(t => txt.includes(t) || semH(txt).includes(semH(t))); });
   tela.innerHTML = `
     <div class="topo"><div><h1>Equipamentos</h1><p class="sub">${lista_.length} equipamento(s) · ${lista_.reduce((s, e) => s + e.comps.filter(c => c.ativo).length, 0)} placa(s)</p></div>
       <div class="acoes"><a class="btn" href="#/frota/atrelamentos">Atrelamentos cavalo × carreta</a><a class="btn" href="#/frota/documentos">Documentos a vencer</a><a class="btn" href="#/cadastros/equipamentos${inativos ? '' : '?inativos=1'}">${inativos ? 'Ocultar desativados' : 'Mostrar desativados'}</a>
         ${editaFrota() ? '<a class="btn prim" href="#/cadastros/equipamentos/novo">+ Novo equipamento</a>' : ''}</div></div>
-    <form class="filtros" id="filtros"><input name="q" value="${esc(estado.params.get('q') || '')}" placeholder="Buscar por código de frota, placa, marca ou modelo" style="min-width:280px"><button class="btn">Buscar</button></form>
+    <form class="filtros" id="filtros"><input name="q" value="${esc(estado.params.get('q') || '')}" placeholder="Código de frota, placa, marca ou modelo · vários: VER-001, VER-004" title="Para buscar vários, separe por vírgula (ou por espaço, no caso de placas e códigos)" style="min-width:340px"><button class="btn">Buscar</button></form>
     <div class="cartao">${lista_.length ? `<div class="tabela-wrap" data-rel-frota><table class="responsiva"><thead><tr><th>Código de frota</th><th>Tipo</th><th>Marca / modelo</th><th>Placas</th><th>Atrelado a</th><th>Situação</th><th>Documentos</th></tr></thead><tbody>
       ${lista_.map(e => { const s = st[e.id] || {}; const cs = e.comps.filter(c => c.ativo).sort((a, b) => a.ordem - b.ordem);
         return `<tr class="clicavel" onclick="location.hash='#/cadastros/equipamentos/ver/${e.id}'"><td data-r="Código" class="nowrap"><b>${esc(e.codigo_frota || '—')}</b></td>
