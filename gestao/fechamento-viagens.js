@@ -195,26 +195,7 @@ rota('/operacao/fechamentos/ver/:id', async (tela, id) => {
     try { await api.rpc('vf_estornar', { p_fid: id, p_motivo: m }); aviso('Fechamento estornado.'); navegar(); } catch (err) { falha(err); } });
   $$('[data-pedv]', tela).forEach(a => a.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); pedModal(a.dataset.pedv); }));
   $('#vf-xml')?.addEventListener('click', () => $('#vf-xmls').click());
-  $('#vf-xmls')?.addEventListener('change', async ev => { const fs = [...ev.target.files]; ev.target.value = ''; if (!fs.length) return;
-    const lidos = [], erro = [], tipoXml = t => /<(proc)?EventoCTe|<eventoCTe/i.test(t) ? 'é um evento do CT-e (cancelamento, carta de correção…), não o CT-e' : /<(nfeProc|NFe)[\s>]/i.test(t) ? 'é XML de nota fiscal (NF-e), não de CT-e'
-      : /<(mdfeProc|MDFe)[\s>]/i.test(t) ? 'é XML de MDF-e, não de CT-e' : null;
-    await ocupado($('#vf-xml'), async () => {
-      for (const arq of fs) { const t = await arq.text(); try { lidos.push({ arq, c: lerXmlCte(t) }); } catch (err) { erro.push([arq.name, tipoXml(t) || err.message]); } }
-      const chaves = [...new Set(lidos.map(l => l.c.chave).filter(Boolean))], V2 = {};
-      for (let i = 0; i < chaves.length; i += 40) (await api.listar('viagens', `cte_chave=in.(${chaves.slice(i, i + 40).join(',')})&select=id,numero,cte_chave,fechamento_id,icms_valor`).catch(() => [])).forEach(v => { V2[v.cte_chave] = v; });
-      for (const l of lidos) { const v = V2[l.c.chave]; l.v = v;
-        if (!v) { l.sit = 'sem'; continue; }
-        if (v.icms_valor != null && Number(v.icms_valor) === Number(l.c.icms_valor)) { l.sit = 'ja'; continue; }
-        try { await api.rpc('vf_cte_xml', { p_viagem: v.id, p_dados: l.c }); await anexar('viagem', v.id, [l.arq], 'CT-e (XML)').catch(() => {}); l.sit = v.fechamento_id === id ? 'ok' : 'outro'; }
-        catch (err) { l.sit = 'erro'; erro.push([l.arq.name, err.message]); } } });
-    const g = k => lidos.filter(l => l.sit === k), li = (arr, f) => arr.length ? `<ul style="margin:4px 0 10px 18px">${arr.map(f).join('')}</ul>` : '';
-    await modal(`<div><h2>Importação dos XMLs</h2><p class="muted">${fs.length} arquivo(s) lido(s)</p>
-      <p><b>${g('ok').length}</b> ligados às viagens deste fechamento${g('ja').length ? ` · <b>${g('ja').length}</b> já estavam importados` : ''}</p>
-      ${g('outro').length ? `<p><b>${g('outro').length}</b> ligados a viagens de <b>outro período</b> (já ficam prontos para o próximo fechamento):</p>${li(g('outro'), l => `<li>${esc(l.v.numero)} · CT-e ${esc(l.c.numero || '')}</li>`)}` : ''}
-      ${g('sem').length ? `<p><b>${g('sem').length}</b> CT-e que <b>não têm viagem no sistema</b> (confira se a viagem foi lançada):</p>${li(g('sem'), l => `<li>CT-e ${esc(l.c.numero || '?')} · emissão ${l.c.emissao ? dataBR(l.c.emissao.slice(0, 10)) : '—'} · NF ${esc(l.c.nfs.join(', ') || '—')} · ${brl(l.c.valor || 0)}</li>`)}` : ''}
-      ${erro.length ? `<p><b>${erro.length}</b> arquivo(s) que não são CT-e ou deram erro:</p>${li(erro, ([n, m]) => `<li>${esc(n)}: <span class="muted">${esc(m)}</span></li>`)}` : ''}
-      <div class="rodape"><button type="button" class="btn prim" data-fechar>OK</button></div></div>`);
-    navegar(); });
+  $('#vf-xmls')?.addEventListener('change', async ev => { const fs = [...ev.target.files]; ev.target.value = ''; if (!fs.length) return; await importarXmlsCte(fs, id, $('#vf-xml')); navegar(); });
   $('#vf-aporte')?.addEventListener('click', e => ocupado(e.target, async () => {
     const tot = aportes.reduce((a, x) => a + Number(x.saldo), 0);
     if (!await confirmar(`Abater esta conta a receber do aporte do cliente (saldo ${brl(tot)})? A conta é quitada por compensação, sem nova entrada no caixa.`, { botao: 'Abater' })) return;
@@ -234,6 +215,34 @@ rota('/operacao/fechamentos/ver/:id', async (tela, id) => {
       aviso('Faturamento registrado.'); navegar(); } catch (err) { falha(err); } });
   $('#vf-pdf')?.addEventListener('click', e => ocupado(e.target, () => vfPdf(f, its, V, { somaCli, somaSis, pesoCli, n, ult, PED, comp: { frete: freteTot, icms: icmsTot, semIcms, ped: pedTot } }).catch(falha)));
 });
+
+// ---------- importação em lote dos XMLs dos CT-e (fechamento e lista de viagens) ----------
+// liga cada XML à viagem pela chave; não repete anexo já existente; relatório do que não é CT-e / não tem viagem
+async function importarXmlsCte(fs, fechId = null, btn = null) {
+  const lidos = [], erro = [], tipoXml = t => /<(proc)?EventoCTe|<eventoCTe/i.test(t) ? 'é um evento do CT-e (cancelamento, carta de correção…), não o CT-e' : /<(nfeProc|NFe)[\s>]/i.test(t) ? 'é XML de nota fiscal (NF-e), não de CT-e'
+    : /<(mdfeProc|MDFe)[\s>]/i.test(t) ? 'é XML de MDF-e, não de CT-e' : null;
+  await ocupado(btn, async () => {
+    for (const arq of fs) { const t = await arq.text(); try { lidos.push({ arq, c: lerXmlCte(t) }); } catch (err) { erro.push([arq.name, tipoXml(t) || err.message]); } }
+    const chaves = [...new Set(lidos.map(l => l.c.chave).filter(Boolean))], V2 = {};
+    for (let i = 0; i < chaves.length; i += 40) (await api.listar('viagens', `cte_chave=in.(${chaves.slice(i, i + 40).join(',')})&select=id,numero,cte_chave,fechamento_id,icms_valor`).catch(() => [])).forEach(v => { V2[v.cte_chave] = v; });
+    const ids = Object.values(V2).map(v => v.id), jaAnx = new Set();
+    for (let i = 0; i < ids.length; i += 40) (await api.listar('anexos', `entidade=eq.viagem&entidade_id=in.(${ids.slice(i, i + 40).join(',')})&cancelado_em=is.null&select=entidade_id,nome_original`).catch(() => [])).forEach(a => jaAnx.add(a.entidade_id + '|' + a.nome_original));
+    for (const l of lidos) { const v = V2[l.c.chave]; l.v = v;
+      if (!v) { l.sit = 'sem'; continue; }
+      const igual = v.icms_valor != null && Number(v.icms_valor) === Number(l.c.icms_valor), temAnx = jaAnx.has(v.id + '|' + l.arq.name);
+      try { if (!igual) await api.rpc('vf_cte_xml', { p_viagem: v.id, p_dados: l.c });
+        if (!temAnx) { await anexar('viagem', v.id, [l.arq], 'CT-e (XML)').catch(() => {}); jaAnx.add(v.id + '|' + l.arq.name); }
+        l.sit = igual && temAnx ? 'ja' : !fechId || v.fechamento_id === fechId ? 'ok' : 'outro'; }
+      catch (err) { l.sit = 'erro'; erro.push([l.arq.name, err.message]); } } });
+  const g = k => lidos.filter(l => l.sit === k), li = (arr, f) => arr.length ? `<ul style="margin:4px 0 10px 18px">${arr.map(f).join('')}</ul>` : '';
+  await modal(`<div><h2>Importação dos XMLs</h2><p class="muted">${fs.length} arquivo(s) lido(s)</p>
+    <p><b>${g('ok').length}</b> ligados às viagens${fechId ? ' deste fechamento' : ''}${g('ja').length ? ` · <b>${g('ja').length}</b> já estavam importados (não foram repetidos)` : ''}</p>
+    ${g('ok').length && !fechId ? li(g('ok'), l => `<li>${esc(l.v.numero)} · CT-e ${esc(l.c.numero || '')} · ICMS ${brl(l.c.icms_valor || 0)}</li>`) : ''}
+    ${g('outro').length ? `<p><b>${g('outro').length}</b> ligados a viagens de <b>outro período</b> (já ficam prontos para o próximo fechamento):</p>${li(g('outro'), l => `<li>${esc(l.v.numero)} · CT-e ${esc(l.c.numero || '')}</li>`)}` : ''}
+    ${g('sem').length ? `<p><b>${g('sem').length}</b> CT-e que <b>não têm viagem no sistema</b> (confira se a viagem foi lançada):</p>${li(g('sem'), l => `<li>CT-e ${esc(l.c.numero || '?')} · emissão ${l.c.emissao ? dataBR(l.c.emissao.slice(0, 10)) : '—'} · NF ${esc(l.c.nfs.join(', ') || '—')} · ${brl(l.c.valor || 0)}</li>`)}` : ''}
+    ${erro.length ? `<p><b>${erro.length}</b> arquivo(s) que não são CT-e ou deram erro:</p>${li(erro, ([n, m]) => `<li>${esc(n)}: <span class="muted">${esc(m)}</span></li>`)}` : ''}
+    <div class="rodape"><button type="button" class="btn prim" data-fechar>OK</button></div></div>`);
+}
 
 // ---------- PDF da conferência (papel timbrado, paisagem) ----------
 async function vfPdf(f, its, V, S) {
