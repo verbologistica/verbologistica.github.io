@@ -222,8 +222,9 @@ rota('/operacao/viagens/ver/:id', async (tela, id) => {
   const ed = editaOp(), souMot = !!meuCol && (v.motorista_id === meuCol || (v.motoristas_apoio || []).includes(meuCol));
   const idsMot = [...new Set([...(v.motoristas_apoio || []), v.motorista_entrega_id].filter(Boolean))];
   const nomesMot = idsMot.length ? Object.fromEntries((await api.listar('colaboradores', `id=in.(${idsMot.join(',')})&select=id,nome`).catch(() => [])).map(c => [c.id, c.nome])) : {};
-  const [kmCr, peds, fch] = await Promise.all([api.rpc('viagens_km_creare', { p_ids: [id] }).catch(() => []), api.listar('pedagio_passagens', `viagem_id=eq.${id}&suspeita=eq.false&select=valor,debito_credito`).catch(() => []),
-    v.fechamento_id ? api.um('viagem_fechamentos', `id=eq.${v.fechamento_id}&select=id,periodo_ini,periodo_fim,status`).catch(() => null) : null]);
+  const [kmCr, peds, fch, vcs] = await Promise.all([api.rpc('viagens_km_creare', { p_ids: [id] }).catch(() => []), api.listar('pedagio_passagens', `viagem_id=eq.${id}&suspeita=eq.false&select=valor,debito_credito`).catch(() => []),
+    v.fechamento_id ? api.um('viagem_fechamentos', `id=eq.${v.fechamento_id}&select=id,periodo_ini,periodo_fim,status`).catch(() => null) : null,
+    v.equipamento_id ? api.listar('veiculos', `equipamento_id=eq.${v.equipamento_id}&ativo=eq.true&select=placa,descricao_composicao,ordem&order=ordem`).catch(() => []) : []]);
   const kmCreare = Number(kmCr?.[0]?.km || 0), kmDig = v.km_chegada && v.km_saida ? v.km_chegada - v.km_saida : null, kmOk = kmDig > 0 && kmDig <= 3000;
   const pedTot = peds.reduce((t, p) => t + (p.debito_credito === 'CR' ? -1 : 1) * Number(p.valor), 0);
   const durH = v.saida_em && v.chegada_em ? (new Date(v.chegada_em) - new Date(v.saida_em)) / 36e5 : null;
@@ -243,7 +244,7 @@ rota('/operacao/viagens/ver/:id', async (tela, id) => {
       campo('Duração', durH != null ? `${Math.floor(durH)} h ${String(Math.round(durH % 1 * 60)).padStart(2, '0')} min` : ''),
       campo('Km rodado', kmOk ? n2(kmDig, 0) + ' km' : kmCreare > 0 ? n2(kmCreare, 0) + ' km' : '', kmOk ? `hodômetro: ${n2(v.km_saida, 0)} → ${n2(v.km_chegada, 0)}` : kmCreare > 0 ? 'pelo Creare' + (kmDig != null ? ' · o km digitado não fecha, confira o hodômetro' : '') : ''),
       campo('Rota (cliente)', v.dist_total_km != null ? n2(v.dist_total_km) + ' km' : '', v.dist_total_km != null ? `asfalto ${n2(v.dist_asfalto_km || 0)} · chão ${n2(v.dist_chao_km || 0)}` : '')].join(''))}
-    ${bloco('Equipamento e motoristas', [campo('Equipamento', esc(v.eq ? rotuloEq(v.eq) : '')), campo('Motorista no carregamento', esc(v.m?.nome || '')),
+    ${bloco('Equipamento e motoristas', [campo('Equipamento', esc(v.eq ? rotuloEq(v.eq) : '')), campo(vcs.length > 1 ? 'Placas' : 'Placa', vcs.map(x => esc(x.placa)).join(' · '), vcs.length > 1 ? vcs.map(x => esc(x.descricao_composicao || '')).join(' · ') : ''), campo('Motorista no carregamento', esc(v.m?.nome || '')),
       campo('Motorista na descarga', VIA_REALIZADA.includes(v.status) ? esc(v.motorista_entrega_id ? nomesMot[v.motorista_entrega_id] || v.m?.nome : v.m?.nome || '') : '')].join(''))}
     ${bloco('Carga', [campo('Produto', esc(v.carga || '')), campo('Peso líquido', v.peso_t ? n2(v.peso_t, 3) + ' t' : '', v.peso_conferido ? 'balança do cliente' : 'provisório, até a conferência com o cliente'),
       campo('Peso bruto / tara', v.peso_bruto_t != null ? `${n2(v.peso_bruto_t)} t / ${n2(v.tara_t || 0)} t` : ''), campo('Volume', v.volume_m3 != null ? n2(v.volume_m3, 3) + ' m³' : ''),
