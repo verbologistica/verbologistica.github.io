@@ -30,17 +30,32 @@ async function pedLerExtrato(arq) {
   return out;
 }
 
+// lista das passagens do ciclo de uma viagem (ida vazia + volta carregada)
+async function pedModal(vid) {
+  const [v] = await api.listar('viagens', `id=eq.${vid}&select=numero,saida_em,chegada_em`);
+  const ps = await api.listar('pedagio_passagens', `viagem_id=eq.${vid}&tipo_uso=eq.PASSAGENS&order=data_hora`);
+  ps.sort((a, b) => (a.data_hora_ajustada || a.data_hora).localeCompare(b.data_hora_ajustada || b.data_hora));
+  const sent = p => /LESTE/i.test(p.praca || '') ? 'carregado (leste)' : /OESTE/i.test(p.praca || '') ? 'vazio (oeste)' : '';
+  const ok = ps.filter(p => !p.suspeita), tot = ok.reduce((a, p) => a + Number(p.valor), 0);
+  modal(`<div><h2>Pedágios · ${esc(v?.numero || '')}</h2><p class="muted">Saída ${dataHoraBR(v?.saida_em) || '—'} · chegada ${dataHoraBR(v?.chegada_em) || '—'} · ${ok.filter(p => /OESTE/i.test(p.praca || '')).length} passagens na ida vazia e ${ok.filter(p => /LESTE/i.test(p.praca || '')).length} na volta carregada · <b>${brl(tot)}</b></p>
+    <div class="tabela-wrap" style="max-height:60vh;overflow:auto"><table class="tabela compacta"><thead><tr><th>Data/hora</th><th>Praça</th><th>Sentido</th><th class="num">Valor</th><th>Observação</th></tr></thead><tbody>
+    ${ps.map(p => `<tr${p.suspeita ? ' style="background:#FDECEA"' : p.data_hora_ajustada ? ' style="background:#FFF8E6"' : ''}><td class="nowrap">${dataHoraBR(p.data_hora_ajustada || p.data_hora)}</td><td>${esc(p.praca || '')}</td><td>${sent(p)}</td><td class="num">${brl(p.valor)}</td><td class="muted">${esc(p.observacao || '')}</td></tr>`).join('')}
+    </tbody></table></div><div class="rodape"><button type="button" class="btn" data-fechar>Fechar</button></div></div>`);
+}
+
 // ---------- tela do pedágio ----------
 rota('/operacao/pedagios', async tela => {
   const mes = (estado.params.get('mes') || hojeISO().slice(0, 7)) + '-01', fimMes = mesFim(mes);
   const ini = new Date(mes + 'T00:00:00-03:00').toISOString(), fim = new Date(fimMes + 'T00:00:00-03:00').toISOString();
   await api.rpc('pedagio_vincular').catch(() => null);
-  const [ps, ads, tits] = await Promise.all([
+  const [ps, ads, tits, cics] = await Promise.all([
     api.listar('pedagio_passagens', `data_hora=gte.${ini}&data_hora=lt.${fim}&select=*,v:viagens(id,numero,cliente_id,chegada_em,status,cl:clientes(nome))&order=data_hora&limit=5000`),
     api.listar('v_cliente_adiantamentos', `tipo=eq.pedagio&competencia=eq.${mes}&cancelado_em=is.null`).catch(() => []),
-    api.listar('titulos', `origem=eq.pedagio&competencia=eq.${mes}&status=neq.cancelado&select=id,numero,status,valor_total,cliente_id`).catch(() => [])]);
+    api.listar('titulos', `origem=eq.pedagio&competencia=eq.${mes}&status=neq.cancelado&select=id,numero,status,valor_total,cliente_id`).catch(() => []),
+    api.rpc('pedagio_ciclos', { p_ini: ini, p_fim: new Date(Date.parse(fim) + 5 * 864e5).toISOString() }).catch(() => [])]);
+  const CIC = Object.fromEntries((cics || []).map(c => [c.id, c])), hs = (cics || []).map(c => Number(c.horas)).filter(h => h > 0).sort((a, b) => a - b), medH = hs.length ? hs[Math.floor(hs.length / 2)] : 0;
   const deb = p => p.debito_credito === 'CR' ? -Number(p.valor) : Number(p.valor);
-  const pass = ps.filter(p => p.tipo_uso === 'PASSAGENS'), reemb = pass.filter(p => p.viagem_id), semVia = pass.filter(p => !p.viagem_id), taxas = ps.filter(p => p.tipo_uso !== 'PASSAGENS');
+  const pass = ps.filter(p => p.tipo_uso === 'PASSAGENS'), reemb = pass.filter(p => p.viagem_id && !p.suspeita), susp = pass.filter(p => p.suspeita), corrig = pass.filter(p => p.data_hora_ajustada), semVia = pass.filter(p => !p.viagem_id), taxas = ps.filter(p => p.tipo_uso !== 'PASSAGENS');
   const soma = a => a.reduce((t, p) => t + deb(p), 0), totReemb = soma(reemb), totAd = ads.reduce((t, a) => t + Number(a.valor), 0);
   const porVia = new Map(); reemb.forEach(p => { const x = porVia.get(p.viagem_id) || { v: p.v, n: 0, s: 0, placa: p.placa }; x.n++; x.s += deb(p); porVia.set(p.viagem_id, x); });
   const porPlaca = new Map(); semVia.forEach(p => { const k = p.placa || '—', x = porPlaca.get(k) || { tipo: p.tipo_veiculo, n: 0, s: 0, ini: p.data_hora, fim: p.data_hora }; x.n++; x.s += deb(p); x.fim = p.data_hora; porPlaca.set(k, x); });
@@ -56,7 +71,7 @@ rota('/operacao/pedagios', async tela => {
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:12px">
       ${kpi(brl(totReemb), `pedágio das viagens (reembolsável) · ${porVia.size} viagem(ns)`, '#1E8E57')}${kpi(brl(totAd), 'adiantamento de pedágio recebido no mês')}
       ${kpi(brl(Math.abs(saldo)), saldo >= 0 ? 'sobra do adiantamento' : 'falta (a pedir ao cliente)', saldo >= 0 ? '#2BB673' : '#D64545')}
-      ${kpi(brl(soma(semVia)), `passagens sem viagem (custo Verbo) · ${semVia.length}`, '#E2B93B')}${kpi(brl(soma(taxas)), 'tarifas, multa e juros da conta (custo Verbo)', soma(taxas) > 0 ? '#E2B93B' : '')}</div>
+      ${kpi(brl(soma(susp)), `suspeitas (contestar com o Sem Parar) · ${susp.length}`, susp.length ? '#D64545' : '')}${kpi(brl(soma(semVia)), `passagens sem viagem (custo Verbo) · ${semVia.length}`, '#E2B93B')}${kpi(brl(soma(taxas)), 'tarifas, multa e juros da conta (custo Verbo)', soma(taxas) > 0 ? '#E2B93B' : '')}</div>
     <div class="cartao"><h2>Reembolso pelo cliente</h2>
       ${clientes.length ? clientes.map(([cid, nome]) => { const t = tits.find(x => x.cliente_id === cid);
         return `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:6px 0"><b>${esc(nome || 'Cliente')}</b> · ${brl(reemb.filter(p => p.v?.cliente_id === cid).reduce((a, p) => a + deb(p), 0))}
@@ -64,14 +79,20 @@ rota('/operacao/pedagios', async tela => {
             : fin ? `<button class="btn peq prim" data-reemb="${cid}">Gerar pedido de reembolso de ${mesRot(mes)}</button>` : '<span class="muted">pedido de reembolso ainda não gerado</span>'}</div>`; }).join('')
         : '<p class="muted">Nenhum pedágio ligado a viagens neste mês.</p>'}
       <p class="muted" style="margin:6px 0 0">O pedido fica <b>aguardando pagamento do cliente</b> até entrar o adiantamento de pedágio; aí o financeiro abate do adiantamento (em Adiantamentos do cliente). Gere o pedido depois de importar o extrato do mês inteiro.</p></div>
-    <div class="cartao"><h2>Pedágio por viagem (ida e volta)</h2>${porVia.size ? `<div class="tabela-wrap"><table class="tabela compacta"><thead><tr><th>Viagem</th><th>Placa</th><th>Chegada</th><th>Situação</th><th class="num">Passagens</th><th class="num">Valor</th></tr></thead><tbody>
-      ${[...porVia.values()].sort((a, b) => (a.v?.chegada_em || '').localeCompare(b.v?.chegada_em || '')).map(x => `<tr class="clicavel" onclick="location.hash='#/operacao/viagens/ver/${x.v?.id}'"><td><b>${esc(x.v?.numero || '')}</b></td><td>${esc(x.placa)}</td><td>${dataHoraBR(x.v?.chegada_em) || '—'}</td><td>${tagSt(ST_VIA, x.v?.status)}</td><td class="num">${x.n}</td><td class="num"><b>${brl(x.s)}</b></td></tr>`).join('')}
-      <tr style="background:#F6EFDC"><td><b>Total</b></td><td></td><td></td><td></td><td class="num">${reemb.length}</td><td class="num"><b>${brl(totReemb)}</b></td></tr></tbody></table></div>` : '<div class="vazio">Nenhuma passagem ligada a viagem.</div>'}</div>
+    ${susp.length ? `<div class="cartao" style="border-left:5px solid #C62828"><h2>Contestar com o Sem Parar</h2><p class="muted">Mesma praça e sentido cobrados de novo no mesmo ciclo, sem passar no sentido contrário. Fora do reembolso do cliente.</p>
+      <div class="tabela-wrap"><table class="tabela compacta"><thead><tr><th>Data/hora</th><th>Placa</th><th>Praça</th><th>Viagem</th><th class="num">Valor</th></tr></thead><tbody>${susp.map(p => `<tr><td>${dataHoraBR(p.data_hora)}</td><td>${esc(p.placa)}</td><td>${esc(p.praca || '')}</td><td>${esc(p.v?.numero || '')}</td><td class="num">${brl(deb(p))}</td></tr>`).join('')}</tbody></table></div></div>` : ''}
+    <div class="cartao"><h2>Pedágio por viagem (ida e volta)</h2>${corrig.length ? `<p class="muted">${corrig.length} passagem(ns) de madrugada vieram no extrato com a <b>data do dia anterior</b>; o sistema corrigiu a data e ligou à viagem certa (o valor não muda). Clique na viagem para ver as passagens.</p>` : '<p class="muted">Clique na viagem para ver as passagens do ciclo.</p>'}${porVia.size ? `<div class="tabela-wrap"><table class="tabela compacta"><thead><tr><th>Viagem</th><th>Placa</th><th>Saída</th><th>Chegada</th><th class="num">Ciclo</th><th>Situação</th><th class="num">Passagens</th><th class="num">Valor</th><th>Observação</th></tr></thead><tbody>
+      ${[...porVia.entries()].sort((a, b) => (a[1].v?.chegada_em || '').localeCompare(b[1].v?.chegada_em || '')).map(([vid, x]) => { const c = CIC[vid] || {}, longo = medH && Number(c.horas) > medH * 1.5;
+        return `<tr class="clicavel" data-ped="${vid}"><td><b>${esc(x.v?.numero || '')}</b></td><td>${esc(x.placa)}</td><td>${dataHoraBR(c.saida) || '—'}</td><td>${dataHoraBR(x.v?.chegada_em) || '—'}</td>
+          <td class="num">${c.horas != null ? String(c.horas).replace('.', ',') + ' h' : '—'}${longo ? ' <span class="tag amarelo">longo</span>' : ''}</td><td>${tagSt(ST_VIA, x.v?.status)}</td><td class="num">${x.n}</td><td class="num"><b>${brl(x.s)}</b></td>
+          <td style="max-width:320px">${longo ? `<span class="muted">${esc([c.canceladas ? 'Viagem cancelada/excluída no período: ' + c.canceladas : 'Nenhuma viagem cancelada no período', c.creare ? 'Creare: ' + c.creare : ''].filter(Boolean).join(' · '))}</span>` : ''}</td></tr>`; }).join('')}
+      <tr style="background:#F6EFDC"><td><b>Total</b></td><td></td><td></td><td></td><td></td><td></td><td class="num">${reemb.length}</td><td class="num"><b>${brl(totReemb)}</b></td><td></td></tr></tbody></table></div>` : '<div class="vazio">Nenhuma passagem ligada a viagem.</div>'}</div>
     <div class="cartao"><h2>Não reembolsável (custo da Verbo)</h2>
       ${porPlaca.size ? `<div class="tabela-wrap"><table class="tabela compacta"><thead><tr><th>Placa</th><th>Tipo</th><th>Período</th><th class="num">Passagens</th><th class="num">Valor</th></tr></thead><tbody>
         ${[...porPlaca].sort((a, b) => b[1].s - a[1].s).map(([k, x]) => `<tr><td><b>${esc(k)}</b></td><td>${esc(x.tipo || '—')}</td><td>${dataHoraBR(x.ini)} a ${dataHoraBR(x.fim)}</td><td class="num">${x.n}</td><td class="num">${brl(x.s)}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">Nenhuma passagem fora de viagem.</p>'}
       ${porTaxa.size ? `<p style="margin-top:8px"><b>Tarifas e encargos da conta:</b> ${[...porTaxa].map(([k, v]) => `${esc(k.toLowerCase())} ${brl(v)}`).join(' · ')}</p>` : ''}
       <p class="muted" style="margin:6px 0 0">Passagens de carros de apoio, de caminhões antes do início da operação ou fora de um ciclo de viagem (chegada anterior → chegada) não são cobradas do cliente. Se aparecer passagem de caminhão de viagem aqui, confira se a viagem foi lançada e entregue no sistema.</p></div>`;
+  $$('[data-ped]', tela).forEach(tr => tr.onclick = () => pedModal(tr.dataset.ped));
   $('#ped-f').onsubmit = e => { e.preventDefault(); location.hash = '#/operacao/pedagios?mes=' + e.target.mes.value; };
   $('#ped-imp')?.addEventListener('click', () => $('#ped-arq').click());
   $('#ped-arq')?.addEventListener('change', async ev => { const arq = ev.target.files[0]; ev.target.value = ''; if (!arq) return;
