@@ -18,7 +18,7 @@ const TIPO = {
            baixa: 'Registrar recebimento', baixaFeita: 'Recebimento registrado.', conta: 'Entrou em qual conta', feito: 'Recebido', feitas: 'Recebidas',
            legado: 'Venda anterior ao sistema (controlar só o recebimento)', exemplo: 'Ex.: frete São Paulo × Campinas, CT-e 123', tiposConta: ['receita', 'financeiro'] },
 };
-const FORMAS_BAIXA = ['Pix', 'Boleto', 'Transferência (TED/DOC)', 'Cartão', 'Débito automático', 'Cheque', 'Dinheiro'];
+const FORMAS_BAIXA = ['Pix', 'Boleto', 'Transferência (TED/DOC)', 'Cartão', 'Débito automático', 'Cheque', 'Dinheiro', 'Outro'];
 const clientes = f => cad('clientes', 'select=id,nome,nome_fantasia,documento,ativo,boleto,prazo_faturamento_dias&order=nome', f);
 
 const ABAS_PAGAR = [['variaveis', 'Despesas variáveis'], ['fixas', 'Contas fixas mensais'], ['todas', 'Todas']];
@@ -341,10 +341,10 @@ async function verTitulo(tela, id, tipo) {
   const ehDiaria = ctD?.tipo === 'diaria';
   const pessoa = t.forn?.razao_social || t.cli?.nome || t.colab?.nome || t.favorecido_nome || '—';
   const pix = t.forn?.chave_pix || t.colab?.chave_pix;
-  const origens = { reembolso: 'Reembolso', avulso: 'Lançamento avulso', legado: tipo === 'pagar' ? 'Compra anterior ao sistema' : 'Venda anterior ao sistema', pedido: 'Pedido de compra', recorrente: 'Conta fixa mensal (contrato do fornecedor)', fechamento: 'Fatura do posto (abastecimentos)', adiantamento: 'Adiantamento', folha: 'Folha de pagamento' };
+  const origens = { reembolso: 'Reembolso', avulso: 'Lançamento avulso', legado: tipo === 'pagar' ? 'Compra anterior ao sistema' : 'Venda anterior ao sistema', pedido: 'Pedido de compra', recorrente: 'Conta fixa mensal (contrato do fornecedor)', fechamento: 'Fatura do posto (abastecimentos)', adiantamento: 'Adiantamento', folha: 'Folha de pagamento', viagem_fechamento: 'Fechamento de viagens com o cliente' };
   tela.innerHTML = `
     <div class="topo"><div><h1>${esc(t.numero)} · ${esc(pessoa)}</h1><p class="sub">${tagTitulo(t.status, false, tipo)} · ${esc(t.descricao || '')}</p></div>
-      <div class="acoes">${editaFin() && t.status !== 'cancelado' ? `<a class="btn prim" href="${T.rota}/editar/${id}">Editar</a>` : ''}${editaFin() && t.status === 'previsto' && t.origem !== 'fechamento' ? '<button class="btn ok" id="conf-prev">Confirmar como conta</button>' : ''}${editaFin() && ['aberto', 'aprovado'].includes(t.status) && !baixas.length ? '<button class="btn" id="virar-prev">Transformar em previsão</button>' : ''}${editaFin() && !['pago', 'cancelado'].includes(t.status) && !baixas.length ? '<button class="btn perigo" id="cancelar">Cancelar conta</button>' : ''}
+      <div class="acoes">${editaFin() && t.status !== 'cancelado' ? `<a class="btn prim" href="${T.rota}/editar/${id}">Editar</a>` : ''}${editaFin() && t.status === 'previsto' && !['fechamento', 'viagem_fechamento'].includes(t.origem) ? '<button class="btn ok" id="conf-prev">Confirmar como conta</button>' : ''}${editaFin() && ['aberto', 'aprovado'].includes(t.status) && !baixas.length ? '<button class="btn" id="virar-prev">Transformar em previsão</button>' : ''}${editaFin() && !['pago', 'cancelado'].includes(t.status) && !baixas.length ? '<button class="btn perigo" id="cancelar">Cancelar conta</button>' : ''}
         ${editaFin() && t.status !== 'cancelado' && baixas.length ? '<button class="btn perigo" id="estornar">Estornar pagamento</button>' : ''}
         <button class="btn" onclick="history.back()">Voltar</button></div></div>
     ${t.status === 'previsto' ? `<div class="cartao fr-aviso-prev">${ico('relogio')} <span><b>${tipo === 'pagar' ? 'Previsão de gasto' : 'Receita prevista'}</b></span></div>` : ''}
@@ -490,10 +490,11 @@ async function modalBaixa(p, tipo, titulo = '') {
       <label class="campo">Desconto (R$)<input name="desconto" inputmode="decimal" placeholder="0,00"></label>
       <label class="campo">Forma de pagamento<select name="forma" required><option value="">Selecione…</option>${FORMAS_BAIXA.map(f => `<option>${f}</option>`).join('')}</select></label>
       <label class="campo largo">Observação<input name="obs"></label>
-      <label class="campo largo">Comprovante ${tipo === 'pagar' ? '(obrigatório, exceto dinheiro)' : ''}<input type="file" name="arquivos" accept="image/*,application/pdf" multiple></label></div>
+      <label class="campo largo">Comprovante ${tipo === 'pagar' ? '(obrigatório, exceto dinheiro)' : '(obrigatório: o caixa só recebe com comprovante)'}<input type="file" name="arquivos" accept="image/*,application/pdf" multiple></label></div>
       <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn ok">Confirmar</button></div></form>`,
     { validar: d => !d.forma ? 'Informe a forma de pagamento.'
-        : tipo === 'pagar' && d.forma !== 'Dinheiro' && !d.arquivos.length ? 'Anexe o comprovante do pagamento. Só pagamento em dinheiro dispensa comprovante.' : null });
+        : tipo === 'pagar' && d.forma !== 'Dinheiro' && !d.arquivos.length ? 'Anexe o comprovante do pagamento. Só pagamento em dinheiro dispensa comprovante.'
+        : tipo === 'receber' && !d.arquivos.length ? 'Anexe o comprovante do recebimento: o caixa só recebe com comprovante.' : null });
   if (!r) return false;
   try {
     const baixaId = await api.rpc('registrar_baixa', { p_parcela: p.id, p_data: r.data, p_valor: num(r.valor), p_conta_bancaria: r.conta,

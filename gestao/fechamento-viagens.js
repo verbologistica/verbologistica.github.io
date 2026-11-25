@@ -55,7 +55,7 @@ async function vfLerPlanilha(arq) {
 rota('/operacao/fechamentos', async tela => {
   await api.rpc('vf_gerar').catch(() => null);
   const et = estado.params.get('etapa') || '';
-  let fs = await api.listar('viagem_fechamentos', 'select=*,cl:clientes(nome)&order=periodo_ini.desc,criado_em.desc&limit=200');
+  let fs = await api.listar('viagem_fechamentos', 'select=*,cl:clientes(nome),tit:titulos(status,numero)&order=periodo_ini.desc,criado_em.desc&limit=200');
   const vs = fs.length ? await api.listar('viagens', `fechamento_id=in.(${fs.map(f => f.id).join(',')})&select=fechamento_id,valor_frete`).catch(() => []) : [];
   const tot = {}; vs.forEach(v => { const t = tot[v.fechamento_id] ||= { n: 0, v: 0 }; t.n++; t.v += Number(v.valor_frete || 0); });
   const cont = k => fs.filter(f => f.status === k).length;
@@ -75,7 +75,7 @@ rota('/operacao/fechamentos', async tela => {
     <div class="cartao">${fs.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Período</th><th>Cliente</th><th class="num">Viagens</th><th class="num">Frete</th><th>Prazo da operação</th><th>Situação</th></tr></thead><tbody>
       ${fs.map(f => `<tr class="clicavel" onclick="location.hash='#/operacao/fechamentos/ver/${f.id}'"><td data-r="Período"><b>${vfPer(f)}</b></td><td data-r="Cliente">${esc(f.cl?.nome || 'Sem cliente')}</td>
         <td data-r="Viagens" class="num">${tot[f.id]?.n || 0}</td><td data-r="Frete" class="num">${brl(tot[f.id]?.v || 0)}</td>
-        <td data-r="Prazo">${dataBR(f.prazo)}${vfAtrasado(f) ? ' <span class="tag vermelho">atrasado</span>' : ''}</td><td data-r="Situação">${tagSt(ST_VF, f.status)}</td></tr>`).join('')}</tbody></table></div>`
+        <td data-r="Prazo">${dataBR(f.prazo)}${vfAtrasado(f) ? ' <span class="tag vermelho">atrasado</span>' : ''}</td><td data-r="Situação">${tagSt(ST_VF, f.status)}${f.status === 'validado' ? (f.tit?.status === 'pago' ? ' <span class="tag verde">recebido</span>' : f.fatura_numero ? ' <span class="tag azul">faturado</span>' : ' <span class="tag amarelo">a faturar</span>') : ''}</td></tr>`).join('')}</tbody></table></div>`
       : '<div class="vazio">Nenhum fechamento. O primeiro é aberto pelo sistema no dia 21 (período de 06 a 20) ou no dia 06 (período de 21 a 05).</div>'}</div>`;
   $('#filtros').onsubmit = e => { e.preventDefault(); const v = e.target.etapa.value; location.hash = '#/operacao/fechamentos' + (v ? '?etapa=' + v : ''); };
 });
@@ -89,13 +89,14 @@ rota('/operacao/fechamentos/ver/:id', async (tela, id) => {
   const idsIt = [...new Set(its.map(i => i.viagem_id).filter(Boolean))];
   const vs = await api.listar('viagens', `or=(fechamento_id.eq.${id}${idsIt.length ? `,id.in.(${idsIt.join(',')})` : ''})&select=id,numero,nf_numero,cte_numero,cte_chave,chegada_em,valor_frete,peso_t,status,equipamento_id,eq:equipamentos(codigo_frota)&order=chegada_em`);
   const V = Object.fromEntries(vs.map(v => [v.id, v]));
-  const op = vfOp(), fin = vfFin(), st = f.status;
+  const tit = f.titulo_id ? (await api.listar('titulos', `id=eq.${f.titulo_id}&select=id,numero,status,valor_total,documento,parcelas:titulo_parcelas(vencimento,valor,valor_pago,status)`).catch(() => []))[0] : null;
+  const op = vfOp(), fin = vfFin(), st = f.status, recebido = tit?.status === 'pago';
   const n = k => its.filter(i => i.situacao === k).length, pend = its.filter(i => i.situacao === 'divergente' && !i.decisao).length;
   const daPlanilha = its.filter(i => i.dados), somaCli = daPlanilha.reduce((a, i) => a + Number(i.dados.valor || 0), 0), pesoCli = daPlanilha.reduce((a, i) => a + Number(i.dados.peso_liquido || 0), 0);
   const somaSis = its.filter(i => i.viagem_id && i.situacao !== 'fora_planilha').reduce((a, i) => a + Number(V[i.viagem_id]?.valor_frete || 0), 0);
   const noFech = vs.filter(v => v.status !== 'entregue' || its.some(i => i.viagem_id === v.id));
-  const passos = [['aberto', 'Planilha do cliente'], ['em_conferencia', 'Conferência da operação'], ['no_financeiro', 'Validação do financeiro'], ['validado', 'Validado']];
-  const ix = passos.findIndex(p => p[0] === st);
+  const passos = [['aberto', 'Planilha do cliente'], ['em_conferencia', 'Conferência da operação'], ['no_financeiro', 'Validação do financeiro'], ['validado', 'Validado'], ['faturado', 'Faturado'], ['recebido', 'Recebido']];
+  const ix = st === 'validado' ? (recebido ? 6 : f.fatura_numero ? 4 : 3) : passos.findIndex(p => p[0] === st);
   const ult = k => [...(f.historico || [])].reverse().find(h => h.acao?.startsWith(k));
   tela.innerHTML = `
     <div class="topo"><div><h1>Fechamento ${vfPer(f)}</h1><p class="sub">${esc(f.cl?.nome || 'Sem cliente')} · prazo da operação ${dataBR(f.prazo)}${vfAtrasado(f) ? ' <span class="tag vermelho">atrasado</span>' : ''} · ${tagSt(ST_VF, st)}</p></div>
@@ -109,6 +110,13 @@ rota('/operacao/fechamentos/ver/:id', async (tela, id) => {
     ${st === 'aberto' ? `<div class="cartao" style="border-left:5px solid #DDA936"><b>Próximo passo (operação):</b> importe o relatório que o cliente enviou (Excel). O sistema casa cada linha com a viagem pela <b>chave do CT-e</b> (depois pela nota fiscal e, por último, placa + data), confere todos os campos e atualiza peso, volume, projeto, talhão, distâncias e horário da balança.</div>` : ''}
     ${st === 'em_conferencia' && n('sem_viagem') ? `<div class="cartao" style="border-left:5px solid #C62828"><b>${n('sem_viagem')} viagem(ns) da planilha não estão no sistema.</b> Lance essas viagens (com o XML do CT-e) e importe a planilha de novo. Sem isso o fechamento não pode ser enviado ao financeiro.</div>` : ''}
     ${st === 'no_financeiro' && fin ? `<div class="cartao" style="border-left:5px solid #DDA936"><b>Próximo passo (financeiro):</b> ${pend ? `decida as <b>${pend}</b> divergência(s) abaixo (aceitar o dado do cliente ou contestar) e valide.` : 'tudo decidido: valide o fechamento.'} Viagem contestada ou que não veio na planilha volta para o próximo fechamento.</div>` : ''}
+    ${st === 'validado' ? `<div class="cartao" style="border-left:5px solid ${recebido ? '#1E8E57' : '#DDA936'}"><h2>Faturamento e recebimento</h2>
+      ${tit ? `<div class="form"><div><div class="muted">Conta a receber</div><b><a href="#/financeiro/receber/ver/${tit.id}">${esc(tit.numero || '—')}</a></b> ${recebido ? '<span class="tag verde">Recebida</span>' : tit.status === 'parcialmente_pago' ? '<span class="tag amarelo">Recebida em parte</span>' : '<span class="tag azul">Receita prevista</span>'}</div>
+        <div><div class="muted">Valor</div><b>${brl(tit.valor_total)}</b></div><div><div class="muted">Fatura / boleto</div><b>${esc(f.fatura_numero || 'ainda não faturado')}</b></div>
+        <div><div class="muted">Vencimento</div><b>${dataBR(f.fatura_vencimento || tit.parcelas?.[0]?.vencimento) || '—'}</b></div></div>
+        <p class="muted" style="margin:8px 0 0">${recebido ? 'Recebimento confirmado com comprovante: viagens <b>Recebida</b>.' : f.fatura_numero ? 'Próximo passo (financeiro): quando o cliente pagar, registre o recebimento <b>na conta a receber, com o comprovante</b>. Até lá o valor fica como receita prevista.' : 'Próximo passo (financeiro): registre o faturamento (nº da fatura/boleto e vencimento). O valor fica como receita prevista até o recebimento.'}</p>
+        <div class="acoes" style="margin-top:8px">${fin && !recebido ? `<button class="btn ${f.fatura_numero ? '' : 'prim'}" id="vf-fat">${f.fatura_numero ? 'Corrigir faturamento' : 'Registrar faturamento'}</button>` : ''}${fin && f.fatura_numero && !recebido ? `<a class="btn prim" href="#/financeiro/receber/ver/${tit.id}">Registrar recebimento</a>` : ''}</div>`
+      : '<p class="muted">A conta a receber ainda não foi criada.</p>'}</div>` : ''}
     ${its.length ? `<div class="grade" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr))">
       <div class="cartao kpi"><div class="n">${daPlanilha.length}</div><div class="r">viagens na planilha${f.planilha_nome ? ` <span class="muted">(${esc(f.planilha_nome)})</span>` : ''}</div></div>
       <div class="cartao kpi"><div class="n">${n('ok')}</div><div class="r">conferem</div></div>
@@ -177,6 +185,17 @@ rota('/operacao/fechamentos/ver/:id', async (tela, id) => {
     try { await api.rpc('vf_pedir_estorno', { p_fid: id, p_motivo: m }); aviso('Pedido de estorno enviado ao financeiro.'); navegar(); } catch (err) { falha(err); } });
   $('#vf-est')?.addEventListener('click', async () => { const m = await confirmar('Estornar o fechamento? As viagens voltam para "Em conferência" e o fechamento volta para a operação.', { comMotivo: true, botao: 'Estornar' }); if (!m) return;
     try { await api.rpc('vf_estornar', { p_fid: id, p_motivo: m }); aviso('Fechamento estornado.'); navegar(); } catch (err) { falha(err); } });
+  $('#vf-fat')?.addEventListener('click', async () => {
+    const r = await modal(`<form><h2>Registrar faturamento</h2><p class="muted">${vfPer(f)} · ${brl(tit?.valor_total || 0)}</p><div class="form">
+      <label class="campo">Nº da fatura / boleto<input name="numero" value="${esc(f.fatura_numero || '')}" required></label>
+      <label class="campo">Vencimento<input type="date" name="venc" value="${f.fatura_vencimento || tit?.parcelas?.[0]?.vencimento || ''}" required></label>
+      <label class="campo largo">Fatura / boleto (PDF)<input type="file" name="arquivos" accept="image/*,application/pdf" multiple></label></div>
+      <p class="muted">As viagens passam para <b>Faturada</b>. O valor continua como receita prevista até o recebimento.</p>
+      <div class="rodape"><button type="button" class="btn" data-fechar>Cancelar</button><button class="btn prim">Salvar</button></div></form>`);
+    if (!r) return;
+    try { await api.rpc('vf_faturar', { p_fid: id, p_numero: r.numero, p_vencimento: r.venc });
+      if (r.arquivos?.length) { await anexar('viagem_fechamento', id, r.arquivos, 'Fatura/boleto').catch(() => {}); if (tit) await anexar('titulo', tit.id, r.arquivos, 'Fatura/boleto').catch(() => {}); }
+      aviso('Faturamento registrado.'); navegar(); } catch (err) { falha(err); } });
   $('#vf-pdf')?.addEventListener('click', e => ocupado(e.target, () => vfPdf(f, its, V, { somaCli, somaSis, pesoCli, n, ult }).catch(falha)));
 });
 

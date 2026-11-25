@@ -16,8 +16,9 @@ rota('/operacao/jornadas/km', async tela => {
   try { rows = await api.rpc('km_motoristas', { p_ini: new Date(ini + 'T00:00:00-03:00').toISOString(), p_fim: new Date(fim + 'T23:59:59-03:00').toISOString() }); } catch (err) { falha(err); return; }
   if (rows == null) { tela.innerHTML = '<div class="cartao vazio">Sem permissão para ver o km por motorista.</div>'; return; }
   // rows: [motorista, frota, placa, dia, km, apontamentos]
-  const M = new Map();
-  for (const [nome, frota, placa, dia, km] of rows) {
+  const M = new Map(); let descartado = 0;
+  for (const [nome, frota, placa, dia, km, , desc] of rows) {
+    descartado += Number(desc || 0);
     const m = M.get(nome) || { nome, km: 0, dias: new Map(), frotas: new Map(), semId: KM_SEMID.test(nome) }; M.set(nome, m);
     m.km += Number(km); m.dias.set(dia, (m.dias.get(dia) || 0) + Number(km));
     const fk = `${frota}${placa && placa !== frota ? ' · ' + placa : ''}`; m.frotas.set(fk, (m.frotas.get(fk) || 0) + Number(km));
@@ -35,6 +36,7 @@ rota('/operacao/jornadas/km', async tela => {
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:12px">
       ${kpi(kmF(total) + ' km', 'rodados no período')}${kpi(ident.length, 'motoristas com km')}${kpi(kmF(ident.length ? ident.reduce((a, m) => a + m.km, 0) / ident.length : 0) + ' km', 'média por motorista')}
       ${kpi(kmF(semId) + ' km', 'sem motorista identificado', semId > 0.5 ? '#E2B93B' : '#2BB673')}</div>
+    ${descartado > 0.5 ? `<div class="cartao" style="border-left:4px solid #E2B93B"><b>${kmF(descartado)} km descartados por erro de odômetro do Creare</b> <span class="muted">(apontamento com distância impossível para o tempo dele, acima de 150 km/h). Não entram na conta.</span></div>` : ''}
     ${semId > 0.5 ? `<div class="cartao" style="border-left:4px solid #E2B93B"><b>${kmF(semId)} km sem motorista identificado.</b> <span class="muted">Esse km não entra na conta de ninguém. Oriente o motorista a se identificar no Creare ao assumir o caminhão.</span></div>` : ''}
     <div class="cartao">${ms.length ? `<div class="tabela-wrap"><table class="tabela compacta"><thead><tr><th>Motorista</th><th>Frota (km)</th><th class="num">Dias com km</th><th class="num">Média por dia</th><th class="num">Km no período</th><th></th></tr></thead><tbody>
       ${ms.map((m, k) => `<tr data-k="${k}" style="cursor:pointer${m.semId ? ';background:#FFF8E6' : ''}"><td><b>${esc(m.nome)}</b></td>
@@ -44,6 +46,7 @@ rota('/operacao/jornadas/km', async tela => {
       <tr style="background:#F6EFDC"><td><b>Total</b></td><td></td><td></td><td></td><td class="num"><b>${kmF(total)}</b></td><td></td></tr></tbody></table></div>` : '<div class="vazio">Nenhum km registrado no período.</div>'}</div>
     <div class="cartao"><h2>Como é calculado</h2><ul class="muted" style="margin:0;padding-left:18px;line-height:1.55">
       <li>Soma a distância de cada apontamento do Creare (E09), no nome do motorista que estava identificado no caminhão naquele momento. O apontamento entra no dia em que começou.</li>
+      <li>Apontamento com distância impossível para o tempo dele (acima de 150 km/h, erro de odômetro do Creare) é descartado.</li>
       <li>Se o motorista não se identificar, o km vai para "Motorista não se identificou" e não conta para ninguém.</li>
       <li>Clique no motorista para ver o km dia a dia.</li></ul></div>`;
   const f = $('#km-f', tela);
