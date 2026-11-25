@@ -1,0 +1,148 @@
+// ===================== Pedágio (Sem Parar) e adiantamentos do cliente =====================
+// Pedágio: extrato do Sem Parar importado; cada passagem é ligada à viagem pelo ciclo do caminhão (chegada anterior → chegada).
+// Reembolso pelo cliente = ida e volta das viagens. Passagem sem viagem e tarifas/multas/juros da conta = custo da Verbo.
+// Adiantamentos do cliente: "pedágio" (mensal) e "aporte" (início das operações). Abatimento = quitação por compensação.
+const TIPO_ADC = { aporte: ['Aporte (início das operações)', 'azul'], pedagio: ['Adiantamento de pedágio', 'amarelo'] };
+const mesRot = m => new Date(m + 'T12:00:00').toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+const mesFim = m => { const [a, b] = m.split('-').map(Number); return new Date(Date.UTC(b === 12 ? a + 1 : a, b === 12 ? 0 : b, 1)).toISOString().slice(0, 10); };
+
+// ---------- leitura do extrato do Sem Parar ----------
+async function pedLerExtrato(arq) {
+  await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');
+  const wb = XLSX.read(await arq.arrayBuffer(), { type: 'array' }), out = [];
+  const hora = v => typeof v === 'number' ? new Date(Math.round(v % 1 * 86400) * 1000).toISOString().slice(11, 19) : String(v || '00:00:00').trim().padStart(8, '0').slice(0, 8);
+  const dia = v => typeof v === 'number' ? new Date(Math.round((v - 25569) * 86400) * 1000).toISOString().slice(0, 10)
+    : (m => m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : null)(String(v || '').match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/));
+  for (const nome of wb.SheetNames) {
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[nome], { header: 1, raw: true, defval: null });
+    const hi = rows.slice(0, 10).findIndex(r => (r || []).map(vfNorm).includes('placa_veiculo'));
+    if (hi < 0) continue;
+    const h = rows[hi].map(vfNorm), c = k => h.indexOf(k);
+    for (const r of rows.slice(hi + 1)) {
+      const d = dia(r[c('data')]); if (!d) continue;
+      const placa = r[c('placa_veiculo')];
+      out.push({ fatura: r[c('numero_da_fatura')] == null ? null : String(r[c('numero_da_fatura')]), data_hora: `${d}T${hora(r[c('horario')])}`, placa: placa ? String(placa) : '',
+        tipo_veiculo: r[c('tipo_do_veiculo')] || '', praca: r[c('descricao')] || '', sentido: r[c('sentido_da_praca')] || '', tipo_uso: r[c('tipo_de_uso')] || 'PASSAGENS',
+        valor: vfNum(r[c('valor_r')]), dc: r[c('debito_credito')] || '' });
+    }
+  }
+  if (!out.length) throw new Error('Não achei lançamentos no arquivo. Use o Excel de "Lançamentos" exportado do site do Sem Parar.');
+  return out;
+}
+
+// ---------- tela do pedágio ----------
+rota('/operacao/pedagios', async tela => {
+  const mes = (estado.params.get('mes') || hojeISO().slice(0, 7)) + '-01', fimMes = mesFim(mes);
+  const ini = new Date(mes + 'T00:00:00-03:00').toISOString(), fim = new Date(fimMes + 'T00:00:00-03:00').toISOString();
+  await api.rpc('pedagio_vincular').catch(() => null);
+  const [ps, ads, tits] = await Promise.all([
+    api.listar('pedagio_passagens', `data_hora=gte.${ini}&data_hora=lt.${fim}&select=*,v:viagens(id,numero,cliente_id,chegada_em,status,cl:clientes(nome))&order=data_hora&limit=5000`),
+    api.listar('v_cliente_adiantamentos', `tipo=eq.pedagio&competencia=eq.${mes}&cancelado_em=is.null`).catch(() => []),
+    api.listar('titulos', `origem=eq.pedagio&competencia=eq.${mes}&status=neq.cancelado&select=id,numero,status,valor_total,cliente_id`).catch(() => [])]);
+  const deb = p => p.debito_credito === 'CR' ? -Number(p.valor) : Number(p.valor);
+  const pass = ps.filter(p => p.tipo_uso === 'PASSAGENS'), reemb = pass.filter(p => p.viagem_id), semVia = pass.filter(p => !p.viagem_id), taxas = ps.filter(p => p.tipo_uso !== 'PASSAGENS');
+  const soma = a => a.reduce((t, p) => t + deb(p), 0), totReemb = soma(reemb), totAd = ads.reduce((t, a) => t + Number(a.valor), 0);
+  const porVia = new Map(); reemb.forEach(p => { const x = porVia.get(p.viagem_id) || { v: p.v, n: 0, s: 0, placa: p.placa }; x.n++; x.s += deb(p); porVia.set(p.viagem_id, x); });
+  const porPlaca = new Map(); semVia.forEach(p => { const k = p.placa || '—', x = porPlaca.get(k) || { tipo: p.tipo_veiculo, n: 0, s: 0, ini: p.data_hora, fim: p.data_hora }; x.n++; x.s += deb(p); x.fim = p.data_hora; porPlaca.set(k, x); });
+  const porTaxa = new Map(); taxas.forEach(p => porTaxa.set(p.tipo_uso, (porTaxa.get(p.tipo_uso) || 0) + deb(p)));
+  const clientes = [...new Map(reemb.filter(p => p.v?.cliente_id).map(p => [p.v.cliente_id, p.v.cl?.nome])).entries()];
+  const fin = tem('administrador', 'financeiro'), op = tem('administrador', 'operacao', 'financeiro');
+  const kpi = (n, r, cor = '') => `<div class="cartao kpi"${cor ? ` style="border-left:4px solid ${cor}"` : ''}><div class="n">${n}</div><div class="r">${r}</div></div>`;
+  const saldo = totAd - totReemb;
+  tela.innerHTML = `
+    <div class="topo"><div><h1>Pedágios (Sem Parar)</h1><p class="sub">${mesRot(mes)} · reembolso pelo cliente = ida e volta das viagens · o resto é custo da Verbo</p></div>
+      <div class="acoes">${op ? '<button class="btn prim" id="ped-imp">📥 Importar extrato do Sem Parar</button><input type="file" id="ped-arq" accept=".xlsx,.xls" hidden>' : ''}<a class="btn" href="#/financeiro/adiantamentos-clientes">Adiantamentos do cliente</a></div></div>
+    <form class="filtros" id="ped-f"><label>Mês <input type="month" name="mes" value="${mes.slice(0, 7)}"></label><button class="btn prim">Ver</button></form>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:12px">
+      ${kpi(brl(totReemb), `pedágio das viagens (reembolsável) · ${porVia.size} viagem(ns)`, '#1E8E57')}${kpi(brl(totAd), 'adiantamento de pedágio recebido no mês')}
+      ${kpi(brl(Math.abs(saldo)), saldo >= 0 ? 'sobra do adiantamento' : 'falta (a pedir ao cliente)', saldo >= 0 ? '#2BB673' : '#D64545')}
+      ${kpi(brl(soma(semVia)), `passagens sem viagem (custo Verbo) · ${semVia.length}`, '#E2B93B')}${kpi(brl(soma(taxas)), 'tarifas, multa e juros da conta (custo Verbo)', soma(taxas) > 0 ? '#E2B93B' : '')}</div>
+    <div class="cartao"><h2>Reembolso pelo cliente</h2>
+      ${clientes.length ? clientes.map(([cid, nome]) => { const t = tits.find(x => x.cliente_id === cid);
+        return `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:6px 0"><b>${esc(nome || 'Cliente')}</b> · ${brl(reemb.filter(p => p.v?.cliente_id === cid).reduce((a, p) => a + deb(p), 0))}
+          ${t ? `<a href="#/financeiro/receber/ver/${t.id}">${esc(t.numero || '')}</a> ${t.status === 'pago' ? '<span class="tag verde">Recebido</span>' : t.status === 'parcialmente_pago' ? '<span class="tag amarelo">Recebido em parte</span>' : '<span class="tag azul">Aguardando pagamento do cliente</span>'}`
+            : fin ? `<button class="btn peq prim" data-reemb="${cid}">Gerar pedido de reembolso de ${mesRot(mes)}</button>` : '<span class="muted">pedido de reembolso ainda não gerado</span>'}</div>`; }).join('')
+        : '<p class="muted">Nenhum pedágio ligado a viagens neste mês.</p>'}
+      <p class="muted" style="margin:6px 0 0">O pedido fica <b>aguardando pagamento do cliente</b> até entrar o adiantamento de pedágio; aí o financeiro abate do adiantamento (em Adiantamentos do cliente). Gere o pedido depois de importar o extrato do mês inteiro.</p></div>
+    <div class="cartao"><h2>Pedágio por viagem (ida e volta)</h2>${porVia.size ? `<div class="tabela-wrap"><table class="tabela compacta"><thead><tr><th>Viagem</th><th>Placa</th><th>Chegada</th><th>Situação</th><th class="num">Passagens</th><th class="num">Valor</th></tr></thead><tbody>
+      ${[...porVia.values()].sort((a, b) => (a.v?.chegada_em || '').localeCompare(b.v?.chegada_em || '')).map(x => `<tr class="clicavel" onclick="location.hash='#/operacao/viagens/ver/${x.v?.id}'"><td><b>${esc(x.v?.numero || '')}</b></td><td>${esc(x.placa)}</td><td>${dataHoraBR(x.v?.chegada_em) || '—'}</td><td>${tagSt(ST_VIA, x.v?.status)}</td><td class="num">${x.n}</td><td class="num"><b>${brl(x.s)}</b></td></tr>`).join('')}
+      <tr style="background:#F6EFDC"><td><b>Total</b></td><td></td><td></td><td></td><td class="num">${reemb.length}</td><td class="num"><b>${brl(totReemb)}</b></td></tr></tbody></table></div>` : '<div class="vazio">Nenhuma passagem ligada a viagem.</div>'}</div>
+    <div class="cartao"><h2>Não reembolsável (custo da Verbo)</h2>
+      ${porPlaca.size ? `<div class="tabela-wrap"><table class="tabela compacta"><thead><tr><th>Placa</th><th>Tipo</th><th>Período</th><th class="num">Passagens</th><th class="num">Valor</th></tr></thead><tbody>
+        ${[...porPlaca].sort((a, b) => b[1].s - a[1].s).map(([k, x]) => `<tr><td><b>${esc(k)}</b></td><td>${esc(x.tipo || '—')}</td><td>${dataHoraBR(x.ini)} a ${dataHoraBR(x.fim)}</td><td class="num">${x.n}</td><td class="num">${brl(x.s)}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">Nenhuma passagem fora de viagem.</p>'}
+      ${porTaxa.size ? `<p style="margin-top:8px"><b>Tarifas e encargos da conta:</b> ${[...porTaxa].map(([k, v]) => `${esc(k.toLowerCase())} ${brl(v)}`).join(' · ')}</p>` : ''}
+      <p class="muted" style="margin:6px 0 0">Passagens de carros de apoio, de caminhões antes do início da operação ou fora de um ciclo de viagem (chegada anterior → chegada) não são cobradas do cliente. Se aparecer passagem de caminhão de viagem aqui, confira se a viagem foi lançada e entregue no sistema.</p></div>`;
+  $('#ped-f').onsubmit = e => { e.preventDefault(); location.hash = '#/operacao/pedagios?mes=' + e.target.mes.value; };
+  $('#ped-imp')?.addEventListener('click', () => $('#ped-arq').click());
+  $('#ped-arq')?.addEventListener('change', async ev => { const arq = ev.target.files[0]; ev.target.value = ''; if (!arq) return;
+    try { const ls = await pedLerExtrato(arq);
+      if (!await confirmar(`Importar ${ls.length} lançamento(s) do Sem Parar (${arq.name})? Lançamentos que já estão no sistema são ignorados.`, { botao: 'Importar' })) return;
+      const r = await api.rpc('pedagio_importar', { p_linhas: ls, p_arquivo: arq.name });
+      aviso(`${r.novas} lançamento(s) novos · ${r.repetidas} já estavam no sistema · ${r.ligadas} passagem(ns) ligadas a viagens.`); navegar(); } catch (err) { falha(err); } });
+  $$('[data-reemb]', tela).forEach(b => b.onclick = () => ocupado(b, async () => {
+    if (!await confirmar(`Gerar o pedido de reembolso de pedágio de ${mesRot(mes)}? Ele entra em Contas a receber como "aguardando pagamento do cliente".`, { botao: 'Gerar pedido' })) return;
+    try { const id = await api.rpc('pedagio_pedir_reembolso', { p_cliente: b.dataset.reemb, p_mes: mes }); aviso('Pedido de reembolso gerado.'); location.hash = '#/financeiro/receber/ver/' + id; } catch (err) { falha(err); } }));
+});
+
+// ---------- adiantamentos do cliente ----------
+rota('/financeiro/adiantamentos-clientes', async tela => {
+  const [ads, usos] = await Promise.all([api.listar('v_cliente_adiantamentos', 'order=data.desc,criado_em.desc'),
+    api.listar('cliente_adiantamento_usos', 'select=*,t:titulos(id,numero,descricao),b:baixas(cancelado_em)&order=criado_em').catch(() => [])]);
+  const fin = tem('administrador', 'financeiro'), ativos = ads.filter(a => !a.cancelado_em);
+  const sd = t => ativos.filter(a => a.tipo === t).reduce((s, a) => s + Number(a.saldo), 0);
+  const kpi = (n, r, cor = '') => `<div class="cartao kpi"${cor ? ` style="border-left:4px solid ${cor}"` : ''}><div class="n">${n}</div><div class="r">${r}</div></div>`;
+  tela.innerHTML = `
+    <div class="topo"><div><h1>Adiantamentos do cliente</h1><p class="sub">Dinheiro do cliente recebido antes: só vira receita quando é abatido de um fechamento ou de um pedido de reembolso</p></div>
+      <div class="acoes">${fin ? '<button class="btn prim" id="adc-novo">+ Registrar adiantamento</button>' : ''}<a class="btn" href="#/operacao/pedagios">Pedágios</a></div></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:12px">
+      ${kpi(brl(sd('aporte')), 'saldo de aporte (abate fechamentos de frete)', '#2F80ED')}${kpi(brl(sd('pedagio')), 'saldo de adiantamento de pedágio', '#DDA936')}</div>
+    <div class="cartao">${ads.length ? `<div class="tabela-wrap"><table class="tabela compacta"><thead><tr><th>Data</th><th>Cliente</th><th>Tipo</th><th class="num">Recebido</th><th class="num">Abatido</th><th class="num">Saldo</th><th></th></tr></thead><tbody>
+      ${ads.map((a, k) => `<tr${a.cancelado_em ? ' style="opacity:.5"' : ''}><td>${dataBR(a.data)}</td><td>${esc(a.cliente_nome)}</td><td>${tagSt(TIPO_ADC, a.tipo)}${a.competencia ? ' <span class="muted">' + mesRot(a.competencia) + '</span>' : ''}</td>
+        <td class="num">${brl(a.valor)}</td><td class="num">${brl(a.usado)}</td><td class="num"><b>${brl(a.saldo)}</b></td>
+        <td class="nowrap"><button class="btn peq" data-ext="${k}">Extrato</button>${fin && !a.cancelado_em && Number(a.saldo) > 0 ? ` <button class="btn peq prim" data-abt="${k}">Abater</button>` : ''}</td></tr>`).join('')}</tbody></table></div>`
+      : '<div class="vazio">Nenhum adiantamento registrado.</div>'}</div>
+    <div class="cartao"><h2>Como funciona</h2><ul class="muted" style="margin:0;padding-left:18px;line-height:1.55">
+      <li><b>Registrar:</b> o valor entra no caixa (com comprovante) e fica como saldo do cliente.</li>
+      <li><b>Abater:</b> escolha a conta a receber do cliente (fechamento de viagens ou reembolso de pedágio). Ela é quitada por compensação, sem nova entrada no caixa, e o saldo diminui.</li>
+      <li>O adiantamento de <b>pedágio</b> abate os pedidos de reembolso de pedágio; o <b>aporte</b> abate os fechamentos de frete. Se o fechamento for maior que o saldo, abate o que tiver e o resto segue como conta a receber.</li></ul></div>`;
+  $('#adc-novo')?.addEventListener('click', async () => {
+    const [cls, bs] = await Promise.all([api.listar('clientes', 'ativo=eq.true&select=id,nome,nome_fantasia&order=nome'), api.listar('contas_bancarias', 'ativo=eq.true&select=id,nome,tipo&order=nome')]);
+    const r = await modal(`<form><h2>Registrar adiantamento do cliente</h2><div class="form">
+      <label class="campo largo">Cliente<select name="cliente" required>${cls.map(c => `<option value="${c.id}">${esc(c.nome_fantasia || c.nome)}</option>`).join('')}</select></label>
+      <label class="campo">Tipo<select name="tipo" required><option value="aporte">${TIPO_ADC.aporte[0]}</option><option value="pedagio">${TIPO_ADC.pedagio[0]}</option></select></label>
+      <label class="campo" id="adc-comp" hidden>Mês do pedágio<input type="month" name="comp" value="${hojeISO().slice(0, 7)}"></label>
+      <label class="campo">Data do recebimento<input type="date" name="data" value="${hojeISO()}" required></label>
+      <label class="campo">Valor (R$)<input name="valor" inputmode="decimal" required></label>
+      <label class="campo">Conta que recebeu<select name="conta" required>${bs.map(b => `<option value="${b.id}" ${b.tipo === 'corrente' ? 'selected' : ''}>${esc(b.nome)}</option>`).join('')}</select></label>
+      <label class="campo">Forma<select name="forma" required><option value="">Selecione…</option>${FORMAS_BAIXA.map(f => `<option>${f}</option>`).join('')}</select></label>
+      <label class="campo largo">Observação<input name="obs"></label>
+      <label class="campo largo">Comprovante (obrigatório)<input type="file" name="arquivos" accept="image/*,application/pdf" multiple></label></div>
+      <div class="rodape"><button type="button" class="btn" data-fechar>Cancelar</button><button class="btn prim">Registrar</button></div></form>`,
+      { aoAbrir: f => { const t = $('[name=tipo]', f); t.onchange = () => { $('#adc-comp', f).hidden = t.value !== 'pedagio'; }; },
+        validar: d => !d.arquivos.length ? 'Anexe o comprovante do recebimento.' : !(num(d.valor) > 0) ? 'Informe o valor.' : null });
+    if (!r) return;
+    try { const id = await api.rpc('cliente_adiantamento_registrar', { p_cliente: r.cliente, p_tipo: r.tipo, p_competencia: r.tipo === 'pedagio' ? r.comp + '-01' : null, p_data: r.data,
+        p_valor: num(r.valor), p_conta: r.conta, p_forma: r.forma, p_obs: r.obs || null });
+      await anexar('cliente_adiantamento', id, r.arquivos, 'Comprovante do adiantamento'); aviso('Adiantamento registrado.'); navegar(); } catch (err) { falha(err); } });
+  $$('[data-ext]', tela).forEach(b => b.onclick = async () => { const a = ads[+b.dataset.ext], us = usos.filter(u => u.adiantamento_id === a.id && !u.b?.cancelado_em);
+    const anx = await htmlAnexos('cliente_adiantamento', a.id).catch(() => '');
+    modal(`<div><h2>${esc(a.cliente_nome)} · ${TIPO_ADC[a.tipo][0]}</h2><p class="muted">Recebido em ${dataBR(a.data)} · ${brl(a.valor)}${a.forma_pagamento ? ' · ' + esc(a.forma_pagamento) : ''}${a.observacao ? ' · ' + esc(a.observacao) : ''}</p>
+      <div class="tabela-wrap"><table class="tabela compacta"><thead><tr><th>Data</th><th>Abatido em</th><th class="num">Valor</th></tr></thead><tbody>
+      <tr><td>${dataBR(a.data)}</td><td><b>Recebimento</b></td><td class="num">${brl(a.valor)}</td></tr>
+      ${us.map(u => `<tr><td>${dataBR(u.data)}</td><td><a href="#/financeiro/receber/ver/${u.t?.id}" data-fechar>${esc(u.t?.numero || '')}</a> ${esc(u.t?.descricao || '')}</td><td class="num">− ${brl(u.valor)}</td></tr>`).join('')}
+      <tr style="background:#F6EFDC"><td></td><td><b>Saldo</b></td><td class="num"><b>${brl(a.saldo)}</b></td></tr></tbody></table></div><div>${anx}</div>
+      <div class="rodape"><button type="button" class="btn" data-fechar>Fechar</button></div></div>`); });
+  $$('[data-abt]', tela).forEach(b => b.onclick = async () => { const a = ads[+b.dataset.abt];
+    const ts = await api.listar('titulos', `tipo=eq.receber&cliente_id=eq.${a.cliente_id}&status=in.(previsto,aberto,aprovado,parcialmente_pago)&select=id,numero,descricao,valor_total,origem,parcelas:titulo_parcelas(valor,valor_pago,status)&order=data_emissao`);
+    const aberto = t => (t.parcelas || []).filter(p => !['paga', 'cancelada'].includes(p.status)).reduce((s, p) => s + Number(p.valor) - Number(p.valor_pago), 0);
+    const sug = ts.filter(t => a.tipo === 'pedagio' ? t.origem === 'pedagio' : t.origem !== 'pedagio');
+    if (!ts.length) return aviso('Este cliente não tem conta a receber em aberto.', true);
+    const r = await modal(`<form><h2>Abater do adiantamento</h2><p class="muted">${esc(a.cliente_nome)} · ${TIPO_ADC[a.tipo][0]} · saldo <b>${brl(a.saldo)}</b></p><div class="form">
+      <label class="campo largo">Conta a receber<select name="titulo" required>${[...sug, ...ts.filter(t => !sug.includes(t))].map(t => `<option value="${t.id}">${esc(t.numero || '')} · ${esc(t.descricao || '')} · em aberto ${brl(aberto(t))}</option>`).join('')}</select></label>
+      <label class="campo">Valor a abater (vazio = o máximo possível)<input name="valor" inputmode="decimal"></label></div>
+      <p class="muted">A conta é quitada por compensação (sem nova entrada no caixa). Fechamento de viagens quitado passa as viagens para <b>Recebida</b>.</p>
+      <div class="rodape"><button type="button" class="btn" data-fechar>Cancelar</button><button class="btn prim">Abater</button></div></form>`);
+    if (!r) return;
+    try { const x = await api.rpc('cliente_adiantamento_abater', { p_adiantamento: a.id, p_titulo: r.titulo, p_valor: r.valor ? num(r.valor) : null });
+      aviso(`Abatido ${brl(x.abatido)}. Saldo do adiantamento: ${brl(x.saldo)}.`); navegar(); } catch (err) { falha(err); } });
+});

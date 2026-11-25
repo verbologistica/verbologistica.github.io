@@ -17,7 +17,9 @@ function lerXmlCte(texto) {
   const tomaEl = x.getElementsByTagName('toma4')[0] || docs[+t3] || null;
   const qs = [...x.getElementsByTagName('infQ')].map(q => ({ un: g('cUnid', q), tp: g('tpMed', q), v: Number(g('qCarga', q)) }));
   const qp = qs.find(q => /peso/i.test(q.tp) && q.v) || qs.find(q => ['01', '02'].includes(q.un) && q.v);
+  const imp = x.getElementsByTagName('imp')[0], gi = n => imp ? g(n, imp) : '', icmsV = Number(gi('vICMS') || gi('vICMSSTRet') || gi('vICMSOutraUF') || 0);
   return { chave, numero: g('nCT'), serie: g('serie'), emissao: g('dhEmi'), valor: Number(g('vTPrest') || g('vRec')) || null, nfs,
+    icms_valor: icmsV, icms_base: Number(gi('vBC') || gi('vBCSTRet') || gi('vBCOutraUF') || 0) || null, icms_aliquota: Number(gi('pICMS') || gi('pICMSSTRet') || gi('pICMSOutraUF') || 0) || null, icms_cst: gi('CST'),
     origem: [g('xMunIni'), g('UFIni')].filter(Boolean).join('/'), destino: [g('xMunFim'), g('UFFim')].filter(Boolean).join('/'),
     peso_t: qp ? (qp.un === '01' && qp.v >= 1000 ? qp.v / 1000 : qp.v) : null,   // código de kg com valor de toneladas (ex.: 46) = já está em toneladas
     tomador_doc: tomaEl ? soDigitos(g('CNPJ', tomaEl) || g('CPF', tomaEl)) : '', tomador: tomaEl ? g('xNome', tomaEl) : '' };

@@ -87,14 +87,18 @@ rota('/operacao/fechamentos/ver/:id', async (tela, id) => {
   if (!f) { tela.innerHTML = '<div class="cartao vazio">Fechamento não encontrado.</div>'; return; }
   const its = await api.listar('viagem_fechamento_itens', `fechamento_id=eq.${id}&order=linha.asc.nullslast,criado_em.asc`);
   const idsIt = [...new Set(its.map(i => i.viagem_id).filter(Boolean))];
-  const vs = await api.listar('viagens', `or=(fechamento_id.eq.${id}${idsIt.length ? `,id.in.(${idsIt.join(',')})` : ''})&select=id,numero,nf_numero,cte_numero,cte_chave,chegada_em,valor_frete,peso_t,status,equipamento_id,eq:equipamentos(codigo_frota)&order=chegada_em`);
+  const vs = await api.listar('viagens', `or=(fechamento_id.eq.${id}${idsIt.length ? `,id.in.(${idsIt.join(',')})` : ''})&select=id,numero,nf_numero,cte_numero,cte_chave,chegada_em,valor_frete,peso_t,status,equipamento_id,icms_valor,icms_aliquota,eq:equipamentos(codigo_frota)&order=chegada_em`);
   const V = Object.fromEntries(vs.map(v => [v.id, v]));
+  const PED = {}; if (vs.length) (await api.listar('pedagio_passagens', `viagem_id=in.(${vs.map(v => v.id).join(',')})&select=viagem_id,valor,debito_credito`).catch(() => [])).forEach(p => { PED[p.viagem_id] = (PED[p.viagem_id] || 0) + (p.debito_credito === 'CR' ? -1 : 1) * Number(p.valor); });
+  const aportes = f.cliente_id && tem('administrador', 'financeiro') ? await api.listar('v_cliente_adiantamentos', `cliente_id=eq.${f.cliente_id}&tipo=eq.aporte&cancelado_em=is.null&saldo=gt.0&order=data`).catch(() => []) : [];
   const tit = f.titulo_id ? (await api.listar('titulos', `id=eq.${f.titulo_id}&select=id,numero,status,valor_total,documento,parcelas:titulo_parcelas(vencimento,valor,valor_pago,status)`).catch(() => []))[0] : null;
   const op = vfOp(), fin = vfFin(), st = f.status, recebido = tit?.status === 'pago';
   const n = k => its.filter(i => i.situacao === k).length, pend = its.filter(i => i.situacao === 'divergente' && !i.decisao).length;
   const daPlanilha = its.filter(i => i.dados), somaCli = daPlanilha.reduce((a, i) => a + Number(i.dados.valor || 0), 0), pesoCli = daPlanilha.reduce((a, i) => a + Number(i.dados.peso_liquido || 0), 0);
   const somaSis = its.filter(i => i.viagem_id && i.situacao !== 'fora_planilha').reduce((a, i) => a + Number(V[i.viagem_id]?.valor_frete || 0), 0);
   const noFech = vs.filter(v => v.status !== 'entregue' || its.some(i => i.viagem_id === v.id));
+  const casadas = [...new Set(its.filter(i => i.viagem_id && i.situacao !== 'fora_planilha').map(i => i.viagem_id))].map(k => V[k]).filter(Boolean), baseV = casadas.length ? casadas : noFech;
+  const icmsTot = baseV.reduce((a, v) => a + Number(v.icms_valor || 0), 0), semIcms = baseV.filter(v => v.icms_valor == null).length, pedTot = baseV.reduce((a, v) => a + (PED[v.id] || 0), 0), freteTot = baseV.reduce((a, v) => a + Number(v.valor_frete || 0), 0);
   const passos = [['aberto', 'Planilha do cliente'], ['em_conferencia', 'Conferência da operação'], ['no_financeiro', 'Validação do financeiro'], ['validado', 'Validado'], ['faturado', 'Faturado'], ['recebido', 'Recebido']];
   const ix = st === 'validado' ? (recebido ? 6 : f.fatura_numero ? 4 : 3) : passos.findIndex(p => p[0] === st);
   const ult = k => [...(f.historico || [])].reverse().find(h => h.acao?.startsWith(k));
@@ -104,7 +108,7 @@ rota('/operacao/fechamentos/ver/:id', async (tela, id) => {
         ${op && st === 'em_conferencia' ? '<button class="btn prim" id="vf-env">Fechar e enviar ao financeiro</button>' : ''}
         ${fin && st === 'no_financeiro' ? '<button class="btn" id="vf-dev">Devolver à operação</button><button class="btn prim" id="vf-val">✓ Validar fechamento</button>' : ''}
         ${st === 'validado' && fin ? '<button class="btn perigo" id="vf-est">Estornar fechamento</button>' : st === 'validado' && op ? '<button class="btn" id="vf-pest">Pedir estorno</button>' : ''}
-        ${its.length ? '<button class="btn" id="vf-pdf">PDF da conferência</button>' : ''}<a class="btn" href="#/operacao/fechamentos">Voltar</a></div></div>
+        ${op || fin ? '<button class="btn" id="vf-xml">Importar XMLs dos CT-e</button><input type="file" id="vf-xmls" accept=".xml,text/xml" multiple hidden>' : ''}${its.length ? '<button class="btn" id="vf-pdf">PDF da conferência</button>' : ''}<a class="btn" href="#/operacao/fechamentos">Voltar</a></div></div>
     <div class="cartao" style="display:flex;gap:6px;flex-wrap:wrap;padding:10px 14px">${passos.map(([k, t], i) => `<div style="flex:1;min-width:150px;padding:8px 10px;border-radius:8px;${i < ix ? 'background:#E8F4EC;color:#1E8E57' : i === ix ? 'background:#F6EFDC;font-weight:700' : 'background:#F3F4F5;color:#8A9095'}">${i < ix ? '✓ ' : i + 1 + '. '}${t}</div>`).join('')}</div>
     ${f.devolucao_motivo && st === 'em_conferencia' ? `<div class="cartao" style="border-left:5px solid #C62828"><b>Devolvido pelo financeiro:</b> ${esc(f.devolucao_motivo)}</div>` : ''}
     ${st === 'aberto' ? `<div class="cartao" style="border-left:5px solid #DDA936"><b>Próximo passo (operação):</b> importe o relatório que o cliente enviou (Excel). O sistema casa cada linha com a viagem pela <b>chave do CT-e</b> (depois pela nota fiscal e, por último, placa + data), confere todos os campos e atualiza peso, volume, projeto, talhão, distâncias e horário da balança.</div>` : ''}
@@ -115,7 +119,7 @@ rota('/operacao/fechamentos/ver/:id', async (tela, id) => {
         <div><div class="muted">Valor</div><b>${brl(tit.valor_total)}</b></div><div><div class="muted">Fatura / boleto</div><b>${esc(f.fatura_numero || 'ainda não faturado')}</b></div>
         <div><div class="muted">Vencimento</div><b>${dataBR(f.fatura_vencimento || tit.parcelas?.[0]?.vencimento) || '—'}</b></div></div>
         <p class="muted" style="margin:8px 0 0">${recebido ? 'Recebimento confirmado com comprovante: viagens <b>Recebida</b>.' : f.fatura_numero ? 'Próximo passo (financeiro): quando o cliente pagar, registre o recebimento <b>na conta a receber, com o comprovante</b>. Até lá o valor fica como receita prevista.' : 'Próximo passo (financeiro): registre o faturamento (nº da fatura/boleto e vencimento). O valor fica como receita prevista até o recebimento.'}</p>
-        <div class="acoes" style="margin-top:8px">${fin && !recebido ? `<button class="btn ${f.fatura_numero ? '' : 'prim'}" id="vf-fat">${f.fatura_numero ? 'Corrigir faturamento' : 'Registrar faturamento'}</button>` : ''}${fin && f.fatura_numero && !recebido ? `<a class="btn prim" href="#/financeiro/receber/ver/${tit.id}">Registrar recebimento</a>` : ''}</div>`
+        <div class="acoes" style="margin-top:8px">${fin && !recebido ? `<button class="btn ${f.fatura_numero ? '' : 'prim'}" id="vf-fat">${f.fatura_numero ? 'Corrigir faturamento' : 'Registrar faturamento'}</button>` : ''}${fin && f.fatura_numero && !recebido ? `<a class="btn prim" href="#/financeiro/receber/ver/${tit.id}">Registrar recebimento</a>` : ''}${fin && !recebido && aportes.length ? `<button class="btn" id="vf-aporte">Abater do aporte (saldo ${brl(aportes.reduce((a, x) => a + Number(x.saldo), 0))})</button>` : ''}</div>`
       : '<p class="muted">A conta a receber ainda não foi criada.</p>'}</div>` : ''}
     ${its.length ? `<div class="grade" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr))">
       <div class="cartao kpi"><div class="n">${daPlanilha.length}</div><div class="r">viagens na planilha${f.planilha_nome ? ` <span class="muted">(${esc(f.planilha_nome)})</span>` : ''}</div></div>
@@ -126,20 +130,24 @@ rota('/operacao/fechamentos/ver/:id', async (tela, id) => {
     <div class="cartao"><div class="form">
       <div><div class="muted">Valor pelo cliente</div><b>${brl(somaCli)}</b></div><div><div class="muted">Valor no sistema (viagens casadas)</div><b>${brl(somaSis)}</b></div>
       <div><div class="muted">Diferença</div><b style="color:${Math.abs(somaCli - somaSis) > 0.05 ? '#C62828' : '#1E8E57'}">${brl(somaCli - somaSis)}</b></div><div><div class="muted">Peso líquido (balança do cliente)</div><b>${pesoCli.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} t</b></div></div></div>` : ''}
+    <div class="cartao"><h2>Composição do valor</h2><div class="form">
+      <div><div class="muted">Valor dos CT-e (frete com ICMS)</div><b>${brl(freteTot)}</b></div><div><div class="muted">Frete sem ICMS</div><b>${brl(freteTot - icmsTot)}</b></div>
+      <div><div class="muted">ICMS embutido</div><b>${brl(icmsTot)}</b>${semIcms ? ` <span class="tag amarelo" title="Importe os XMLs dos CT-e">${semIcms} sem XML</span>` : ''}</div><div><div class="muted">Pedágio (ida e volta, reembolso à parte)</div><b>${brl(pedTot)}</b></div></div>
+      ${semIcms ? '<p class="muted" style="margin:6px 0 0">Para o rateio do ICMS, clique em <b>Importar XMLs dos CT-e</b> e selecione os XMLs das viagens (pode selecionar todos de uma vez).</p>' : ''}</div>
     <div class="cartao"><h2>${its.length ? 'Conferência linha a linha' : 'Viagens do período no sistema'}</h2>
-      ${its.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Linha</th><th>Viagem</th><th>NF</th><th>CT-e</th><th>Placa</th><th>Chegada (balança)</th><th class="num">Peso líq.</th><th class="num">Valor cliente</th><th>Situação</th><th>O que difere</th><th>Decisão</th></tr></thead><tbody>
+      ${its.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Linha</th><th>Viagem</th><th>NF</th><th>CT-e</th><th>Placa</th><th>Chegada (balança)</th><th class="num">Peso líq.</th><th class="num">Valor cliente</th><th class="num">ICMS</th><th class="num">Pedágio</th><th>Situação</th><th>O que difere</th><th>Decisão</th></tr></thead><tbody>
         ${its.map(i => { const v = V[i.viagem_id], d = i.dados || {}, dvs = (i.divergencias || []);
           return `<tr><td data-r="Linha">${i.linha ?? '—'}</td><td data-r="Viagem">${v ? `<a href="#/operacao/viagens/ver/${v.id}"><b>${esc(v.numero)}</b></a> <span class="muted">${esc(v.eq?.codigo_frota || '')}</span>` : '—'}${i.casou_por ? `<div class="muted" style="font-size:11px">pela ${esc(i.casou_por)}</div>` : ''}</td>
             <td data-r="NF">${esc(d.nf || v?.nf_numero || '—')}</td><td data-r="CT-e">${esc(d.cte || v?.cte_numero || '—')}</td><td data-r="Placa">${esc(d.placa || '—')}</td>
             <td data-r="Chegada">${d.chegada ? dataHoraBR(d.chegada) : v?.chegada_em ? dataHoraBR(v.chegada_em) : '—'}</td><td data-r="Peso líq." class="num">${d.peso_liquido != null ? Number(d.peso_liquido).toLocaleString('pt-BR') + ' t' : '—'}</td>
-            <td data-r="Valor cliente" class="num">${d.valor != null ? brl(d.valor) : '—'}</td><td data-r="Situação">${tagSt(SIT_VFI, i.situacao)}</td>
+            <td data-r="Valor cliente" class="num">${d.valor != null ? brl(d.valor) : '—'}</td><td data-r="ICMS" class="num">${v?.icms_valor != null ? brl(v.icms_valor) : '—'}</td><td data-r="Pedágio" class="num">${v && PED[v.id] ? brl(PED[v.id]) : '—'}</td><td data-r="Situação">${tagSt(SIT_VFI, i.situacao)}</td>
             <td data-r="O que difere">${dvs.length ? dvs.map(x => `<div${x.auto ? ' class="muted"' : ''}>${esc(x.rotulo)}: ${vfFmt(x.campo, x.sistema)} → <b>${vfFmt(x.campo, x.cliente)}</b>${x.auto ? ' <span class="tag">ajustado</span>' : ''}</div>`).join('') : '—'}</td>
             <td data-r="Decisão">${i.decisao ? `<span class="tag ${i.decisao === 'aceitar' ? 'verde' : 'vermelho'}">${i.decisao === 'aceitar' ? 'Aceito o dado do cliente' : 'Contestado'}</span>${i.decisao_obs ? `<div class="muted">${esc(i.decisao_obs)}</div>` : ''}${fin && st === 'no_financeiro' ? ` <button class="btn peq" data-dec="${i.id}">Mudar</button>` : ''}`
               : i.situacao === 'divergente' && fin && st === 'no_financeiro' ? `<button class="btn ok peq" data-ac="${i.id}">Aceitar</button> <button class="btn perigo peq" data-dec="${i.id}">Contestar</button>`
               : i.situacao === 'fora_planilha' ? '<span class="muted">vai para o próximo fechamento</span>' : '—'}</td></tr>`; }).join('')}</tbody></table></div>`
-      : noFech.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Viagem</th><th>NF</th><th>CT-e</th><th>Chegada</th><th class="num">Frete</th><th>Situação</th></tr></thead><tbody>
+      : noFech.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Viagem</th><th>NF</th><th>CT-e</th><th>Chegada</th><th class="num">Frete</th><th class="num">ICMS</th><th class="num">Pedágio</th><th>Situação</th></tr></thead><tbody>
         ${noFech.map(v => `<tr class="clicavel" onclick="location.hash='#/operacao/viagens/ver/${v.id}'"><td data-r="Viagem"><b>${esc(v.numero)}</b> <span class="muted">${esc(v.eq?.codigo_frota || '')}</span></td><td data-r="NF">${esc(v.nf_numero || '—')}</td><td data-r="CT-e">${esc(v.cte_numero || '—')}</td>
-          <td data-r="Chegada">${dataHoraBR(v.chegada_em) || '—'}</td><td data-r="Frete" class="num">${brl(v.valor_frete || 0)}</td><td data-r="Situação">${tagSt(ST_VIA, v.status)}</td></tr>`).join('')}</tbody></table></div>
+          <td data-r="Chegada">${dataHoraBR(v.chegada_em) || '—'}</td><td data-r="Frete" class="num">${brl(v.valor_frete || 0)}</td><td data-r="ICMS" class="num">${v.icms_valor != null ? brl(v.icms_valor) : '—'}</td><td data-r="Pedágio" class="num">${PED[v.id] ? brl(PED[v.id]) : '—'}</td><td data-r="Situação">${tagSt(ST_VIA, v.status)}</td></tr>`).join('')}</tbody></table></div>
         <p class="muted">Total: ${noFech.length} viagem(ns) · ${brl(noFech.reduce((a, v) => a + Number(v.valor_frete || 0), 0))}</p>` : '<div class="vazio">Nenhuma viagem neste fechamento.</div>'}</div>
     <div class="cartao"><h2>Histórico</h2>${(f.historico || []).length ? `<ul class="lista-simples">${[...f.historico].reverse().map(h => `<li><span><b>${esc(h.acao)}</b>${h.obs ? ` · ${esc(h.obs)}` : ''}<div class="muted">${dataHoraBR(h.em)}${h.nome ? ' · ' + esc(h.nome) : ''}</div></span></li>`).join('')}</ul>` : '<div class="muted">—</div>'}
       <div id="anx-vf" style="margin-top:8px"></div></div>`;
@@ -185,6 +193,19 @@ rota('/operacao/fechamentos/ver/:id', async (tela, id) => {
     try { await api.rpc('vf_pedir_estorno', { p_fid: id, p_motivo: m }); aviso('Pedido de estorno enviado ao financeiro.'); navegar(); } catch (err) { falha(err); } });
   $('#vf-est')?.addEventListener('click', async () => { const m = await confirmar('Estornar o fechamento? As viagens voltam para "Em conferência" e o fechamento volta para a operação.', { comMotivo: true, botao: 'Estornar' }); if (!m) return;
     try { await api.rpc('vf_estornar', { p_fid: id, p_motivo: m }); aviso('Fechamento estornado.'); navegar(); } catch (err) { falha(err); } });
+  $('#vf-xml')?.addEventListener('click', () => $('#vf-xmls').click());
+  $('#vf-xmls')?.addEventListener('change', async ev => { const fs = [...ev.target.files]; ev.target.value = ''; if (!fs.length) return;
+    const porChave = Object.fromEntries(vs.filter(v => v.cte_chave).map(v => [v.cte_chave, v])), ok = [], fora = [], erro = [];
+    await ocupado($('#vf-xml'), async () => { for (const arq of fs) { try { const c = lerXmlCte(await arq.text()), v = porChave[c.chave];
+      if (!v) { fora.push(arq.name); continue; } await api.rpc('vf_cte_xml', { p_viagem: v.id, p_dados: c }); await anexar('viagem', v.id, [arq], 'CT-e (XML)').catch(() => {}); ok.push(v.numero);
+    } catch (err) { erro.push(arq.name + ': ' + err.message); } } });
+    aviso(`${ok.length} XML(s) ligados às viagens${fora.length ? ` · ${fora.length} não são deste fechamento` : ''}${erro.length ? ` · ${erro.length} com erro` : ''}.`, !!erro.length); navegar(); });
+  $('#vf-aporte')?.addEventListener('click', e => ocupado(e.target, async () => {
+    const tot = aportes.reduce((a, x) => a + Number(x.saldo), 0);
+    if (!await confirmar(`Abater esta conta a receber do aporte do cliente (saldo ${brl(tot)})? A conta é quitada por compensação, sem nova entrada no caixa.`, { botao: 'Abater' })) return;
+    try { let ab = 0; for (const a of aportes) { const t = await api.um('titulos', `id=eq.${tit.id}&select=status`); if (t.status === 'pago') break;
+        ab += Number((await api.rpc('cliente_adiantamento_abater', { p_adiantamento: a.id, p_titulo: tit.id, p_valor: null })).abatido); }
+      aviso(`Abatido ${brl(ab)} do aporte.`); navegar(); } catch (err) { falha(err); } }));
   $('#vf-fat')?.addEventListener('click', async () => {
     const r = await modal(`<form><h2>Registrar faturamento</h2><p class="muted">${vfPer(f)} · ${brl(tit?.valor_total || 0)}</p><div class="form">
       <label class="campo">Nº da fatura / boleto<input name="numero" value="${esc(f.fatura_numero || '')}" required></label>
@@ -196,7 +217,7 @@ rota('/operacao/fechamentos/ver/:id', async (tela, id) => {
     try { await api.rpc('vf_faturar', { p_fid: id, p_numero: r.numero, p_vencimento: r.venc });
       if (r.arquivos?.length) { await anexar('viagem_fechamento', id, r.arquivos, 'Fatura/boleto').catch(() => {}); if (tit) await anexar('titulo', tit.id, r.arquivos, 'Fatura/boleto').catch(() => {}); }
       aviso('Faturamento registrado.'); navegar(); } catch (err) { falha(err); } });
-  $('#vf-pdf')?.addEventListener('click', e => ocupado(e.target, () => vfPdf(f, its, V, { somaCli, somaSis, pesoCli, n, ult }).catch(falha)));
+  $('#vf-pdf')?.addEventListener('click', e => ocupado(e.target, () => vfPdf(f, its, V, { somaCli, somaSis, pesoCli, n, ult, PED, comp: { frete: freteTot, icms: icmsTot, semIcms, ped: pedTot } }).catch(falha)));
 });
 
 // ---------- PDF da conferência (papel timbrado, paisagem) ----------
@@ -221,13 +242,15 @@ async function vfPdf(f, its, V, S) {
     [[its.filter(i => i.dados).length, S.n('ok'), S.n('divergente'), S.n('sem_viagem'), S.n('fora_planilha'), brl(S.somaCli), brl(S.somaSis), brl(S.somaCli - S.somaSis), S.pesoCli.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + ' t']],
     { styles: { font: 'helvetica', fontSize: 8.6, halign: 'center', textColor: C.texto, lineColor: C.borda, lineWidth: 0.15 }, headStyles: { fillColor: C.escuro, textColor: 255, fontStyle: 'bold', fontSize: 7, halign: 'center' } });
   titulo('Conferência linha a linha');
-  tabela(['Linha', 'Viagem', 'NF', 'CT-e', 'Placa', 'Chegada (balança)', 'Peso líq. (t)', 'Valor cliente', 'Valor sistema', 'Situação', 'Decisão'],
+  if (S.comp) tabela(['Valor dos CT-e', 'Frete sem ICMS', 'ICMS embutido', 'Pedágio (ida e volta)'], [[brl(S.comp.frete), brl(S.comp.frete - S.comp.icms), brl(S.comp.icms) + (S.comp.semIcms ? ` (${S.comp.semIcms} sem XML)` : ''), brl(S.comp.ped)]],
+    { styles: { font: 'helvetica', fontSize: 8.6, halign: 'center', textColor: C.texto, lineColor: C.borda, lineWidth: 0.15 }, headStyles: { fillColor: C.escuro, textColor: 255, fontStyle: 'bold', fontSize: 7, halign: 'center' } });
+  tabela(['Linha', 'Viagem', 'NF', 'CT-e', 'Placa', 'Chegada (balança)', 'Peso líq. (t)', 'Valor cliente', 'Valor sistema', 'ICMS', 'Pedágio', 'Situação', 'Decisão'],
     its.map(i => { const v = V[i.viagem_id], d = i.dados || {};
       return [i.linha ?? '-', v ? `${v.numero}${v.eq?.codigo_frota ? ' · ' + v.eq.codigo_frota : ''}` : '-', d.nf || v?.nf_numero || '-', d.cte || v?.cte_numero || '-', d.placa || '-',
         d.chegada ? dataHoraBR(d.chegada) : v?.chegada_em ? dataHoraBR(v.chegada_em) : '-', d.peso_liquido != null ? Number(d.peso_liquido).toLocaleString('pt-BR') : '-',
-        d.valor != null ? brl(d.valor) : '-', v ? brl(v.valor_frete || 0) : '-', SIT_VFI[i.situacao]?.[0] || i.situacao,
+        d.valor != null ? brl(d.valor) : '-', v ? brl(v.valor_frete || 0) : '-', v?.icms_valor != null ? brl(v.icms_valor) : '-', v && S.PED?.[v.id] ? brl(S.PED[v.id]) : '-', SIT_VFI[i.situacao]?.[0] || i.situacao,
         i.decisao ? (i.decisao === 'aceitar' ? 'Aceito' : 'Contestado') + (i.decisao_obs ? ': ' + i.decisao_obs : '') : i.situacao === 'fora_planilha' ? 'Próximo fechamento' : '-']; }),
-    { didParseCell: c => { if (c.section !== 'body' || c.column.index !== 9) return; const s = its[c.row.index]?.situacao; c.cell.styles.fontStyle = 'bold'; c.cell.styles.textColor = s === 'ok' ? C.verde : s === 'fora_planilha' ? C.cinza : C.verm; } });
+    { didParseCell: c => { if (c.section !== 'body' || c.column.index !== 11) return; const s = its[c.row.index]?.situacao; c.cell.styles.fontStyle = 'bold'; c.cell.styles.textColor = s === 'ok' ? C.verde : s === 'fora_planilha' ? C.cinza : C.verm; } });
   const difs = its.flatMap(i => (i.divergencias || []).map(x => [V[i.viagem_id]?.numero || '-', txt(x.rotulo), txt(vfFmt(x.campo, x.sistema)).replace(/&[a-z#0-9]+;/g, ''), txt(vfFmt(x.campo, x.cliente)).replace(/&[a-z#0-9]+;/g, ''), x.auto ? 'Ajustado automaticamente' : i.decisao === 'aceitar' ? 'Aceito o dado do cliente' : i.decisao === 'contestar' ? 'Contestado' : 'Pendente']));
   if (difs.length) { titulo('Diferenças encontradas'); tabela(['Viagem', 'Campo', 'No sistema', 'Pelo cliente', 'Tratamento'], difs); }
   titulo('Responsáveis');
