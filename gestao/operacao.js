@@ -19,7 +19,8 @@ function lerXmlCte(texto) {
   const qp = qs.find(q => /peso/i.test(q.tp) && q.v) || qs.find(q => ['01', '02'].includes(q.un) && q.v);
   return { chave, numero: g('nCT'), serie: g('serie'), emissao: g('dhEmi'), valor: Number(g('vTPrest') || g('vRec')) || null, nfs,
     origem: [g('xMunIni'), g('UFIni')].filter(Boolean).join('/'), destino: [g('xMunFim'), g('UFFim')].filter(Boolean).join('/'),
-    peso_t: qp ? (qp.un === '01' ? qp.v / 1000 : qp.v) : null, tomador_doc: tomaEl ? soDigitos(g('CNPJ', tomaEl) || g('CPF', tomaEl)) : '', tomador: tomaEl ? g('xNome', tomaEl) : '' };
+    peso_t: qp ? (qp.un === '01' && qp.v >= 1000 ? qp.v / 1000 : qp.v) : null,   // código de kg com valor de toneladas (ex.: 46) = já está em toneladas
+    tomador_doc: tomaEl ? soDigitos(g('CNPJ', tomaEl) || g('CPF', tomaEl)) : '', tomador: tomaEl ? g('xNome', tomaEl) : '' };
 }
 const EV_JOR = { inicio_jornada: ['Início da jornada', '🟢'], direcao: ['Direção', '🚚'], descanso: ['Descanso', '☕'], refeicao: ['Refeição', '🍽️'], espera: ['Espera (carga/descarga)', '⏳'], trabalho: ['Outro trabalho', '🔧'], fim_jornada: ['Fim da jornada', '🔴'] };
 const TIPO_OCO = { atraso: 'Atraso', avaria_carga: 'Avaria de carga', falta_carga: 'Falta de carga', quebra_veiculo: 'Quebra do veículo', sinistro: 'Sinistro / colisão', roubo: 'Roubo / furto', reclamacao_cliente: 'Reclamação do cliente', multa: 'Multa de trânsito' };
