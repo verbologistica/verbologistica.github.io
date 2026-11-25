@@ -67,13 +67,24 @@ rota('/cadastros/equipamentos', async tela => {
   const semH = t => t.replace(/[-\s]/g, '');
   let termos = q.split(/[,;\n]+/).map(t => t.trim()).filter(Boolean);
   if (termos.length === 1 && /\s/.test(termos[0]) && termos[0].split(/\s+/).every(t => /\d/.test(t))) termos = termos[0].split(/\s+/);
-  const lista_ = eqs.filter(e => { if (!termos.length) return true; const txt = [e.codigo_frota, nomeTipoEq(e), e.marca, e.modelo, ...e.comps.map(c => c.placa + ' ' + (c.codigo_frota || ''))].join(' ').toLowerCase();
+  const fF = pLista('frota'), fP = pLista('placa'), fT = pLista('tipo'), fM = pLista('marca'), fA = pLista('atrel'), fD = pLista('docs');
+  const atrelE = e => engs.some(x => x.cavalo_id === e.id || x.carreta_id === e.id) ? 'atrelado' : PAPEL_EQ(e.tipo) ? 'desatrelado' : 'nao';
+  const docsE = e => { const s = st[e.id] || {}; return s.vencido ? 'vencido' : s.vence_30 ? 'vencendo' : 'ok'; };
+  const mmE = e => [e.marca, e.modelo].filter(Boolean).join(' ') || 'Sem marca/modelo';
+  const passa = e => (!fF.length || fF.includes(e.codigo_frota || '')) && (!fP.length || e.comps.some(c => fP.includes(c.placa))) && (!fT.length || fT.includes(nomeTipoEq(e)))
+    && (!fM.length || fM.includes(mmE(e))) && (!fA.length || fA.includes(atrelE(e))) && (!fD.length || fD.includes(docsE(e)));
+  const uniq = a => [...new Set(a.filter(Boolean))].sort((x, y) => x.localeCompare(y, 'pt-BR', { numeric: true }));
+  const opc = (nome, rot, vals, sel) => `<select name="${nome}" title="${rot}"><option value="">${rot}: todos</option>${vals.map(v => Array.isArray(v) ? v : [v, v]).map(([v, t]) => `<option value="${esc(v)}" ${sel.includes(v) ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>`;
+  const lista_ = eqs.filter(passa).filter(e => { if (!termos.length) return true; const txt = [e.codigo_frota, nomeTipoEq(e), e.marca, e.modelo, ...e.comps.map(c => c.placa + ' ' + (c.codigo_frota || ''))].join(' ').toLowerCase();
     return termos.some(t => txt.includes(t) || semH(txt).includes(semH(t))); });
   tela.innerHTML = `
     <div class="topo"><div><h1>Equipamentos</h1><p class="sub">${lista_.length} equipamento(s) · ${lista_.reduce((s, e) => s + e.comps.filter(c => c.ativo).length, 0)} placa(s)</p></div>
       <div class="acoes"><a class="btn" href="#/frota/atrelamentos">Atrelamentos cavalo × carreta</a><a class="btn" href="#/frota/documentos">Documentos a vencer</a><a class="btn" href="#/cadastros/equipamentos${inativos ? '' : '?inativos=1'}">${inativos ? 'Ocultar desativados' : 'Mostrar desativados'}</a>
         ${editaFrota() ? '<a class="btn prim" href="#/cadastros/equipamentos/novo">+ Novo equipamento</a>' : ''}</div></div>
-    <form class="filtros" id="filtros"><input name="q" value="${esc(estado.params.get('q') || '')}" placeholder="Código de frota, placa, marca ou modelo · vários: VER-001, VER-004" title="Para buscar vários, separe por vírgula (ou por espaço, no caso de placas e códigos)" style="min-width:340px"><button class="btn">Buscar</button></form>
+    <form class="filtros" id="filtros">${opc('frota', 'Frota', uniq(eqs.map(e => e.codigo_frota)), fF)}${opc('placa', 'Placa', uniq(eqs.flatMap(e => e.comps.filter(c => c.ativo).map(c => c.placa))), fP)}
+      ${opc('tipo', 'Tipo', uniq(eqs.map(nomeTipoEq)), fT)}${opc('marca', 'Marca / modelo', uniq(eqs.map(mmE)), fM)}
+      ${opc('atrel', 'Atrelamento', [['atrelado', 'Atrelado'], ['desatrelado', 'Desatrelado'], ['nao', 'Não se aplica']], fA)}${opc('docs', 'Documentos', [['vencido', 'Com vencido'], ['vencendo', 'Vencendo em 30 dias'], ['ok', 'Em dia']], fD)}
+      <input name="q" value="${esc(estado.params.get('q') || '')}" placeholder="Buscar texto (opcional)" title="Busca livre; para vários, separe por vírgula" style="min-width:200px"><button class="btn">Buscar</button></form>
     <div class="cartao">${lista_.length ? `<div class="tabela-wrap" data-rel-frota><table class="responsiva"><thead><tr><th>Código de frota</th><th>Tipo</th><th>Marca / modelo</th><th>Placas</th><th>Atrelado a</th><th>Situação</th><th>Documentos</th></tr></thead><tbody>
       ${lista_.map(e => { const s = st[e.id] || {}; const cs = e.comps.filter(c => c.ativo).sort((a, b) => a.ordem - b.ordem);
         return `<tr class="clicavel" onclick="location.hash='#/cadastros/equipamentos/ver/${e.id}'"><td data-r="Código" class="nowrap"><b>${esc(e.codigo_frota || '—')}</b></td>
@@ -88,8 +99,8 @@ rota('/cadastros/equipamentos', async tela => {
       <ul class="lista-simples">${soltas.map(v => `<li><span><a href="#/cadastros/placas/ver/${v.id}" class="mono"><b>${esc(v.placa)}</b></a> ${esc([v.descricao_composicao, v.codigo_frota && 'frota ' + v.codigo_frota].filter(Boolean).join(' · '))}</span>
         ${editaFrota() ? `<button class="btn peq" data-atrelar="${v.id}">Atrelar a um equipamento</button>` : ''}</li>`).join('')}</ul></div>` : ''}`;
   $$('[data-atrelar]', tela).forEach(b => b.addEventListener('click', () => modalTroca(soltas.find(v => v.id === b.dataset.atrelar), null)));
-  $('#filtros').onsubmit = e => { e.preventDefault(); const v = formDados(e.target).q;
-    location.hash = '#/cadastros/equipamentos?' + new URLSearchParams({ ...(v ? { q: v } : {}), ...(inativos ? { inativos: 1 } : {}) }); };
+  $('#filtros').onsubmit = e => { e.preventDefault(); const d = formDados(e.target);
+    location.hash = '#/cadastros/equipamentos?' + new URLSearchParams({ ...Object.fromEntries(Object.entries(d).filter(([k, v]) => v && !k.startsWith('_'))), ...(inativos ? { inativos: 1 } : {}) }); };
 });
 rota('/cadastros/veiculos', () => { location.hash = '#/cadastros/equipamentos'; });
 
