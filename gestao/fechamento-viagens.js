@@ -246,45 +246,64 @@ async function importarXmlsCte(fs, fechId = null, btn = null) {
 }
 
 // ---------- PDF da conferência (papel timbrado, paisagem) ----------
-// PDF para o cliente: só o essencial (sem conferência interna, diferenças nem responsáveis)
+// PDF para o cliente: só o essencial. Frete (CT-e, ICMS incluído) e pedágio (reembolso à parte) em blocos separados, sem somar os dois.
 async function vfPdfCliente(f, its, V, PED) {
   await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
   await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js');
   const E = (await empresasL().catch(() => []))[0] || {}, IMG = await imagensTimbrado(true);
   const doc = new window.jspdf.jsPDF({ unit: 'mm', format: 'a4', orientation: 'landscape' });
-  const ML = 20, MR = 277, TOPO = 40, BASE = 181;
-  const C = { texto: [37, 46, 53], cinza: [107, 115, 120], escuro: [37, 46, 53], borda: [215, 219, 222], creme: [246, 239, 220] };
+  const ML = 20, MR = 277, TOPO = 40, BASE = 181, W = MR - ML;
+  const C = { texto: [37, 46, 53], cinza: [107, 115, 120], escuro: [37, 46, 53], verde: [0, 104, 74], ouro: [176, 128, 20], borda: [215, 219, 222], creme: [246, 239, 220], verdeC: [232, 244, 236] };
   const feitas = new Set(), moldura = () => { const pg = doc.getCurrentPageInfo().pageNumber; if (!feitas.has(pg)) { feitas.add(pg); molduraTimbrado(doc, E, IMG); } };
   const rows = its.filter(i => i.viagem_id && V[i.viagem_id] && i.situacao !== 'fora_planilha' && i.situacao !== 'sem_viagem' && i.decisao !== 'contestar')
     .sort((a, b) => String((a.dados || {}).chegada || V[a.viagem_id].chegada_em).localeCompare(String((b.dados || {}).chegada || V[b.viagem_id].chegada_em)));
-  const vs = [...new Map(rows.map(i => [i.viagem_id, i])).values()];
-  let tf = 0, ti = 0, tp = 0, tpeso = 0;
-  const body = vs.map((i, k) => { const v = V[i.viagem_id], d = i.dados || {}, fr = Number(v.valor_frete || 0), ic = v.icms_valor != null ? Number(v.icms_valor) : null, pd = PED?.[v.id] || 0, ps = Number(d.peso_liquido ?? v.peso_t ?? 0);
-    tf += fr; ti += ic || 0; tp += pd; tpeso += ps;
-    return [k + 1, d.nf || v.nf_numero || '-', d.cte || v.cte_numero || '-', d.placa || '-', v.saida_em ? dataHoraBR(v.saida_em) : '-', d.chegada ? dataHoraBR(d.chegada) : v.chegada_em ? dataHoraBR(v.chegada_em) : '-',
-      ps.toLocaleString('pt-BR', { maximumFractionDigits: 3 }), brl(fr), ic != null ? brl(ic) : '-', ic != null ? brl(fr - ic) : '-', pd ? brl(pd) : '-']; });
+  const vs = [...new Map(rows.map(i => [i.viagem_id, i])).values()], ids = vs.map(i => i.viagem_id);
+  const pp = ids.length ? await api.listar('pedagio_passagens', `viagem_id=in.(${ids.join(',')})&tipo_uso=eq.PASSAGENS&suspeita=eq.false&select=viagem_id,valor,debito_credito,reembolso_titulo_id`).catch(() => []) : [];
+  const NP = {}, PV = {}; pp.forEach(p => { NP[p.viagem_id] = (NP[p.viagem_id] || 0) + 1; PV[p.viagem_id] = (PV[p.viagem_id] || 0) + (p.debito_credito === 'CR' ? -1 : 1) * Number(p.valor); });
+  const tids = [...new Set(pp.map(p => p.reembolso_titulo_id).filter(Boolean))];
+  const tits = tids.length ? (await api.listar('titulos', `id=in.(${tids.join(',')})&status=neq.cancelado&select=numero`).catch(() => [])).map(x => x.numero).filter(Boolean) : [];
+  const val = id => PV[id] ?? PED?.[id] ?? 0;
+  let tf = 0, ti = 0, tp = 0, tpeso = 0, tn = 0;
+  const lin = vs.map((i, k) => { const v = V[i.viagem_id], d = i.dados || {}, fr = Number(v.valor_frete || 0), ic = v.icms_valor != null ? Number(v.icms_valor) : null, pd = val(v.id), ps = Number(d.peso_liquido ?? v.peso_t ?? 0);
+    tf += fr; ti += ic || 0; tp += pd; tpeso += ps; tn += NP[v.id] || 0;
+    return { k: k + 1, nf: d.nf || v.nf_numero || '-', cte: d.cte || v.cte_numero || '-', placa: d.placa || '-', saida: v.saida_em ? dataHoraBR(v.saida_em) : '-', cheg: d.chegada ? dataHoraBR(d.chegada) : v.chegada_em ? dataHoraBR(v.chegada_em) : '-', ps, fr, ic, pd, n: NP[v.id] || 0 }; });
+  const n2 = (x, d = 3) => Number(x).toLocaleString('pt-BR', { maximumFractionDigits: d });
+  const mg = { left: ML, right: 297 - MR, top: TOPO + 4, bottom: 210 - BASE }, base = { theme: 'grid', margin: mg, willDrawPage: moldura,
+    styles: { font: 'helvetica', fontSize: 7.8, textColor: C.texto, lineColor: C.borda, lineWidth: 0.15, cellPadding: 1.3 }, footStyles: { fillColor: C.creme, textColor: C.texto, fontStyle: 'bold' } };
   let y = 44;
+  const precisa = h => { if (y + h > BASE) { doc.addPage(); moldura(); y = TOPO + 4; } };
+  const faixa = (num, titulo, sub, cor) => { precisa(22); doc.setFillColor(...cor); doc.rect(ML, y, 2.2, 10, 'F');
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(11.5); doc.setTextColor(...cor); doc.text(`${num}. ${titulo}`, ML + 5, y + 4.2);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.2); doc.setTextColor(...C.cinza); doc.text(sub, ML + 5, y + 8.8); y += 13; };
   moldura();
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(...C.texto); doc.text(`Demonstrativo de fretes · ${vfPer(f)}`, ML, y); y += 5;
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(...C.texto); doc.text(`Demonstrativo de fretes e pedágios · ${vfPer(f)}`, ML, y); y += 5;
   doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(...C.cinza);
-  doc.text(`${f.cl?.nome || ''}${f.cl?.documento ? ' · CNPJ ' + fmtCNPJ(f.cl.documento) : ''} · emitido em ${new Date().toLocaleDateString('pt-BR')}`, ML, y); y += 6;
-  const resumo = { styles: { font: 'helvetica', fontSize: 9, halign: 'center', textColor: C.texto, lineColor: C.borda, lineWidth: 0.15 }, headStyles: { fillColor: C.escuro, textColor: 255, fontStyle: 'bold', fontSize: 7.4, halign: 'center' } };
-  doc.autoTable({ startY: y, margin: { left: ML, right: 297 - MR, top: TOPO + 4, bottom: 210 - BASE }, theme: 'grid', willDrawPage: moldura,
-    head: [['Viagens', 'Peso líquido', 'Valor dos CT-e (frete com ICMS)', 'ICMS embutido', 'Frete sem ICMS', 'Pedágio (ida e volta)']],
-    body: [[vs.length, tpeso.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + ' t', brl(tf), brl(ti), brl(tf - ti), brl(tp)]], ...resumo });
-  y = doc.lastAutoTable.finalY + 6;
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.setTextColor(...C.texto); doc.text('Viagens do período', ML, y); y += 3;
-  doc.autoTable({ startY: y, margin: { left: ML, right: 297 - MR, top: TOPO + 4, bottom: 210 - BASE }, theme: 'grid', willDrawPage: moldura,
-    head: [['#', 'NF', 'CT-e', 'Placa', 'Saída', 'Chegada (balança)', 'Peso líq. (t)', 'Valor do CT-e', 'ICMS', 'Frete sem ICMS', 'Pedágio']],
-    body, foot: [['', '', '', '', '', 'Total', tpeso.toLocaleString('pt-BR', { maximumFractionDigits: 3 }), brl(tf), brl(ti), brl(tf - ti), brl(tp)]],
-    styles: { font: 'helvetica', fontSize: 7.8, textColor: C.texto, lineColor: C.borda, lineWidth: 0.15, cellPadding: 1.3 },
-    headStyles: { fillColor: C.escuro, textColor: 255, fontStyle: 'bold', fontSize: 7.6 }, footStyles: { fillColor: C.creme, textColor: C.texto, fontStyle: 'bold' },
-    columnStyles: { 6: { halign: 'right' }, 7: { halign: 'right' }, 8: { halign: 'right' }, 9: { halign: 'right' }, 10: { halign: 'right' } }, showFoot: 'lastPage' });
-  y = doc.lastAutoTable.finalY + 5; if (y + 10 > BASE) { doc.addPage(); moldura(); y = TOPO + 4; }
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(7.8); doc.setTextColor(...C.cinza);
-  doc.text(doc.splitTextToSize('O ICMS já está incluído no valor de cada CT-e; a coluna "Frete sem ICMS" mostra o rateio. O pedágio é reembolsado à parte do frete e considera as passagens de ida e volta de cada viagem, conforme o extrato do Sem Parar.', MR - ML), ML, y);
+  doc.text(`${f.cl?.nome || ''}${f.cl?.documento ? ' · CNPJ ' + fmtCNPJ(f.cl.documento) : ''} · ${vs.length} viagens · emitido em ${new Date().toLocaleDateString('pt-BR')}`, ML, y); y += 6;
+  // resumo: dois recebimentos distintos, lado a lado, sem total geral
+  const bw = (W - 6) / 2, caixa = (x, cor, fundo, rot, valor, l1, l2) => { doc.setFillColor(...fundo); doc.setDrawColor(...cor); doc.setLineWidth(0.4); doc.roundedRect(x, y, bw, 25, 2, 2, 'FD');
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(...cor); doc.text(rot, x + 4, y + 5.5);
+    doc.setFontSize(15); doc.setTextColor(...C.texto); doc.text(valor, x + 4, y + 13);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.6); doc.setTextColor(...C.cinza); doc.text(l1, x + 4, y + 18.5); doc.text(l2, x + 4, y + 22.3); };
+  caixa(ML, C.verde, C.verdeC, '1. FRETE · FATURA DOS CT-e', brl(tf), `ICMS embutido ${brl(ti)} · frete sem ICMS ${brl(tf - ti)} · ${n2(tpeso, 2)} t`, 'Cobrado na fatura de frete. O ICMS já está dentro do valor de cada CT-e.');
+  caixa(ML + bw + 6, C.ouro, C.creme, '2. PEDÁGIO · REEMBOLSO À PARTE', brl(tp), `${tn} passagens (ida e volta) · NÃO está incluído no valor do frete`, tits.length ? `Cobrado separadamente no pedido de reembolso ${tits.join(', ')}.` : 'Cobrado separadamente, em pedido de reembolso próprio.');
+  y += 31;
+  faixa(1, 'Frete (fatura dos CT-e)', 'Valor de cada CT-e com o rateio do ICMS embutido. Este é o valor total do frete do período.', C.verde);
+  doc.autoTable({ ...base, startY: y, headStyles: { fillColor: C.verde, textColor: 255, fontStyle: 'bold', fontSize: 7.6 },
+    head: [['#', 'NF', 'CT-e', 'Placa', 'Saída', 'Chegada (balança)', 'Peso líq. (t)', 'Valor do CT-e', 'ICMS embutido', 'Frete sem ICMS']],
+    body: lin.map(l => [l.k, l.nf, l.cte, l.placa, l.saida, l.cheg, n2(l.ps), brl(l.fr), l.ic != null ? brl(l.ic) : '-', l.ic != null ? brl(l.fr - l.ic) : '-']),
+    foot: [['', '', '', '', '', 'Total do frete', n2(tpeso), brl(tf), brl(ti), brl(tf - ti)]], showFoot: 'lastPage',
+    columnStyles: { 6: { halign: 'right' }, 7: { halign: 'right' }, 8: { halign: 'right' }, 9: { halign: 'right' } } });
+  y = doc.lastAutoTable.finalY + 8;
+  faixa(2, 'Pedágio · reembolso à parte (não faz parte do frete)', 'Passagens de ida (vazio) e volta (carregado) de cada viagem, conforme o extrato do Sem Parar. Cobrança separada da fatura de frete.', C.ouro);
+  doc.autoTable({ ...base, startY: y, headStyles: { fillColor: C.ouro, textColor: 255, fontStyle: 'bold', fontSize: 7.6 },
+    head: [['#', 'NF', 'CT-e', 'Placa', 'Chegada (balança)', 'Passagens', 'Valor do pedágio']],
+    body: lin.map(l => [l.k, l.nf, l.cte, l.placa, l.cheg, l.n || '-', l.pd ? brl(l.pd) : '-']),
+    foot: [['', '', '', '', 'Total do pedágio', tn, brl(tp)]], showFoot: 'lastPage', columnStyles: { 5: { halign: 'right' }, 6: { halign: 'right' } } });
+  y = doc.lastAutoTable.finalY + 5; precisa(12);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(...C.texto);
+  doc.text(doc.splitTextToSize(`Atenção: o pedágio (${brl(tp)}) não está somado ao valor do frete (${brl(tf)}). São dois recebimentos distintos: a fatura de frete, pelos CT-e, e o reembolso de pedágio.`, W), ML, y);
   paginarTimbrado(doc, true);
-  doc.save(`Demonstrativo de fretes ${f.periodo_ini} a ${f.periodo_fim}.pdf`);
+  doc.save(`Demonstrativo de fretes e pedágios ${f.periodo_ini} a ${f.periodo_fim}.pdf`);
 }
 
 async function vfPdf(f, its, V, S) {
