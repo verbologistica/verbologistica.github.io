@@ -1537,3 +1537,11 @@ table.qd-tab td.qd-v1 { color: #02654D; font-weight: 700; } table.qd-tab td.qd-v
 table.qd-tab tfoot th, table.qd-tab tfoot td { background: #E2F0EB; text-align: right; } table.qd-tab tfoot td { text-align: center; }
 .anexo-x { border: 0; background: transparent; color: var(--cinza, #6b7378); font-size: 16px; line-height: 1; padding: 2px 6px; margin: 0 6px 0 -4px; border-radius: 6px; cursor: pointer; align-self: center; }
 .anexo-x:hover { background: #fde8e6; color: #b42318; }
+
+/* v241 (Ana, 26/11): aproveitar toda a largura da tela em qualquer monitor */
+.conteudo, body.tema-vx .conteudo { max-width: 2400px; }
+@media (min-width: 761px) {
+  .tabela th { white-space: nowrap; }
+  .tabela td { min-width: 4.5em; }
+  .tabela td a, .tabela td .tag, .tabela td.num { white-space: nowrap; }
+}
