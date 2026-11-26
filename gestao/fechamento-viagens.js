@@ -285,7 +285,7 @@ async function vfPdfCliente(f, its, V, PED) {
     doc.setFontSize(15); doc.setTextColor(...C.texto); doc.text(valor, x + 4, y + 13);
     doc.setFont('helvetica', 'normal'); doc.setFontSize(7.6); doc.setTextColor(...C.cinza); doc.text(l1, x + 4, y + 18.5); doc.text(l2, x + 4, y + 22.3); };
   caixa(ML, C.verde, C.verdeC, '1. FRETE · FATURA DOS CT-e', brl(tf), `ICMS embutido ${brl(ti)} · frete sem ICMS ${brl(tf - ti)} · ${n2(tpeso, 2)} t`, 'Cobrado na fatura de frete. O ICMS já está dentro do valor de cada CT-e.');
-  caixa(ML + bw + 6, C.ouro, C.creme, '2. PEDÁGIO · REEMBOLSO À PARTE', brl(tp), `${tn} passagens (ida e volta) · NÃO está incluído no valor do frete`, tits.length ? `Cobrado separadamente no pedido de reembolso ${tits.join(', ')}.` : 'Cobrado separadamente, em pedido de reembolso próprio.');
+  caixa(ML + bw + 6, C.ouro, C.creme, '2. PEDÁGIO · REEMBOLSO À PARTE', brl(tp), `${tn} passagens (ida e volta) · NÃO incluso no valor do frete`, '');
   y += 31;
   faixa(1, 'Frete (fatura dos CT-e)', 'Valor de cada CT-e com o rateio do ICMS embutido. Este é o valor total do frete do período.', C.verde);
   doc.autoTable({ ...base, startY: y, headStyles: { fillColor: C.verde, textColor: 255, fontStyle: 'bold', fontSize: 7.6 },
@@ -293,15 +293,12 @@ async function vfPdfCliente(f, its, V, PED) {
     body: lin.map(l => [l.k, l.nf, l.cte, l.placa, l.saida, l.cheg, n2(l.ps), brl(l.fr), l.ic != null ? brl(l.ic) : '-', l.ic != null ? brl(l.fr - l.ic) : '-']),
     foot: [['', '', '', '', '', 'Total do frete', n2(tpeso), brl(tf), brl(ti), brl(tf - ti)]], showFoot: 'lastPage',
     columnStyles: { 6: { halign: 'right' }, 7: { halign: 'right' }, 8: { halign: 'right' }, 9: { halign: 'right' } } });
-  y = doc.lastAutoTable.finalY + 8;
-  faixa(2, 'Pedágio · reembolso à parte (não faz parte do frete)', 'Passagens de ida (vazio) e volta (carregado) de cada viagem, conforme o extrato do Sem Parar. Cobrança separada da fatura de frete.', C.ouro);
+  /* pedágio por viagem é controle interno: fica fora do relatório do cliente */
+  if (false) { faixa(2, 'Pedágio · reembolso à parte (não faz parte do frete)', 'Passagens de ida (vazio) e volta (carregado) de cada viagem, conforme o extrato do Sem Parar. Cobrança separada da fatura de frete.', C.ouro);
   doc.autoTable({ ...base, startY: y, headStyles: { fillColor: C.ouro, textColor: 255, fontStyle: 'bold', fontSize: 7.6 },
     head: [['#', 'NF', 'CT-e', 'Placa', 'Chegada (balança)', 'Passagens', 'Valor do pedágio']],
     body: lin.map(l => [l.k, l.nf, l.cte, l.placa, l.cheg, l.n || '-', l.pd ? brl(l.pd) : '-']),
-    foot: [['', '', '', '', 'Total do pedágio', tn, brl(tp)]], showFoot: 'lastPage', columnStyles: { 5: { halign: 'right' }, 6: { halign: 'right' } } });
-  y = doc.lastAutoTable.finalY + 5; precisa(12);
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(...C.texto);
-  doc.text(doc.splitTextToSize(`Atenção: o pedágio (${brl(tp)}) não está somado ao valor do frete (${brl(tf)}). São dois recebimentos distintos: a fatura de frete, pelos CT-e, e o reembolso de pedágio.`, W), ML, y);
+    foot: [['', '', '', '', 'Total do pedágio', tn, brl(tp)]], showFoot: 'lastPage', columnStyles: { 5: { halign: 'right' }, 6: { halign: 'right' } } }); }
   paginarTimbrado(doc, true);
   doc.save(`Demonstrativo de fretes e pedágios ${f.periodo_ini} a ${f.periodo_fim}.pdf`);
 }

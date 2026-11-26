@@ -78,6 +78,20 @@ rota('/operacao/pedagios', async tela => {
   const fin = tem('administrador', 'financeiro'), op = tem('administrador', 'operacao', 'financeiro');
   const kpi = (n, r, cor = '') => `<div class="cartao kpi"${cor ? ` style="border-left:4px solid ${cor}"` : ''}><div class="n">${n}</div><div class="r">${r}</div></div>`;
   const saldo = totAd - totReemb, ehF = modo === 'fech';
+  // conciliação por fatura do Sem Parar (interno): todas as linhas das faturas que aparecem no período
+  const fats = [...new Set(ps.map(p => p.fatura).filter(Boolean))], FL = [];
+  for (let k = 0; k < fats.length; k += 20) FL.push(...await api.listar('pedagio_passagens', `fatura=in.(${fats.slice(k, k + 20).map(x => encodeURIComponent('"' + x + '"')).join(',')})&select=id,fatura,tipo_uso,valor,debito_credito,viagem_id,suspeita,reembolso_titulo_id,data_hora&limit=10000`).catch(() => []));
+  const tids2 = [...new Set(FL.map(p => p.reembolso_titulo_id).filter(x => x && !TIT[x]))];
+  if (tids2.length) (await api.listar('titulos', `id=in.(${tids2.join(',')})&select=id,numero,status,valor_total,descricao`).catch(() => [])).forEach(x => { TIT[x.id] = x; });
+  const ENC = ['MULTA', 'JUROS E MORA', 'ATUALIZAÇÃO MONETÁRIA'];
+  const conc = fats.map(fa => { const L = FL.filter(p => p.fatura === fa), s = f2 => L.filter(f2).reduce((a, p) => a + deb(p), 0), ps2 = p => p.tipo_uso === 'PASSAGENS';
+    const ds = L.filter(ps2).map(p => p.data_hora).sort();
+    return { fa, ini: ds[0], fim: ds[ds.length - 1], tot: s(() => true), ped: s(p => ps2(p) && p.viagem_id && !p.suspeita && emPedido(p)), pend: s(p => ps2(p) && p.viagem_id && !p.suspeita && !emPedido(p)),
+      susp: s(p => ps2(p) && p.suspeita), sem: s(p => ps2(p) && !p.viagem_id), plano: s(p => !ps2(p) && !ENC.includes(p.tipo_uso) && p.tipo_uso !== 'OUTROS DÉBITOS'),
+      enc: s(p => ENC.includes(p.tipo_uso)), outros: s(p => p.tipo_uso === 'OUTROS DÉBITOS'),
+      pedidos: [...new Set(L.filter(p => ps2(p) && emPedido(p)).map(p => TIT[p.reembolso_titulo_id].numero))].join(', ') }; })
+    .sort((a, b) => (a.fa === 'À Faturar') - (b.fa === 'À Faturar') || String(a.ini || '').localeCompare(String(b.ini || '')));
+  const cs = k => conc.reduce((a, c) => a + c[k], 0);
   const blocoCli = ([cid, nome]) => { const rs = reemb.filter(p => p.v?.cliente_id === cid), pend = rs.filter(p => !emPedido(p)), gs = [...new Set(rs.filter(emPedido).map(p => p.reembolso_titulo_id))];
     return `<div style="padding:8px 0;border-bottom:1px solid #EEF0F1"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><b>${esc(nome || 'Cliente')}</b> · ${brl(soma(rs))} no período</div>
       ${gs.map(g => { const x = TIT[g]; return `<div style="margin:4px 0 0 12px">Já pedido: <a href="#/financeiro/receber/ver/${x.id}">${esc(x.numero || '')}</a> · ${esc(x.descricao || '')} · <b>${brl(soma(rs.filter(p => p.reembolso_titulo_id === g)))}</b> ${x.status === 'pago' ? '<span class="tag verde">Recebido</span>' : x.status === 'parcialmente_pago' ? '<span class="tag amarelo">Recebido em parte</span>' : '<span class="tag azul">Aguardando pagamento do cliente</span>'}</div>`; }).join('')}
@@ -108,7 +122,15 @@ rota('/operacao/pedagios', async tela => {
       ${porPlaca.size ? `<div class="tabela-wrap"><table class="tabela compacta"><thead><tr><th>Placa</th><th>Tipo</th><th>Período</th><th class="num">Passagens</th><th class="num">Valor</th></tr></thead><tbody>
         ${[...porPlaca].sort((a, b) => b[1].s - a[1].s).map(([k, x]) => `<tr><td><b>${esc(k)}</b></td><td>${esc(x.tipo || '—')}</td><td>${dataHoraBR(x.ini)} a ${dataHoraBR(x.fim)}</td><td class="num">${x.n}</td><td class="num">${brl(x.s)}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">Nenhuma passagem fora de viagem.</p>'}
       ${porTaxa.size ? `<p style="margin-top:8px"><b>Tarifas e encargos da conta:</b> ${[...porTaxa].map(([k, v]) => `${esc(k.toLowerCase())} ${brl(v)}`).join(' · ')}</p>` : ''}
-      <p class="muted" style="margin:6px 0 0">Passagens de carros de apoio, de caminhões antes do início da operação ou fora de um ciclo de viagem (chegada anterior → chegada) não são cobradas do cliente. Se aparecer passagem de caminhão de viagem aqui, confira se a viagem foi lançada e entregue no sistema.</p></div>`;
+      <p class="muted" style="margin:6px 0 0">Passagens de carros de apoio, de caminhões antes do início da operação ou fora de um ciclo de viagem (chegada anterior → chegada) não são cobradas do cliente. Se aparecer passagem de caminhão de viagem aqui, confira se a viagem foi lançada e entregue no sistema.</p></div>
+    ${fin && conc.length ? `<div class="cartao"><h2>Conciliação por fatura do Sem Parar <span class="tag azul">interno</span></h2>
+      <p class="muted">Cada fatura inteira (não só o período da tela), separada entre o que é repassado ao cliente e o que é custo da Verbo. O cliente paga por fechamento, abatendo do adiantamento; o Sem Parar é pago por fatura. O que liga os dois é cada passagem.</p>
+      <div class="tabela-wrap"><table class="tabela compacta"><thead><tr><th>Fatura</th><th>Passagens de</th><th class="num">Total da fatura</th><th class="num">Cliente: já pedido</th><th>Pedido(s)</th><th class="num">Cliente: falta pedir</th><th class="num">Contestar (suspeitas)</th><th class="num">Custo Verbo: sem viagem</th><th class="num">Plano / tarifas</th><th class="num">Multa e juros (atraso)</th><th class="num">Saldo anterior (outros débitos)</th></tr></thead><tbody>
+      ${conc.map(c => `<tr><td><b>${esc(c.fa)}</b>${c.fa === 'À Faturar' ? ' <span class="tag amarelo">ainda sem fatura</span>' : ''}</td><td class="nowrap">${c.ini ? dataBR(c.ini.slice(0, 10)) + ' a ' + dataBR(c.fim.slice(0, 10)) : '<span class="muted">só encargos</span>'}</td><td class="num"><b>${brl(c.tot)}</b></td>
+        <td class="num">${c.ped ? brl(c.ped) : '—'}</td><td>${esc(c.pedidos || '')}</td><td class="num">${c.pend ? `<b style="color:#B7791F">${brl(c.pend)}</b>` : '—'}</td><td class="num">${c.susp ? `<b style="color:#C62828">${brl(c.susp)}</b>` : '—'}</td>
+        <td class="num">${c.sem ? brl(c.sem) : '—'}</td><td class="num">${c.plano ? brl(c.plano) : '—'}</td><td class="num">${c.enc ? `<b style="color:#C62828">${brl(c.enc)}</b>` : '—'}</td><td class="num">${c.outros ? brl(c.outros) : '—'}</td></tr>`).join('')}
+      <tr style="background:#F6EFDC"><td><b>Total</b></td><td></td><td class="num"><b>${brl(cs('tot'))}</b></td><td class="num">${brl(cs('ped'))}</td><td></td><td class="num">${brl(cs('pend'))}</td><td class="num">${brl(cs('susp'))}</td><td class="num">${brl(cs('sem'))}</td><td class="num">${brl(cs('plano'))}</td><td class="num">${brl(cs('enc'))}</td><td class="num">${brl(cs('outros'))}</td></tr></tbody></table></div>
+      <p class="muted" style="margin:6px 0 0"><b>Cliente</b> = passagens de ida e volta das viagens (já pedido no reembolso ou ainda a pedir). <b>Custo da Verbo</b> = passagens sem viagem, plano e tarifas, e multa/juros por atraso. <b>Saldo anterior</b> = valor de fatura anterior cobrado de novo (confira se já foi pago, para não pagar duas vezes).${cs('enc') > 0 ? ` <b style="color:#C62828">Multa e juros por atraso: ${brl(cs('enc'))}, custo que não dá para repassar ao cliente.</b>` : ''}</p></div>` : ''}`;
   $$('[data-ped]', tela).forEach(tr => tr.onclick = () => pedModal(tr.dataset.ped));
   const fm = $('#ped-f');
   fm.onsubmit = e => { e.preventDefault(); const f = e.target;
