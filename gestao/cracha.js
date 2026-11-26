@@ -381,10 +381,15 @@ async function salvarFotoColaborador(id, arquivo, tipo) {
   await api.alterar('colaboradores', `id=eq.${id}`, tipo === 'cracha' ? { foto_cracha_caminho: caminho, cracha_ajuste: null } : { foto_caminho: caminho });
   return caminho;
 }
+// baixar a foto em tamanho original (o link do arquivo é de outro domínio, então baixa via blob)
+async function baixarFotoColab(btn) {
+  try { const r = await fetch(btn.dataset.url); if (!r.ok) throw new Error('Não consegui baixar a foto.');
+    const b = await r.blob(), a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = btn.dataset.nome; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  } catch (err) { falha(err); } }
 async function htmlFotosColaborador(c, editavel) {
   const url = async p => p ? await api.linkArquivo(p).catch(() => '') : '';
   const [u1, u2] = await Promise.all([url(c?.foto_caminho), url(c?.foto_cracha_caminho)]);
   const caixa = (rot, sub, u, nome) => `<div class="cr-foto-box"><div class="cr-foto-th ${nome === 'foto_cracha' ? 'cr-th-cracha' : ''}">${u ? `<img src="${esc(u)}" alt="${esc(rot)}">` : '<span class="muted">Sem foto</span>'}</div>
-    <div><b>${rot}</b><div class="muted">${sub}</div>${editavel ? `<label class="campo" style="margin-top:6px">${u ? 'Trocar' : 'Enviar'}<input type="file" name="_${nome}" accept="image/*"></label>` : ''}</div></div>`;
+    <div><b>${rot}</b><div class="muted">${sub}</div>${u ? `<button type="button" class="btn peq" style="margin-top:6px" data-url="${esc(u)}" data-nome="${esc(`${rot} - ${c?.nome || 'colaborador'}.jpg`)}" onclick="event.stopPropagation(); baixarFotoColab(this)">⬇ Baixar foto</button>` : ''}${editavel ? `<label class="campo" style="margin-top:6px">${u ? 'Trocar' : 'Enviar'}<input type="file" name="_${nome}" accept="image/*"></label>` : ''}</div></div>`;
   return `<div class="cr-fotos">${caixa('Foto da ficha de registro', '3x4 formal, fundo claro. Fica no cadastro.', u1, 'foto_ficha')}${caixa('Foto do crachá', 'Foto que o colaborador escolheu para o crachá (de frente, rosto bem visível).', u2, 'foto_cracha')}</div>`;
 }
