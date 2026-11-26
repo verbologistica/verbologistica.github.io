@@ -293,7 +293,7 @@ async function vfPdfCliente(f, its, V, PED) {
   y = doc.lastAutoTable.finalY + 4;
   // pedágio: à parte
   doc.setFillColor(...C.creme); doc.setDrawColor(...C.ouro); doc.setLineWidth(0.4); doc.roundedRect(ML, y, W, 13, 2, 2, 'FD');
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(...C.ouro); doc.text('PEDÁGIO · REEMBOLSO À PARTE', ML + 4, y + 5.2);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(...C.ouro); doc.text('PEDÁGIO DO PERÍODO', ML + 4, y + 5.2);
   doc.setFontSize(12); doc.setTextColor(...C.texto); doc.text(brl(tp), ML + 4, y + 10.6);
   doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(...C.cinza); doc.text(`${tn} passagens (ida e volta) · NÃO incluso no valor do frete`, ML + 60, y + 10.6);
   y += 19;
