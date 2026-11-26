@@ -59,15 +59,24 @@ function tabelaDocsRH(ds) {
 // ---------- Colaboradores ----------
 rota('/rh/colaboradores', async tela => {
   const sts = pLista('status', 'todos'), st = sts[0], setores = pLista('setor').filter(s => s !== '-'), setor = setores[0] || '', q = (estado.params.get('q') || '').toLowerCase();
+  const fCargos = pLista('cargo'), fNomes = pLista('nome'), fSups = pLista('sup'), adDe = estado.params.get('ad_de') || '', adAte = estado.params.get('ad_ate') || '';
+  const supsDe = c => [c.gestor, ...(c.gestores_extra || [])].filter(g => g?.nome).map(g => g.nome);
   const mapaF = { quadro: 'status=in.(em_admissao,ativo,ferias,afastado,aviso_previo)', candidatos: 'status=eq.candidato', desligados: 'status=eq.desligado', todos: 'status=neq.x' };
   const filtro = filtroOu(sts.map(s => mapaF[s] ?? mapaF.todos)) || mapaF.todos;
-  const [cs, ss, cgs] = await Promise.all([api.listar('colaboradores', `select=id,matricula,nome,cpf,status,setor_id,cargo_id,telefone,data_admissao,gestor,gestores_extra,usuario_id&ativo=eq.true&${filtro}${setores.length ? '&setor_id=in.(' + setores.join(',') + ')' : ''}&order=nome`), setoresL(), cargosL()]);
-  const ls = cs.filter(c => !q || [c.nome, c.matricula, c.cpf].join(' ').toLowerCase().includes(q.replace(/[.\-]/g, '')) || c.nome.toLowerCase().includes(q));
+  const [cs, ss, cgs, base] = await Promise.all([api.listar('colaboradores', `select=id,matricula,nome,cpf,status,setor_id,cargo_id,telefone,data_admissao,gestor,gestores_extra,usuario_id&ativo=eq.true&${filtro}${setores.length ? '&setor_id=in.(' + setores.join(',') + ')' : ''}${fCargos.length ? '&cargo_id=in.(' + fCargos.join(',') + ')' : ''}${adDe ? '&data_admissao=gte.' + adDe : ''}${adDe || adAte ? '&data_admissao=lte.' + (adAte || adDe) : ''}&order=nome`), setoresL(), cargosL(),
+    api.listar('colaboradores', `select=id,nome,gestor,gestores_extra&ativo=eq.true&${filtro}&order=nome`).catch(() => [])]);
+  const ls = cs.filter(c => (!q || [c.nome, c.matricula, c.cpf].join(' ').toLowerCase().includes(q.replace(/[.\-]/g, '')) || c.nome.toLowerCase().includes(q))
+    && (!fNomes.length || fNomes.includes(c.id)) && (!fSups.length || supsDe(c).some(n => fSups.includes(n))));
+  const supOps = [...new Set(base.flatMap(supsDe))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
   tela.innerHTML = `
-    <div class="topo"><div><h1>Colaboradores</h1><p class="sub">${ls.length} pessoa(s)</p></div><div class="acoes"><button type="button" class="btn" id="col-exp">⬇ Exportar lista</button>${editaRH() ? '<a class="btn prim" href="#/rh/colaboradores/novo">+ Colaborador</a>' : ''}</div></div>
+    <div class="topo"><div><h1>Colaboradores</h1><p class="sub">${ls.length} pessoa(s)${adDe ? ` · admitidos ${adAte && adAte !== adDe ? `de ${dataBR(adDe)} a ${dataBR(adAte)}` : `em ${dataBR(adDe)}`}` : adAte ? ` · admitidos até ${dataBR(adAte)}` : ''}</p></div><div class="acoes"><button type="button" class="btn" id="col-exp">⬇ Exportar lista</button>${editaRH() ? '<a class="btn prim" href="#/rh/colaboradores/novo">+ Colaborador</a>' : ''}</div></div>
     <form class="filtros" id="filtros"><select name="status">${[['quadro', 'Quadro atual'], ['candidatos', 'Candidatos'], ['desligados', 'Desligados'], ['todos', 'Todos']].map(([v, t]) => `<option value="${v}" ${v === st ? 'selected' : ''}>${t}</option>`).join('')}</select>
       <select name="setor"><option value="">Todos os setores</option>${ss.map(s => `<option value="${s.id}" ${s.id === setor ? 'selected' : ''}>${esc(s.nome)}</option>`).join('')}</select>
-      <input name="q" value="${esc(estado.params.get('q') || '')}" placeholder="Nome, matrícula ou CPF"><button class="btn">Filtrar</button></form>
+      <select name="cargo"><option value="">Todos os cargos</option>${cgs.map(c => `<option value="${c.id}">${esc(c.nome)}</option>`).join('')}</select>
+      <select name="nome"><option value="">Todos os nomes</option>${base.map(c => `<option value="${c.id}">${esc(c.nome)}</option>`).join('')}</select>
+      <select name="sup"><option value="">Todos os superiores</option>${supOps.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('')}</select>
+      <label title="Para uma data exata, preencha só o primeiro campo (ou os dois com a mesma data)">Admissão de <input type="date" name="ad_de" value="${esc(adDe)}"></label><label>até <input type="date" name="ad_ate" value="${esc(adAte)}"></label>
+      <input name="q" value="${esc(estado.params.get('q') || '')}" placeholder="Nome, matrícula ou CPF"><button class="btn">Filtrar</button>${fCargos.length || fNomes.length || fSups.length || adDe || adAte || q || setores.length ? '<a class="btn" href="#/rh/colaboradores">Limpar filtros</a>' : ''}</form>
     <div class="cartao">${ls.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Matrícula</th><th>Nome</th><th>Cargo</th><th>Setor</th><th>Admissão</th><th>Superior imediato</th><th>Situação</th></tr></thead><tbody>
       ${ls.map(c => `<tr class="clicavel" onclick="location.hash='#/rh/colaboradores/ver/${c.id}'"><td data-r="Matrícula" class="nowrap">${c.matricula ? esc(c.matricula) : '<span class="muted">sem matrícula</span>'}</td>
         <td data-r="Nome"><b>${esc(c.nome)}</b>${c.usuario_id ? ' <span class="tag azul" title="Tem acesso ao sistema">login</span>' : ''}</td>
