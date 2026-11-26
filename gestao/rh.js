@@ -77,7 +77,7 @@ rota('/rh/colaboradores', async tela => {
       <select name="sup"><option value="">Todos os superiores</option>${supOps.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('')}</select>
       <label title="Para uma data exata, preencha só o primeiro campo (ou os dois com a mesma data)">Admissão de <input type="date" name="ad_de" value="${esc(adDe)}"></label><label>até <input type="date" name="ad_ate" value="${esc(adAte)}"></label>
       <input name="q" value="${esc(estado.params.get('q') || '')}" placeholder="Nome, matrícula ou CPF"><button class="btn">Filtrar</button>${fCargos.length || fNomes.length || fSups.length || adDe || adAte || q || setores.length ? '<a class="btn" href="#/rh/colaboradores">Limpar filtros</a>' : ''}</form>
-    <div class="cartao">${ls.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Matrícula</th><th>Nome</th><th>Cargo</th><th>Setor</th><th>Admissão</th><th>Superior imediato</th><th>Situação</th></tr></thead><tbody>
+    <div class="cartao">${ls.length ? `<div class="exportar"><button type="button" class="btn peq" data-colx="xlsx" title="Escolha quais informações do cadastro vão na planilha">⬇ Excel</button><button type="button" class="btn peq" data-colx="pdf" title="Escolha quais informações do cadastro vão no PDF">⬇ PDF</button></div><div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Matrícula</th><th>Nome</th><th>Cargo</th><th>Setor</th><th>Admissão</th><th>Superior imediato</th><th>Situação</th></tr></thead><tbody>
       ${ls.map(c => `<tr class="clicavel" onclick="location.hash='#/rh/colaboradores/ver/${c.id}'"><td data-r="Matrícula" class="nowrap">${c.matricula ? esc(c.matricula) : '<span class="muted">sem matrícula</span>'}</td>
         <td data-r="Nome"><b>${esc(c.nome)}</b>${c.usuario_id ? ' <span class="tag azul" title="Tem acesso ao sistema">login</span>' : ''}</td>
         <td data-r="Cargo">${esc(cgs.find(x => x.id === c.cargo_id)?.nome || '—')}</td><td data-r="Setor">${esc(ss.find(x => x.id === c.setor_id)?.nome || '—')}</td>
@@ -86,6 +86,7 @@ rota('/rh/colaboradores', async tela => {
         <td data-r="Situação">${tagColab(c.status)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="vazio">Nenhum colaborador encontrado.</div>'}</div>`;
   $('#filtros').onsubmit = e => { e.preventDefault(); location.hash = '#/rh/colaboradores?' + new URLSearchParams(Object.entries(formDados(e.target)).filter(([, v]) => v)); };
   $('#col-exp').onclick = () => exportarColaboradores(ls.map(c => c.id), ss, cgs);
+  $$('[data-colx]', tela).forEach(b => b.onclick = () => exportarColaboradores(ls.map(c => c.id), ss, cgs, { fmt: b.dataset.colx, quem: 'tela' }));
 });
 
 // ---------- Assinatura de e-mail (padrão Verbo): só dados corporativos; endereço e site iguais para todos ----------
@@ -135,20 +136,21 @@ async function assinaturaEmail(c, cargoNome, editavel = true) {
 const COL_EXP = [
   ['Identificação', false, [['matricula', 'Matrícula', 1], ['numero_registro', 'Nº ficha de registro'], ['nome', 'Nome', 1], ['nome_social', 'Nome social'], ['apelido', 'Apelido'], ['status', 'Situação', 1]]],
   ['Contrato', false, [['cargo', 'Cargo', 1], ['cbo', 'CBO'], ['setor', 'Setor', 1], ['centro_custo', 'Centro de custo'], ['tipo_contrato', 'Tipo de contrato'], ['data_admissao', 'Admissão', 1], ['experiencia_fim1', 'Fim da experiência (1º)'], ['experiencia_fim2', 'Fim da experiência (2º)'],
-    ['jornada', 'Jornada'], ['escala', 'Escala'], ['horario_trabalho', 'Horário de trabalho'], ['horario_intervalo', 'Intervalo'], ['gestor', 'Superior imediato', 1], ['data_desligamento', 'Desligamento'], ['motivo_desligamento', 'Motivo do desligamento']]],
+    ['jornada', 'Jornada'], ['escala', 'Escala'], ['horario_trabalho', 'Horário de trabalho'], ['horario_intervalo', 'Intervalo'], ['gestor', 'Superior imediato', 1], ['data_desligamento', 'Desligamento'], ['motivo_desligamento', 'Motivo do desligamento'], ['observacoes', 'Observações'], ['cracha_nome', 'Nome no crachá']]],
   ['Contato', false, [['telefone', 'Celular pessoal', 1], ['telefone2', 'Telefone 2 (pessoal)'], ['telefone_corporativo', 'Telefone corporativo'], ['email', 'E-mail pessoal'], ['email_corporativo', 'E-mail corporativo'], ['emergencia_nome', 'Contato de emergência'], ['emergencia_parentesco', 'Parentesco (emergência)'], ['emergencia_telefone', 'Telefone de emergência']]],
   ['Endereço', false, [['cep', 'CEP'], ['logradouro', 'Logradouro'], ['numero', 'Número'], ['complemento', 'Complemento'], ['bairro', 'Bairro'], ['cidade', 'Cidade'], ['uf', 'UF']]],
   ['Dados pessoais', true, [['cpf', 'CPF'], ['data_nascimento', 'Nascimento'], ['idade', 'Idade'], ['sexo', 'Sexo'], ['estado_civil', 'Estado civil'], ['escolaridade', 'Escolaridade'], ['nacionalidade', 'Nacionalidade'], ['naturalidade', 'Naturalidade'],
     ['nome_mae', 'Nome da mãe'], ['nome_pai', 'Nome do pai'], ['raca_cor', 'Raça/cor'], ['pcd', 'PcD'], ['pcd_tipo', 'Tipo de deficiência']]],
-  ['Documentos', true, [['rg', 'RG'], ['rg_orgao', 'Órgão emissor'], ['rg_uf', 'UF do RG'], ['rg_emissao', 'Emissão do RG'], ['pis', 'PIS'], ['ctps_numero', 'CTPS nº'], ['ctps_serie', 'CTPS série'], ['ctps_uf', 'CTPS UF'], ['titulo_eleitor', 'Título de eleitor'], ['titulo_zona', 'Zona'], ['titulo_secao', 'Seção'], ['reservista', 'Reservista']]],
-  ['CNH, cursos e segurança', false, [['cnh_numero', 'CNH nº'], ['cnh_categoria', 'CNH categoria'], ['cnh_validade', 'CNH validade'], ['cnh_ear', 'CNH com EAR'], ['curso_mopp', 'MOPP'], ['curso_mopp_validade', 'MOPP validade'], ['curso_indivisiveis', 'Cargas indivisíveis'], ['curso_indivisiveis_validade', 'Indivisíveis validade'],
+  ['Documentos', true, [['rg', 'RG'], ['rg_orgao', 'Órgão emissor'], ['rg_uf', 'UF do RG'], ['rg_emissao', 'Emissão do RG'], ['pis', 'PIS'], ['pis_cadastro', 'PIS cadastro'], ['ctps_numero', 'CTPS nº'], ['ctps_serie', 'CTPS série'], ['ctps_uf', 'CTPS UF'], ['ctps_emissao', 'CTPS emissão'], ['titulo_eleitor', 'Título de eleitor'], ['titulo_zona', 'Zona'], ['titulo_secao', 'Seção'], ['reservista', 'Reservista']]],
+  ['CNH, cursos e segurança', false, [['cnh_numero', 'CNH nº'], ['cnh_categoria', 'CNH categoria'], ['cnh_validade', 'CNH validade'], ['cnh_primeira', 'CNH 1ª habilitação'], ['cnh_uf', 'CNH UF'], ['cnh_ear', 'CNH com EAR'], ['curso_mopp', 'MOPP'], ['curso_mopp_validade', 'MOPP validade'], ['curso_indivisiveis', 'Cargas indivisíveis'], ['curso_indivisiveis_validade', 'Indivisíveis validade'],
     ['tipo_sanguineo', 'Tipo sanguíneo'], ['brigadista', 'Brigadista'], ['cipeiro', 'CIPA'], ['cipa_funcao', 'Função na CIPA']]],
   ['Bancário', true, [['banco', 'Banco'], ['agencia', 'Agência'], ['conta', 'Conta'], ['tipo_conta', 'Tipo de conta'], ['pix_tipo', 'Tipo de PIX'], ['pix_chave', 'Chave PIX']]],
   ['Remuneração', true, [['salario', 'Salário']]],
 ];
-async function exportarColaboradores(idsTela, ss, cgs) {
+async function exportarColaboradores(idsTela, ss, cgs, pre = null) {
   const rhv = editaRH(), grupos = COL_EXP.filter(g => !g[1] || rhv);
   let lembra = null; try { lembra = JSON.parse(localStorage.getItem('col-exp') || 'null'); } catch (e) { }
+  if (pre) lembra = { ...(lembra || {}), ...pre };
   const marc = k => lembra?.campos ? lembra.campos.includes(k) : !!grupos.flatMap(g => g[2]).find(c => c[0] === k)?.[2];
   const r = await modal(`<form><h2>Exportar lista de colaboradores</h2><div class="form">
     <label class="campo">Quem entra<select name="quem"><option value="ativos" ${lembra?.quem !== 'tela' && lembra?.quem !== 'quadro' ? 'selected' : ''}>Somente ativos</option><option value="quadro" ${lembra?.quem === 'quadro' ? 'selected' : ''}>Quadro atual (ativos, férias, afastados, aviso prévio, em admissão)</option><option value="tela" ${lembra?.quem === 'tela' ? 'selected' : ''}>Exatamente a lista da tela (${idsTela.length})</option></select></label>
@@ -175,7 +177,7 @@ async function exportarColaboradores(idsTela, ss, cgs) {
       case 'telefone': case 'telefone2': case 'telefone_corporativo': case 'emergencia_telefone': return typeof fmtTel === 'function' ? fmtTel(c[k] || '') : (c[k] || '');
       case 'cep': { const d = soDigitos(c.cep || ''); return d.length === 8 ? d.slice(0, 5) + '-' + d.slice(5) : d; }
       case 'pcd': case 'cnh_ear': case 'curso_mopp': case 'curso_indivisiveis': case 'brigadista': case 'cipeiro': return sn(c[k]);
-      default: return dts.has(k) ? (c[k] ? dataBR(c[k]) : '') : (c[k] ?? ''); } };
+      default: return dts.has(k) || /^\d{4}-\d{2}-\d{2}$/.test(String(c[k] ?? '')) ? (c[k] ? dataBR(c[k]) : '') : (c[k] ?? ''); } };
   const linhas = cs.map(c => campos.map(([k]) => val(c, k))), cab = campos.map(c => c[1]);
   const quem = { ativos: 'ativos', quadro: 'quadro atual', tela: 'lista filtrada' }[r.quem], nome = `Colaboradores ${quem} ${hojeISO()}`;
   if (r.fmt === 'xlsx') { await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'); const ws = XLSX.utils.aoa_to_sheet([cab, ...linhas]);
@@ -357,7 +359,7 @@ rota('/rh/colaboradores/ver/:id', async (tela, id) => {
         ${linha('Matrícula', c.matricula)}${linha('CPF', fmtCPF(c.cpf || ''))}${linha('Nascimento', c.data_nascimento ? `${dataBR(c.data_nascimento)} (${idade(c.data_nascimento)} anos)` : '')}
         ${linha('RG', fmtRG(c.rg, c.rg_orgao, c.rg_uf))}${linha('Estado civil', c.estado_civil)}${linha('Tipo sanguíneo', c.tipo_sanguineo)}${linha('Segurança do trabalho', [c.brigadista && 'Brigadista', c.cipeiro && ('CIPA' + (c.cipa_funcao ? ' · ' + c.cipa_funcao : ''))].filter(Boolean).join(' · '))}${linha('Escolaridade', c.escolaridade)}
         ${linha('Mãe', c.nome_mae)}${linha('PIS', c.pis)}${linha('CTPS', [c.ctps_numero, c.ctps_serie, c.ctps_uf].filter(Boolean).join(' / '))}
-        ${linha('CNH', c.cnh_categoria ? `${c.cnh_numero || ''} · ${c.cnh_categoria}${c.cnh_ear ? ' · EAR' : ''} · validade ${dataBR(c.cnh_validade) || '—'}` : '')}${linha('Cursos especializados', [c.curso_indivisiveis && 'Cargas indivisíveis' + (c.curso_indivisiveis_validade ? ' (até ' + dataBR(c.curso_indivisiveis_validade) + ')' : ''), c.curso_mopp && 'MOPP' + (c.curso_mopp_validade ? ' (até ' + dataBR(c.curso_mopp_validade) + ')' : '')].filter(Boolean).join(' · '))}
+        ${linha('CNH nº', c.cnh_numero)}${linha('CNH categoria', c.cnh_categoria)}${linha('CNH validade', dataBR(c.cnh_validade))}${linha('CNH 1ª habilitação', dataBR(c.cnh_primeira))}${linha('CNH UF', c.cnh_uf)}${c.cnh_numero || c.cnh_categoria ? linha('CNH com EAR', c.cnh_ear ? 'Sim' : 'Não') : ''}${linha('Cursos especializados', [c.curso_indivisiveis && 'Cargas indivisíveis' + (c.curso_indivisiveis_validade ? ' (até ' + dataBR(c.curso_indivisiveis_validade) + ')' : ''), c.curso_mopp && 'MOPP' + (c.curso_mopp_validade ? ' (até ' + dataBR(c.curso_mopp_validade) + ')' : '')].filter(Boolean).join(' · '))}
         ${linha('Telefone corporativo', c.telefone_corporativo ? fmtTel(c.telefone_corporativo) : '')}${linha('E-mail corporativo', c.email_corporativo)}${linha('Telefone pessoal', [c.telefone, c.telefone2].filter(Boolean).map(fmtTel).join(' · '))}${linha('E-mail pessoal', c.email)}
         <div class="largo">${linha('Endereço', [c.logradouro, c.numero, c.complemento, c.bairro, [c.cidade, c.uf].filter(Boolean).join('/'), c.cep && 'CEP ' + fmtCEP(c.cep)].filter(Boolean).join(', '))}</div>
         ${linha('Emergência', [c.emergencia_nome, c.emergencia_parentesco, fmtTel(c.emergencia_telefone || '')].filter(Boolean).join(' · '))}
