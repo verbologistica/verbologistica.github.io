@@ -362,9 +362,17 @@ rota('/rh/crachas', async tela => {
 });
 
 // ---------- fotos do colaborador (ficha de registro e crachá) ----------
+// resolução mínima (Ana, 26/11): lado menor >= 400 px e lado maior >= 530 px (3x4 nítido no crachá). Abaixo disso o arquivo é recusado.
+function fotoMinErro(w, h) { const a = Math.min(w, h), b = Math.max(w, h);
+  return a < 400 || b < 530 ? `Foto recusada: ${w} × ${h} px, abaixo do mínimo de 400 × 530 px (sairia borrada no crachá). Peça uma foto tirada direto da câmera do celular, de frente e com fundo claro. Se vier pelo WhatsApp, deve ser enviada como documento, não como foto.` : ''; }
+document.addEventListener('change', async e => { const i = e.target;
+  if (!i.matches?.('input[type=file][name="_foto_ficha"], input[type=file][name="_foto_cracha"]') || !i.files?.[0]) return;
+  try { const b = await createImageBitmap(i.files[0]), er = fotoMinErro(b.width, b.height); if (er) { i.value = ''; aviso(er, true); } }
+  catch (err) { i.value = ''; aviso('O arquivo não é uma imagem válida (envie JPG ou PNG).', true); } }, true);
 async function prepFotoAlta(f, maxLado) {
   if (!f.type.startsWith('image/')) throw new Error('Envie uma imagem (JPG ou PNG).');
   const img = await createImageBitmap(f);
+  const erMin = fotoMinErro(img.width, img.height); if (erMin) throw new Error(erMin);
   const e_ = Math.min(1, maxLado / Math.max(img.width, img.height));
   if (e_ === 1 && f.type === 'image/jpeg' && f.size < 4 * 1048576) return f;
   const c = document.createElement('canvas'); c.width = Math.round(img.width * e_); c.height = Math.round(img.height * e_);
