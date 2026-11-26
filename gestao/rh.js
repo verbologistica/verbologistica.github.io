@@ -118,14 +118,14 @@ async function assinaturaEmail(c, cargoNome, editavel = true) {
   const tel = c.telefone_corporativo ? fmtTel(c.telefone_corporativo) : 'Sem número corporativo cadastrado', email = (c.email_corporativo || '').trim() || 'Sem e-mail corporativo cadastrado';
   const falta = [!c.telefone_corporativo && 'telefone corporativo', !(c.email_corporativo || '').trim() && 'e-mail corporativo'].filter(Boolean);
   const m = modal(`<form><h2>Assinatura de e-mail</h2><p class="muted">Padrão Verbo. Telefone e e-mail vêm do cadastro (corporativos); endereço e site são os mesmos para todos.</p>
-    <div class="form"><label class="campo">Nome na assinatura<input name="nome" value="${esc(c.nome)}" ${editavel ? '' : 'readonly'}></label><label class="campo">Cargo<input name="cargo" value="${esc(cargoNome || '')}" ${editavel ? '' : 'readonly'}></label>
+    <div class="form"><label class="campo">Nome na assinatura<input name="nome" value="${esc(c.nome)}" ${editavel ? '' : 'readonly'}></label><label class="campo">Cargo<input name="cargo_txt" value="${esc(cargoNome || '')}" ${editavel ? '' : 'readonly'}></label>
       <div><div class="muted">Telefone corporativo</div><b>${esc(tel)}</b></div><div><div class="muted">E-mail corporativo</div><b>${esc(email)}</b></div></div>
     ${falta.length ? `<div class="cartao" style="border-left:5px solid #DDA936;margin:10px 0 0;padding:8px 12px">Sem ${falta.join(' e ')} no cadastro: a assinatura sai com o aviso no lugar. ${editavel ? 'Para corrigir, cadastre em Editar → Contato e gere de novo.' : 'Peça ao RH para cadastrar e gere de novo.'}</div>` : ''}
     <div style="margin:12px 0;border:1px solid #E3E8EC;border-radius:8px;padding:8px;background:#fff;overflow:auto"><img id="ass-prev" style="width:100%;max-width:680px;display:block" alt="Prévia da assinatura"></div>
     <div class="rodape"><button type="button" class="btn" data-fechar>Fechar</button><button type="button" class="btn prim" id="ass-baixar">⬇ Baixar assinatura (PNG)</button></div></form>`);
   const f = $('.modal form') || document.querySelector('form:has(#ass-prev)');
-  let cv = null; const prev = async () => { cv = await assDesenhar({ nome: f.nome.value.trim(), cargo: f.cargo.value.trim(), tel, email }); $('#ass-prev').src = cv.toDataURL('image/png'); };
-  f.nome.oninput = f.cargo.oninput = () => prev(); await prev();
+  let cv = null; const prev = async () => { cv = await assDesenhar({ nome: f.nome.value.trim(), cargo: f.cargo_txt.value.trim(), tel, email }); $('#ass-prev').src = cv.toDataURL('image/png'); };
+  f.nome.oninput = f.cargo_txt.oninput = () => prev(); await prev();
   $('#ass-baixar').onclick = () => { const a = document.createElement('a'); a.href = cv.toDataURL('image/png'); a.download = `Assinatura de e-mail - ${f.nome.value.trim() || c.nome}.png`; document.body.appendChild(a); a.click(); a.remove(); };
   return m;
 }
