@@ -88,13 +88,55 @@ rota('/rh/colaboradores', async tela => {
   $('#col-exp').onclick = () => exportarColaboradores(ls.map(c => c.id), ss, cgs);
 });
 
+// ---------- Assinatura de e-mail (padrão Verbo): só dados corporativos; endereço e site iguais para todos ----------
+const ASS_VERBO = { site: 'www.verbologistica.com.br', endereco: 'R. Tadashi Katayama - Guararapes, SP, 16700-000' };
+async function assLogo() {
+  const im = await new Promise((ok, er) => { const i = new Image(); i.onload = () => ok(i); i.onerror = er; i.src = 'logo.png?v=1'; });
+  const c = document.createElement('canvas'); c.width = im.naturalWidth; c.height = im.naturalHeight;
+  const x = c.getContext('2d'); x.drawImage(im, 0, 0); const d = x.getImageData(0, 0, c.width, c.height), p = d.data;
+  for (let i = 0; i < p.length; i += 4) { const mx = Math.max(p[i], p[i + 1], p[i + 2]), mn = Math.min(p[i], p[i + 1], p[i + 2]);
+    if (p[i + 3] > 0 && mx > 170 && mx - mn < 40) { p[i] = 0; p[i + 1] = 104; p[i + 2] = 74; } } // texto branco do logo -> verde Verbo
+  x.putImageData(d, 0, 0); return c;
+}
+async function assDesenhar(v) {
+  const E = 3, W = 680, H = 124, cv = document.createElement('canvas'); cv.width = W * E; cv.height = H * E;
+  const x = cv.getContext('2d'); x.scale(E, E); x.fillStyle = '#fff'; x.fillRect(0, 0, W, H);
+  try { await Promise.all(['700 17px Inter', '600 11px Inter', '400 12px Inter', '800 12px Archivo'].map(f => document.fonts.load(f))); } catch (e) { }
+  const lg = await assLogo(), lw = 160, lh = lw * lg.height / lg.width; x.drawImage(lg, 12, (H - lh) / 2, lw, lh);
+  x.fillStyle = '#00684A'; x.fillRect(190, 12, 2, H - 24);
+  const T = (t, px, py, font, cor, al = 'left') => { x.font = font; x.fillStyle = cor; x.textAlign = al; x.fillText(t, px, py); };
+  T(v.nome, 206, 30, '700 17px Inter, Arial', '#1E2B26');
+  T(String(v.cargo || '').toUpperCase(), 206, 47, '700 11px Inter, Arial', '#00684A');
+  T(v.tel, 206, 66, '400 12px Inter, Arial', '#2E3A36'); T(v.email, 206, 82, '400 12px Inter, Arial', '#2E3A36');
+  T(ASS_VERBO.site, 206, 98, '400 12px Inter, Arial', '#2E3A36'); T(ASS_VERBO.endereco, 206, 114, '400 12px Inter, Arial', '#2E3A36');
+  T('MAIS QUE', W - 14, 50, '600 9.5px Inter, Arial', '#1E2B26', 'right'); T('TRANSPORTE,', W - 14, 62, '600 9.5px Inter, Arial', '#1E2B26', 'right');
+  T('MOVEMOS', W - 14, 78, '800 13px Archivo, Arial', '#DDA936', 'right'); T('CONQUISTAS.', W - 14, 93, '800 13px Archivo, Arial', '#1E2B26', 'right');
+  return cv;
+}
+async function assinaturaEmail(c, cargoNome) {
+  // só dados corporativos: o que não estiver cadastrado aparece como aviso no lugar da informação
+  const tel = c.telefone_corporativo ? fmtTel(c.telefone_corporativo) : 'Sem número corporativo cadastrado', email = (c.email_corporativo || '').trim() || 'Sem e-mail corporativo cadastrado';
+  const falta = [!c.telefone_corporativo && 'telefone corporativo', !(c.email_corporativo || '').trim() && 'e-mail corporativo'].filter(Boolean);
+  const m = modal(`<form><h2>Assinatura de e-mail</h2><p class="muted">Padrão Verbo. Telefone e e-mail vêm do cadastro (corporativos); endereço e site são os mesmos para todos.</p>
+    <div class="form"><label class="campo">Nome na assinatura<input name="nome" value="${esc(c.nome)}"></label><label class="campo">Cargo<input name="cargo" value="${esc(cargoNome || '')}"></label>
+      <div><div class="muted">Telefone corporativo</div><b>${esc(tel)}</b></div><div><div class="muted">E-mail corporativo</div><b>${esc(email)}</b></div></div>
+    ${falta.length ? `<div class="cartao" style="border-left:5px solid #DDA936;margin:10px 0 0;padding:8px 12px">Sem ${falta.join(' e ')} no cadastro: a assinatura sai com o aviso no lugar. Para corrigir, cadastre em Editar → Contato e gere de novo.</div>` : ''}
+    <div style="margin:12px 0;border:1px solid #E3E8EC;border-radius:8px;padding:8px;background:#fff;overflow:auto"><img id="ass-prev" style="width:100%;max-width:680px;display:block" alt="Prévia da assinatura"></div>
+    <div class="rodape"><button type="button" class="btn" data-fechar>Fechar</button><button type="button" class="btn prim" id="ass-baixar">⬇ Baixar assinatura (PNG)</button></div></form>`);
+  const f = $('.modal form') || document.querySelector('form:has(#ass-prev)');
+  let cv = null; const prev = async () => { cv = await assDesenhar({ nome: f.nome.value.trim(), cargo: f.cargo.value.trim(), tel, email }); $('#ass-prev').src = cv.toDataURL('image/png'); };
+  f.nome.oninput = f.cargo.oninput = () => prev(); await prev();
+  $('#ass-baixar').onclick = () => { const a = document.createElement('a'); a.href = cv.toDataURL('image/png'); a.download = `Assinatura de e-mail - ${f.nome.value.trim() || c.nome}.png`; document.body.appendChild(a); a.click(); a.remove(); };
+  return m;
+}
+
 // ---------- Exportar lista de colaboradores: a pessoa escolhe as informações e o formato ----------
 // grupos sensíveis (documentos, banco/PIX, salário) só aparecem para RH/DP/administrador
 const COL_EXP = [
   ['Identificação', false, [['matricula', 'Matrícula', 1], ['numero_registro', 'Nº ficha de registro'], ['nome', 'Nome', 1], ['nome_social', 'Nome social'], ['apelido', 'Apelido'], ['status', 'Situação', 1]]],
   ['Contrato', false, [['cargo', 'Cargo', 1], ['cbo', 'CBO'], ['setor', 'Setor', 1], ['centro_custo', 'Centro de custo'], ['tipo_contrato', 'Tipo de contrato'], ['data_admissao', 'Admissão', 1], ['experiencia_fim1', 'Fim da experiência (1º)'], ['experiencia_fim2', 'Fim da experiência (2º)'],
     ['jornada', 'Jornada'], ['escala', 'Escala'], ['horario_trabalho', 'Horário de trabalho'], ['horario_intervalo', 'Intervalo'], ['gestor', 'Superior imediato', 1], ['data_desligamento', 'Desligamento'], ['motivo_desligamento', 'Motivo do desligamento']]],
-  ['Contato', false, [['telefone', 'Telefone', 1], ['telefone2', 'Telefone 2'], ['email', 'E-mail pessoal'], ['email_corporativo', 'E-mail corporativo'], ['emergencia_nome', 'Contato de emergência'], ['emergencia_parentesco', 'Parentesco (emergência)'], ['emergencia_telefone', 'Telefone de emergência']]],
+  ['Contato', false, [['telefone', 'Celular pessoal', 1], ['telefone2', 'Telefone 2 (pessoal)'], ['telefone_corporativo', 'Telefone corporativo'], ['email', 'E-mail pessoal'], ['email_corporativo', 'E-mail corporativo'], ['emergencia_nome', 'Contato de emergência'], ['emergencia_parentesco', 'Parentesco (emergência)'], ['emergencia_telefone', 'Telefone de emergência']]],
   ['Endereço', false, [['cep', 'CEP'], ['logradouro', 'Logradouro'], ['numero', 'Número'], ['complemento', 'Complemento'], ['bairro', 'Bairro'], ['cidade', 'Cidade'], ['uf', 'UF']]],
   ['Dados pessoais', true, [['cpf', 'CPF'], ['data_nascimento', 'Nascimento'], ['idade', 'Idade'], ['sexo', 'Sexo'], ['estado_civil', 'Estado civil'], ['escolaridade', 'Escolaridade'], ['nacionalidade', 'Nacionalidade'], ['naturalidade', 'Naturalidade'],
     ['nome_mae', 'Nome da mãe'], ['nome_pai', 'Nome do pai'], ['raca_cor', 'Raça/cor'], ['pcd', 'PcD'], ['pcd_tipo', 'Tipo de deficiência']]],
@@ -130,7 +172,7 @@ async function exportarColaboradores(idsTela, ss, cgs) {
       case 'gestor': return [c.gestor, ...(c.gestores_extra || [])].filter(g => g?.nome).map(g => g.nome).join(', '); case 'cpf': return cpf(c.cpf);
       case 'idade': { if (!c.data_nascimento) return ''; const n = new Date(c.data_nascimento + 'T12:00:00'), h = new Date(); let i = h.getFullYear() - n.getFullYear(); if (h < new Date(h.getFullYear(), n.getMonth(), n.getDate())) i--; return i; }
       case 'salario': return c.salario != null ? Number(c.salario) : '';
-      case 'telefone': case 'telefone2': case 'emergencia_telefone': return typeof fmtTel === 'function' ? fmtTel(c[k] || '') : (c[k] || '');
+      case 'telefone': case 'telefone2': case 'telefone_corporativo': case 'emergencia_telefone': return typeof fmtTel === 'function' ? fmtTel(c[k] || '') : (c[k] || '');
       case 'cep': { const d = soDigitos(c.cep || ''); return d.length === 8 ? d.slice(0, 5) + '-' + d.slice(5) : d; }
       case 'pcd': case 'cnh_ear': case 'curso_mopp': case 'curso_indivisiveis': case 'brigadista': case 'cipeiro': return sn(c[k]);
       default: return dts.has(k) ? (c[k] ? dataBR(c[k]) : '') : (c[k] ?? ''); } };
@@ -213,8 +255,8 @@ async function formColaborador(tela, c = null) {
         <div class="largo muted" id="aviso-cnh"></div>
       </div></div>
       <div class="cartao"><h2>Contato e endereço</h2><div class="form">
-        ${campo('Celular', `<input name="telefone" value="${esc(fmtTel(c?.telefone || ''))}">`)}${campo('Outro telefone', `<input name="telefone2" value="${esc(fmtTel(c?.telefone2 || ''))}">`)}
-        ${campo('E-mail pessoal', inp('email', 'type="email"'))}${campo('E-mail corporativo', inp('email_corporativo', 'type="email"'))}
+        ${campo('Celular pessoal', `<input name="telefone" value="${esc(fmtTel(c?.telefone || ''))}">`)}${campo('Outro telefone pessoal', `<input name="telefone2" value="${esc(fmtTel(c?.telefone2 || ''))}">`)}${campo('Telefone corporativo', `<input name="telefone_corporativo" value="${esc(fmtTel(c?.telefone_corporativo || ''))}" placeholder="usado na assinatura de e-mail">`)}
+        ${campo('E-mail pessoal', inp('email', 'type="email"'))}${campo('E-mail corporativo', inp('email_corporativo', 'type="email" placeholder="usado na assinatura de e-mail"'))}
         ${campo('CEP', `<input name="cep" value="${esc(fmtCEP(c?.cep || ''))}" inputmode="numeric">`)}${campo('Logradouro', inp('logradouro'), true)}
         ${campo('Número', inp('numero'))}${campo('Complemento', inp('complemento'))}${campo('Bairro', inp('bairro'))}${campo('Cidade', inp('cidade'))}
         ${campo('UF', sel('uf', UFS.map(u => [u, u]), c?.uf))}
@@ -231,7 +273,7 @@ async function formColaborador(tela, c = null) {
     </form>`;
   const f = $('#f-col');
   f.cpf.addEventListener('input', e => { e.target.value = mascaraDoc(e.target.value.slice(0, 14)); });
-  ['telefone', 'telefone2', 'emergencia_telefone'].forEach(n => f[n].addEventListener('input', e => { const d = soDigitos(e.target.value).slice(0, 11); e.target.value = d.length > 9 ? fmtTel(d) : d; }));
+  ['telefone', 'telefone2', 'telefone_corporativo', 'emergencia_telefone'].forEach(n => f[n].addEventListener('input', e => { const d = soDigitos(e.target.value).slice(0, 11); e.target.value = d.length > 9 ? fmtTel(d) : d; }));
   f.cep.addEventListener('input', async e => { const d = soDigitos(e.target.value).slice(0, 8); e.target.value = fmtCEP(d);
     if (d.length === 8 && !f.logradouro.value) try { const x = await consultarCEP(d); f.logradouro.value = x.logradouro || ''; f.bairro.value = x.bairro || ''; f.cidade.value = x.localidade || ''; f.uf.value = x.uf || ''; f.numero.focus(); } catch {} });
   ligarNovoCargo(f.cargo_id);
@@ -274,7 +316,7 @@ async function formColaborador(tela, c = null) {
     if (d.cpf && !cpfValido(d.cpf)) return aviso('CPF inválido: confira os números.', true);
     const dados = {};
     for (const [k, val] of Object.entries(d)) { if (k.startsWith('_')) continue; dados[k] = typeof val === 'boolean' ? val : (val === '' ? null : val); }
-    Object.assign(dados, { matricula: String(d.matricula || '').trim() || null, cpf: soDigitos(d.cpf) || null, telefone: soDigitos(d.telefone) || null, telefone2: soDigitos(d.telefone2) || null,
+    Object.assign(dados, { matricula: String(d.matricula || '').trim() || null, cpf: soDigitos(d.cpf) || null, telefone: soDigitos(d.telefone) || null, telefone2: soDigitos(d.telefone2) || null, telefone_corporativo: soDigitos(d.telefone_corporativo) || null,
       emergencia_telefone: soDigitos(d.emergencia_telefone) || null, cep: soDigitos(d.cep) || null, salario: num(d.salario),
       banco: (d.banco || '').match(/^\d{1,3}/)?.[0] || d.banco || null, gestor: lerPessoas(d.gestor)[0] || null, gestores_extra: ehMotorista() ? lerPessoas(d.gestor).slice(1) : [] });
     await ocupado(e.submitter, async () => {
@@ -316,7 +358,7 @@ rota('/rh/colaboradores/ver/:id', async (tela, id) => {
         ${linha('RG', fmtRG(c.rg, c.rg_orgao, c.rg_uf))}${linha('Estado civil', c.estado_civil)}${linha('Tipo sanguíneo', c.tipo_sanguineo)}${linha('Segurança do trabalho', [c.brigadista && 'Brigadista', c.cipeiro && ('CIPA' + (c.cipa_funcao ? ' · ' + c.cipa_funcao : ''))].filter(Boolean).join(' · '))}${linha('Escolaridade', c.escolaridade)}
         ${linha('Mãe', c.nome_mae)}${linha('PIS', c.pis)}${linha('CTPS', [c.ctps_numero, c.ctps_serie, c.ctps_uf].filter(Boolean).join(' / '))}
         ${linha('CNH', c.cnh_categoria ? `${c.cnh_numero || ''} · ${c.cnh_categoria}${c.cnh_ear ? ' · EAR' : ''} · validade ${dataBR(c.cnh_validade) || '—'}` : '')}${linha('Cursos especializados', [c.curso_indivisiveis && 'Cargas indivisíveis' + (c.curso_indivisiveis_validade ? ' (até ' + dataBR(c.curso_indivisiveis_validade) + ')' : ''), c.curso_mopp && 'MOPP' + (c.curso_mopp_validade ? ' (até ' + dataBR(c.curso_mopp_validade) + ')' : '')].filter(Boolean).join(' · '))}
-        ${linha('Telefone', [c.telefone, c.telefone2].filter(Boolean).map(fmtTel).join(' · '))}${linha('E-mail', c.email_corporativo || c.email)}
+        ${linha('Telefone corporativo', c.telefone_corporativo ? fmtTel(c.telefone_corporativo) : '')}${linha('E-mail corporativo', c.email_corporativo)}${linha('Telefone pessoal', [c.telefone, c.telefone2].filter(Boolean).map(fmtTel).join(' · '))}${linha('E-mail pessoal', c.email)}
         <div class="largo">${linha('Endereço', [c.logradouro, c.numero, c.complemento, c.bairro, [c.cidade, c.uf].filter(Boolean).join('/'), c.cep && 'CEP ' + fmtCEP(c.cep)].filter(Boolean).join(', '))}</div>
         ${linha('Emergência', [c.emergencia_nome, c.emergencia_parentesco, fmtTel(c.emergencia_telefone || '')].filter(Boolean).join(' · '))}
         ${linha('Contrato', [TIPOS_CONTRATO[c.tipo_contrato], c.jornada, c.escala].filter(Boolean).join(' · '))}
@@ -345,10 +387,11 @@ rota('/rh/colaboradores/ver/:id', async (tela, id) => {
   };
   tela.innerHTML = `
     <div class="topo"><div><h1>${esc(c.nome)}</h1><p class="sub">${tagColab(c.status)} · ${esc([cargo?.nome, setor?.nome, c.matricula && 'matrícula ' + c.matricula].filter(Boolean).join(' · '))}</p></div>
-      <div class="acoes">${pode ? `<a class="btn" href="#/rh/colaboradores/editar/${id}">Editar</a>` : ''}<button class="btn" id="gerar-topo">Gerar documento</button>${pode ? `<a class="btn" href="#/rh/crachas?c=${id}">Crachá</a>` : ''}<a class="btn" href="#/rh/colaboradores">Voltar</a></div></div>
+      <div class="acoes">${pode ? `<a class="btn" href="#/rh/colaboradores/editar/${id}">Editar</a>` : ''}<button class="btn" id="gerar-topo">Gerar documento</button>${pode ? `<a class="btn" href="#/rh/crachas?c=${id}">Crachá</a><button class="btn" id="ass-email" title="Gera a assinatura de e-mail no padrão Verbo, com os dados corporativos">Assinatura de e-mail</button>` : ''}<a class="btn" href="#/rh/colaboradores">Voltar</a></div></div>
     ${venc.length ? `<div class="cartao alerta-obs">⚠️ ${venc.map(d => `${esc(tipos.find(t => t.id === d.tipo_id)?.nome || '')} ${diasAte(d.vencimento) < 0 ? 'vencido em' : 'vence em'} ${dataBR(d.vencimento)}`).join(' · ')}</div>` : ''}
     <div class="abas">${abas.map(([k, t]) => `<a href="#/rh/colaboradores/ver/${id}?aba=${k}" class="${k === aba ? 'ativa' : ''}">${t}</a>`).join('')}</div>
     ${conteudo[aba] || conteudo.dados}`;
+  $('#ass-email')?.addEventListener('click', () => assinaturaEmail(c, cargo?.nome));
   $$('.anx-doc', tela).forEach(async el => { el.innerHTML = await htmlAnexos('documento_colaborador', el.dataset.id); });
   const gerar = async () => { const ms = await api.listar('modelos_documentos', 'select=*&ativo=eq.true&vigente=eq.true&order=setor,titulo');
     const r = await modal(`<form><h2>Gerar documento para ${esc(c.nome)}</h2><div class="form"><label class="campo largo">Modelo<select name="m" required>
