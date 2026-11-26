@@ -142,7 +142,7 @@ const COL_EXP = [
   ['Dados pessoais', true, [['cpf', 'CPF'], ['data_nascimento', 'Nascimento'], ['idade', 'Idade'], ['sexo', 'Sexo'], ['estado_civil', 'Estado civil'], ['escolaridade', 'Escolaridade'], ['nacionalidade', 'Nacionalidade'], ['naturalidade', 'Naturalidade'],
     ['nome_mae', 'Nome da mãe'], ['nome_pai', 'Nome do pai'], ['raca_cor', 'Raça/cor'], ['pcd', 'PcD'], ['pcd_tipo', 'Tipo de deficiência']]],
   ['Documentos', true, [['rg', 'RG'], ['rg_orgao', 'Órgão emissor'], ['rg_uf', 'UF do RG'], ['rg_emissao', 'Emissão do RG'], ['pis', 'PIS'], ['pis_cadastro', 'PIS cadastro'], ['ctps_numero', 'CTPS nº'], ['ctps_serie', 'CTPS série'], ['ctps_uf', 'CTPS UF'], ['ctps_emissao', 'CTPS emissão'], ['titulo_eleitor', 'Título de eleitor'], ['titulo_zona', 'Zona'], ['titulo_secao', 'Seção'], ['reservista', 'Reservista']]],
-  ['CNH, cursos e segurança', false, [['cnh_numero', 'CNH nº'], ['cnh_categoria', 'CNH categoria'], ['cnh_validade', 'CNH validade'], ['cnh_primeira', 'CNH 1ª habilitação'], ['cnh_uf', 'CNH UF'], ['cnh_ear', 'CNH com EAR'], ['curso_mopp', 'MOPP'], ['curso_mopp_validade', 'MOPP validade'], ['curso_indivisiveis', 'Cargas indivisíveis'], ['curso_indivisiveis_validade', 'Indivisíveis validade'],
+  ['CNH, cursos e segurança', false, [['cnh_numero', 'CNH nº'], ['cnh_categoria', 'CNH categoria'], ['cnh_validade', 'CNH validade'], ['cnh_primeira', 'CNH 1ª habilitação'], ['cnh_emissao', 'CNH emissão'], ['cnh_uf', 'CNH UF'], ['cnh_ear', 'CNH com EAR'], ['curso_mopp', 'MOPP'], ['curso_mopp_validade', 'MOPP validade'], ['curso_indivisiveis', 'Cargas indivisíveis'], ['curso_indivisiveis_validade', 'Indivisíveis validade'],
     ['tipo_sanguineo', 'Tipo sanguíneo'], ['brigadista', 'Brigadista'], ['cipeiro', 'CIPA'], ['cipa_funcao', 'Função na CIPA']]],
   ['Bancário', true, [['banco', 'Banco'], ['agencia', 'Agência'], ['conta', 'Conta'], ['tipo_conta', 'Tipo de conta'], ['pix_tipo', 'Tipo de PIX'], ['pix_chave', 'Chave PIX']]],
   ['Remuneração', true, [['salario', 'Salário']]],
@@ -154,16 +154,19 @@ async function exportarColaboradores(idsTela, ss, cgs, pre = null) {
   const marc = k => lembra?.campos ? lembra.campos.includes(k) : !!grupos.flatMap(g => g[2]).find(c => c[0] === k)?.[2];
   const r = await modal(`<form><h2>Exportar lista de colaboradores</h2><div class="form">
     <label class="campo">Quem entra<select name="quem"><option value="ativos" ${lembra?.quem !== 'tela' && lembra?.quem !== 'quadro' ? 'selected' : ''}>Somente ativos</option><option value="quadro" ${lembra?.quem === 'quadro' ? 'selected' : ''}>Quadro atual (ativos, férias, afastados, aviso prévio, em admissão)</option><option value="tela" ${lembra?.quem === 'tela' ? 'selected' : ''}>Exatamente a lista da tela (${idsTela.length})</option></select></label>
-    <label class="campo">Formato<select name="fmt">${[['xlsx', 'Excel (.xlsx)'], ['pdf', 'PDF'], ['csv', 'CSV (separado por ;)']].map(([v, t]) => `<option value="${v}" ${lembra?.fmt === v ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+    <label class="campo">Formato<select name="fmt">${[['xlsx', 'Excel (.xlsx)'], ['pdf', 'PDF'], ['csv', 'CSV (separado por ;)'], ['creare', 'CSV Creare (importação de motoristas)']].map(([v, t]) => `<option value="${v}" ${lembra?.fmt === v ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+    <label class="campo" id="cx-grupo">Grupo no Creare<input name="grupo_creare" value="${esc(lembra?.grupo || '')}" placeholder="ex.: Grupo 1"></label>
+    <p class="largo muted" id="cx-creare" style="margin:0">No <b>CSV Creare</b> as colunas já saem no modelo de importação de motoristas do Creare (nome, CPF, matrícula, CNH, contato, endereço e datas da CNH); as informações marcadas abaixo não se aplicam.</p>
     <div class="campo largo"><span>Informações <button type="button" class="btn peq" data-cx="1">Marcar tudo</button> <button type="button" class="btn peq" data-cx="0">Desmarcar tudo</button></span>
       ${grupos.map(([g, sens, cs]) => `<div style="margin:8px 0"><b>${g}</b>${sens ? ' <span class="tag amarelo" title="Dado pessoal sensível (LGPD): só RH/DP/administrador veem esta opção">sensível</span>' : ''}<div style="display:flex;flex-wrap:wrap;gap:4px 16px;margin-top:4px">
         ${cs.map(([k, t]) => `<label class="check"><input type="checkbox" name="c_${k}" ${marc(k) ? 'checked' : ''}> ${t}</label>`).join('')}</div></div>`).join('')}</div></div>
     <p class="muted">Dados pessoais e bancários só devem ser enviados a quem precisa deles (LGPD). As escolhas ficam lembradas para a próxima vez.</p>
     <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Exportar</button></div></form>`,
-    { aoAbrir: m => $$('[data-cx]', m).forEach(b => b.onclick = () => $$('input[name^=c_]', m).forEach(c => (c.checked = b.dataset.cx === '1'))) });
+    { aoAbrir: m => { $$('[data-cx]', m).forEach(b => b.onclick = () => $$('input[name^=c_]', m).forEach(c => (c.checked = b.dataset.cx === '1')));
+      const fs = $('[name=fmt]', m), ver = () => { const cr = fs.value === 'creare'; $('#cx-grupo', m).hidden = !cr; $('#cx-creare', m).hidden = !cr; }; fs.addEventListener('change', ver); ver(); } });
   if (!r) return;
-  const campos = grupos.flatMap(g => g[2]).filter(([k]) => r['c_' + k]); if (!campos.length) return aviso('Marque ao menos uma informação.', true);
-  try { localStorage.setItem('col-exp', JSON.stringify({ quem: r.quem, fmt: r.fmt, campos: campos.map(c => c[0]) })); } catch (e) { }
+  const campos = grupos.flatMap(g => g[2]).filter(([k]) => r['c_' + k]); if (!campos.length && r.fmt !== 'creare') return aviso('Marque ao menos uma informação.', true);
+  try { localStorage.setItem('col-exp', JSON.stringify({ quem: r.quem, fmt: r.fmt, campos: campos.map(c => c[0]), grupo: r.grupo_creare || '' })); } catch (e) { }
   const filtro = r.quem === 'tela' ? `id=in.(${idsTela.join(',') || '00000000-0000-0000-0000-000000000000'})` : r.quem === 'ativos' ? 'status=eq.ativo' : 'status=in.(em_admissao,ativo,ferias,afastado,aviso_previo)';
   const [cs, ccs] = await Promise.all([api.listar('colaboradores', `select=*&ativo=eq.true&${filtro}&order=nome&limit=5000`), centros().catch(() => [])]);
   const cpf = c => { c = soDigitos(c || ''); return c.length === 11 ? `${c.slice(0, 3)}.${c.slice(3, 6)}.${c.slice(6, 9)}-${c.slice(9)}` : c; };
@@ -178,6 +181,15 @@ async function exportarColaboradores(idsTela, ss, cgs, pre = null) {
       case 'cep': { const d = soDigitos(c.cep || ''); return d.length === 8 ? d.slice(0, 5) + '-' + d.slice(5) : d; }
       case 'pcd': case 'cnh_ear': case 'curso_mopp': case 'curso_indivisiveis': case 'brigadista': case 'cipeiro': return sn(c[k]);
       default: return dts.has(k) || /^\d{4}-\d{2}-\d{2}$/.test(String(c[k] ?? '')) ? (c[k] ? dataBR(c[k]) : '') : (c[k] ?? ''); } };
+  if (r.fmt === 'creare') { // modelo de importação de motoristas do Creare (import-template-drivers.csv)
+    const CAB = ['primeiro_nome', 'segundo_nome', 'grupo', 'cpf', 'matricula', 'cnh', 'cracha', 'email', 'data_nascimento', 'celular', 'telefone', 'cep', 'numero', 'rua', 'bairro', 'cidade', 'estado', 'pais', 'complemento', 'codigo_pais', 'cnh_categoria', 'cnh_expiracao', 'cnh_emissao', 'cnh_primeira_emissao'];
+    const q = v => { v = String(v ?? '').trim(); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }, d = v => soDigitos(v || ''), iso = v => v ? String(v).slice(0, 10) : '';
+    const ls = cs.map(c => { const p = String(c.nome || '').trim().split(/\s+/);
+      return [p[0] || '', p.slice(1).join(' '), r.grupo_creare || '', d(c.cpf), c.matricula || '', d(c.cnh_numero), '', (c.email_corporativo || c.email || '').trim(), iso(c.data_nascimento), d(c.telefone), d(c.telefone2),
+        d(c.cep), c.numero || '', c.logradouro || '', c.bairro || '', c.cidade || '', c.uf || '', 'Brasil', c.complemento || '', 'br', c.cnh_categoria || '', iso(c.cnh_validade), iso(c.cnh_emissao), iso(c.cnh_primeira)]; });
+    baixarArquivo([CAB, ...ls].map(l => l.map(q).join(',')).join('\r\n'), `Creare motoristas ${hojeISO()}.csv`, 'text/csv;charset=utf-8');
+    const semCnh = cs.filter(c => !c.cnh_numero).length;
+    return aviso(`${cs.length} colaborador(es) no modelo do Creare.${semCnh ? ` ${semCnh} sem CNH cadastrada.` : ''}`); }
   const linhas = cs.map(c => campos.map(([k]) => val(c, k))), cab = campos.map(c => c[1]);
   const quem = { ativos: 'ativos', quadro: 'quadro atual', tela: 'lista filtrada' }[r.quem], nome = `Colaboradores ${quem} ${hojeISO()}`;
   if (r.fmt === 'xlsx') { await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'); const ws = XLSX.utils.aoa_to_sheet([cab, ...linhas]);
@@ -250,7 +262,7 @@ async function formColaborador(tela, c = null) {
         ${campo('Título de eleitor', inp('titulo_eleitor'))}${campo('Zona', inp('titulo_zona'))}${campo('Seção', inp('titulo_secao'))}${campo('Reservista', inp('reservista'))}
         ${campo('CNH (número)', inp('cnh_numero', 'inputmode="numeric"'))}
         ${campo('Categoria', sel('cnh_categoria', ['A', 'B', 'AB', 'C', 'AC', 'D', 'AD', 'E', 'AE'].map(x => [x, x]), c?.cnh_categoria))}
-        ${campo('Validade da CNH', dt('cnh_validade'))}${campo('1ª habilitação', dt('cnh_primeira'))}${campo('UF da CNH', sel('cnh_uf', UFS.map(u => [u, u]), c?.cnh_uf))}
+        ${campo('Validade da CNH', dt('cnh_validade'))}${campo('1ª habilitação', dt('cnh_primeira'))}${campo('Emissão da CNH', dt('cnh_emissao'))}${campo('UF da CNH', sel('cnh_uf', UFS.map(u => [u, u]), c?.cnh_uf))}
         <label class="check"><input type="checkbox" name="cnh_ear" ${c?.cnh_ear ? 'checked' : ''}> CNH com EAR (exerce atividade remunerada)</label>
         <label class="check"><input type="checkbox" name="curso_indivisiveis" ${c?.curso_indivisiveis ? 'checked' : ''}> Curso de transporte de cargas indivisíveis (consta na CNH)</label>${campo('Validade do curso de cargas indivisíveis', dt('curso_indivisiveis_validade'))}
         <label class="check"><input type="checkbox" name="curso_mopp" ${c?.curso_mopp ? 'checked' : ''}> MOPP — transporte de produtos perigosos (consta na CNH)</label>${campo('Validade do MOPP', dt('curso_mopp_validade'))}
@@ -359,7 +371,7 @@ rota('/rh/colaboradores/ver/:id', async (tela, id) => {
         ${linha('Matrícula', c.matricula)}${linha('CPF', fmtCPF(c.cpf || ''))}${linha('Nascimento', c.data_nascimento ? `${dataBR(c.data_nascimento)} (${idade(c.data_nascimento)} anos)` : '')}
         ${linha('RG', fmtRG(c.rg, c.rg_orgao, c.rg_uf))}${linha('Estado civil', c.estado_civil)}${linha('Tipo sanguíneo', c.tipo_sanguineo)}${linha('Segurança do trabalho', [c.brigadista && 'Brigadista', c.cipeiro && ('CIPA' + (c.cipa_funcao ? ' · ' + c.cipa_funcao : ''))].filter(Boolean).join(' · '))}${linha('Escolaridade', c.escolaridade)}
         ${linha('Mãe', c.nome_mae)}${linha('PIS', c.pis)}${linha('CTPS', [c.ctps_numero, c.ctps_serie, c.ctps_uf].filter(Boolean).join(' / '))}
-        ${linha('CNH nº', c.cnh_numero)}${linha('CNH categoria', c.cnh_categoria)}${linha('CNH validade', dataBR(c.cnh_validade))}${linha('CNH 1ª habilitação', dataBR(c.cnh_primeira))}${linha('CNH UF', c.cnh_uf)}${c.cnh_numero || c.cnh_categoria ? linha('CNH com EAR', c.cnh_ear ? 'Sim' : 'Não') : ''}${linha('Cursos especializados', [c.curso_indivisiveis && 'Cargas indivisíveis' + (c.curso_indivisiveis_validade ? ' (até ' + dataBR(c.curso_indivisiveis_validade) + ')' : ''), c.curso_mopp && 'MOPP' + (c.curso_mopp_validade ? ' (até ' + dataBR(c.curso_mopp_validade) + ')' : '')].filter(Boolean).join(' · '))}
+        ${linha('CNH nº', c.cnh_numero)}${linha('CNH categoria', c.cnh_categoria)}${linha('CNH validade', dataBR(c.cnh_validade))}${linha('CNH 1ª habilitação', dataBR(c.cnh_primeira))}${linha('CNH emissão', dataBR(c.cnh_emissao))}${linha('CNH UF', c.cnh_uf)}${c.cnh_numero || c.cnh_categoria ? linha('CNH com EAR', c.cnh_ear ? 'Sim' : 'Não') : ''}${linha('Cursos especializados', [c.curso_indivisiveis && 'Cargas indivisíveis' + (c.curso_indivisiveis_validade ? ' (até ' + dataBR(c.curso_indivisiveis_validade) + ')' : ''), c.curso_mopp && 'MOPP' + (c.curso_mopp_validade ? ' (até ' + dataBR(c.curso_mopp_validade) + ')' : '')].filter(Boolean).join(' · '))}
         ${linha('Telefone corporativo', c.telefone_corporativo ? fmtTel(c.telefone_corporativo) : '')}${linha('E-mail corporativo', c.email_corporativo)}${linha('Telefone pessoal', [c.telefone, c.telefone2].filter(Boolean).map(fmtTel).join(' · '))}${linha('E-mail pessoal', c.email)}
         <div class="largo">${linha('Endereço', [c.logradouro, c.numero, c.complemento, c.bairro, [c.cidade, c.uf].filter(Boolean).join('/'), c.cep && 'CEP ' + fmtCEP(c.cep)].filter(Boolean).join(', '))}</div>
         ${linha('Emergência', [c.emergencia_nome, c.emergencia_parentesco, fmtTel(c.emergencia_telefone || '')].filter(Boolean).join(' · '))}
