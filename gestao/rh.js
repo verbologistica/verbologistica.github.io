@@ -113,14 +113,14 @@ async function assDesenhar(v) {
   T('MOVEMOS', W - 14, 78, '800 13px Archivo, Arial', '#DDA936', 'right'); T('CONQUISTAS.', W - 14, 93, '800 13px Archivo, Arial', '#1E2B26', 'right');
   return cv;
 }
-async function assinaturaEmail(c, cargoNome) {
+async function assinaturaEmail(c, cargoNome, editavel = true) {
   // só dados corporativos: o que não estiver cadastrado aparece como aviso no lugar da informação
   const tel = c.telefone_corporativo ? fmtTel(c.telefone_corporativo) : 'Sem número corporativo cadastrado', email = (c.email_corporativo || '').trim() || 'Sem e-mail corporativo cadastrado';
   const falta = [!c.telefone_corporativo && 'telefone corporativo', !(c.email_corporativo || '').trim() && 'e-mail corporativo'].filter(Boolean);
   const m = modal(`<form><h2>Assinatura de e-mail</h2><p class="muted">Padrão Verbo. Telefone e e-mail vêm do cadastro (corporativos); endereço e site são os mesmos para todos.</p>
-    <div class="form"><label class="campo">Nome na assinatura<input name="nome" value="${esc(c.nome)}"></label><label class="campo">Cargo<input name="cargo" value="${esc(cargoNome || '')}"></label>
+    <div class="form"><label class="campo">Nome na assinatura<input name="nome" value="${esc(c.nome)}" ${editavel ? '' : 'readonly'}></label><label class="campo">Cargo<input name="cargo" value="${esc(cargoNome || '')}" ${editavel ? '' : 'readonly'}></label>
       <div><div class="muted">Telefone corporativo</div><b>${esc(tel)}</b></div><div><div class="muted">E-mail corporativo</div><b>${esc(email)}</b></div></div>
-    ${falta.length ? `<div class="cartao" style="border-left:5px solid #DDA936;margin:10px 0 0;padding:8px 12px">Sem ${falta.join(' e ')} no cadastro: a assinatura sai com o aviso no lugar. Para corrigir, cadastre em Editar → Contato e gere de novo.</div>` : ''}
+    ${falta.length ? `<div class="cartao" style="border-left:5px solid #DDA936;margin:10px 0 0;padding:8px 12px">Sem ${falta.join(' e ')} no cadastro: a assinatura sai com o aviso no lugar. ${editavel ? 'Para corrigir, cadastre em Editar → Contato e gere de novo.' : 'Peça ao RH para cadastrar e gere de novo.'}</div>` : ''}
     <div style="margin:12px 0;border:1px solid #E3E8EC;border-radius:8px;padding:8px;background:#fff;overflow:auto"><img id="ass-prev" style="width:100%;max-width:680px;display:block" alt="Prévia da assinatura"></div>
     <div class="rodape"><button type="button" class="btn" data-fechar>Fechar</button><button type="button" class="btn prim" id="ass-baixar">⬇ Baixar assinatura (PNG)</button></div></form>`);
   const f = $('.modal form') || document.querySelector('form:has(#ass-prev)');

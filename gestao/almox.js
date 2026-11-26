@@ -462,7 +462,11 @@ rota('/meus-itens', async tela => {
   tela.innerHTML = `<div class="topo"><div><h1>Meus itens</h1><p class="sub">Bens da empresa e EPIs sob sua responsabilidade</p></div><a class="btn prim" href="#/almox/requisicoes/nova">+ Pedir material / EPI</a></div>
     <div class="cartao"><h2>Equipamentos</h2>${minhasP.length ? `<ul class="lista-simples">${minhasP.map(p => `<li><span><b>${esc(p.tag)}</b> ${esc(p.descricao)} <span class="muted">${esc([p.imei && 'IMEI ' + p.imei, p.linha && fmtTel(p.linha)].filter(Boolean).join(' · '))}</span></span><span class="muted">desde ${dataBR(p.desde)}</span></li>`).join('')}</ul>` : '<div class="vazio">Nenhum equipamento com você.</div>'}</div>
     <div class="cartao"><h2>EPIs e uniformes</h2>${meusE.length ? `<ul class="lista-simples">${meusE.map(e => `<li><span>${esc(e.item?.descricao || '')} · ${fmtQtd(e.quantidade, e.item?.unidade)}</span><span class="muted">entregue ${dataBR(e.data)}${e.troca_prevista ? ' · troca ' + dataBR(e.troca_prevista) : ''}</span></li>`).join('')}</ul>` : '<div class="vazio">Nenhum EPI registrado.</div>'}</div>
+    <div class="cartao"><h2>Minha assinatura de e-mail</h2><p class="muted" style="margin:0 0 8px">No padrão Verbo, com seu telefone e e-mail corporativos. Baixe a imagem e configure no seu e-mail.</p><button type="button" class="btn prim" id="minha-ass">Ver e baixar minha assinatura</button></div>
     <p class="muted">Algum item danificou, sumiu ou não está na lista? Avise o almoxarifado ou o RH imediatamente.</p>`;
+  $('#minha-ass').onclick = e => ocupado(e.currentTarget, async () => { const d = await api.rpc('minha_assinatura').catch(() => null);
+    if (!d?.nome) return aviso('Seu usuário não está ligado a um cadastro de colaborador. Fale com o RH.', true);
+    await assinaturaEmail(d, d.cargo, false); });
 });
 
 // Aba na ficha do colaborador (RH): patrimônio e EPI
