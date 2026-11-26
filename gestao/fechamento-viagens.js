@@ -284,9 +284,19 @@ async function vfPdfCliente(f, its, V, PED) {
     doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(...cor); doc.text(rot, x + 4, y + 5.5);
     doc.setFontSize(15); doc.setTextColor(...C.texto); doc.text(valor, x + 4, y + 13);
     doc.setFont('helvetica', 'normal'); doc.setFontSize(7.6); doc.setTextColor(...C.cinza); doc.text(l1, x + 4, y + 18.5); doc.text(l2, x + 4, y + 22.3); };
-  caixa(ML, C.verde, C.verdeC, '1. FRETE · FATURA DOS CT-e', brl(tf), `ICMS embutido ${brl(ti)} · frete sem ICMS ${brl(tf - ti)} · ${n2(tpeso, 2)} t`, 'Cobrado na fatura de frete. O ICMS já está dentro do valor de cada CT-e.');
-  caixa(ML + bw + 6, C.ouro, C.creme, '2. PEDÁGIO · REEMBOLSO À PARTE', brl(tp), `${tn} passagens (ida e volta) · NÃO incluso no valor do frete`, '');
-  y += 31;
+  // frete: cada valor no seu card (como no modelo anterior)
+  doc.autoTable({ startY: y, margin: mg, theme: 'grid', willDrawPage: moldura,
+    head: [['Viagens', 'Peso líquido', 'Valor dos CT-e (frete com ICMS)', 'ICMS embutido', 'Frete sem ICMS']],
+    body: [[vs.length, n2(tpeso, 2) + ' t', brl(tf), brl(ti), brl(tf - ti)]],
+    styles: { font: 'helvetica', fontSize: 9.5, halign: 'center', textColor: C.texto, lineColor: C.borda, lineWidth: 0.15, cellPadding: 2 },
+    headStyles: { fillColor: C.escuro, textColor: 255, fontStyle: 'bold', fontSize: 7.6, halign: 'center' } });
+  y = doc.lastAutoTable.finalY + 4;
+  // pedágio: à parte
+  doc.setFillColor(...C.creme); doc.setDrawColor(...C.ouro); doc.setLineWidth(0.4); doc.roundedRect(ML, y, W, 13, 2, 2, 'FD');
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(...C.ouro); doc.text('PEDÁGIO · REEMBOLSO À PARTE', ML + 4, y + 5.2);
+  doc.setFontSize(12); doc.setTextColor(...C.texto); doc.text(brl(tp), ML + 4, y + 10.6);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(...C.cinza); doc.text(`${tn} passagens (ida e volta) · NÃO incluso no valor do frete`, ML + 60, y + 10.6);
+  y += 19;
   faixa(1, 'Frete (fatura dos CT-e)', 'Valor de cada CT-e com o rateio do ICMS embutido. Este é o valor total do frete do período.', C.verde);
   doc.autoTable({ ...base, startY: y, headStyles: { fillColor: C.verde, textColor: 255, fontStyle: 'bold', fontSize: 7.6 },
     head: [['#', 'NF', 'CT-e', 'Placa', 'Saída', 'Chegada (balança)', 'Peso líq. (t)', 'Valor do CT-e', 'ICMS embutido', 'Frete sem ICMS']],
