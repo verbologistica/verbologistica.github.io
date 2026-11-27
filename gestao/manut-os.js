@@ -1,4 +1,4 @@
-// Verbo Gestão — Manutenção › Ordem de serviço completa (etapa 1)
+// Verbo Gestão — Manutenção › Ordem de serviço completa (etapas 1 a 3; checklists em manut-chk.js)
 // Abertura com previsão de liberação · unidades da composição afetadas · falhas por unidade com localização obrigatória
 // (lado, eixo, interno/externo, barrote) · pneus com fogo/sulco/estado/recapagem · serviços em linhas (mecânico, início, fim)
 // com as peças de cada linha · terceiro e inspeção · liberação com assinaturas · encerramento com checagem automática ·
@@ -204,14 +204,15 @@ rota('/manut/os/ver/:id', async (tela, id) => {
 
     <div class="cartao"><h2>Liberação</h2><div class="form">
       <div><div class="muted">Liberado por (manutenção)</div><b>${esc(moColab(CO[o.liberado_por]) || '—')}</b>${o.liberado_assinatura ? `<div><img class="mo-ass-img" src="${o.liberado_assinatura}" alt="assinatura"></div>` : ''}</div>
-      <div><div class="muted">Recebido por (motorista / operação)</div><b>${esc(moColab(CO[o.recebido_por]) || '—')}</b>${o.recebido_assinatura ? `<div><img class="mo-ass-img" src="${o.recebido_assinatura}" alt="assinatura"></div>` : ''}</div></div>
-      <p class="muted" style="margin-bottom:0">Checklists de recebimento e de liberação da frota: chegam na etapa 3 (a manutenção vai cadastrar os itens).</p></div>
+      <div><div class="muted">Recebido por (motorista / operação)</div><b>${esc(moColab(CO[o.recebido_por]) || '—')}</b>${o.recebido_assinatura ? `<div><img class="mo-ass-img" src="${o.recebido_assinatura}" alt="assinatura"></div>` : ''}</div></div></div>
+    <div class="cartao" id="mo-chk"><p class="muted">Carregando checklists…</p></div>
 
     ${o.inconsistencias?.length || prz.length ? `<div class="cartao"><h2>Controle</h2>
       ${o.inconsistencias?.length ? `<p><b>Avisos da checagem automática</b> (para a analista conferir):</p><ul class="mo-av">${o.inconsistencias.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}
       ${prz.length ? `<p><b>Prazo repactuado</b></p><ul>${prz.map(p => `<li>${dataHoraBR(p.anterior)} → <b>${dataHoraBR(p.nova)}</b> em ${dataHoraBR(p.em)}: ${esc(p.justificativa)}</li>`).join('')}</ul>` : ''}</div>` : ''}
     <div class="cartao"><h2>Anexos</h2><div id="mo-anx"></div>${ed ? '<label class="campo" style="margin-top:8px">Anexar fotos ou documentos<input type="file" id="mo-anx-in" multiple></label>' : ''}</div>`;
   $('#mo-anx').innerHTML = await htmlAnexos('manut_os', id);
+  if (typeof mcSecaoOS === 'function') mcSecaoOS($('#mo-chk'), o, { ed, aberta, CO, cs, U, afet }).catch(falha);
   $('#mo-anx-in')?.addEventListener('change', async ev => { try { await anexar('manut_os', id, [...ev.target.files]); navegar(); } catch (err) { falha(err); } });
 
   // + problema na unidade
@@ -291,12 +292,12 @@ rota('/manut/os/ver/:id', async (tela, id) => {
     const r = await modal(`<form><h2>Peça aplicada</h2><p class="muted">${esc(srv.find(s => s.id === b.dataset.peca)?.descricao || '')}</p><div class="form">
       <div class="campo largo"><div class="mo-chips"><label><input type="radio" name="tipo" value="peca_estoque" checked>Do nosso almoxarifado</label><label><input type="radio" name="tipo" value="peca_terceiro">Peça do terceiro</label></div></div>
       <label class="campo largo">Peça (cadastro do almoxarifado) *<select name="almox_item_id" required><option value="">Selecione…</option>${pecas.map(p => `<option value="${p.id}">${esc(p.codigo + ' · ' + p.descricao)} · estoque ${Number(p.saldo).toLocaleString('pt-BR')} ${esc(p.unidade)}</option>`).join('')}</select>
-        <span class="muted" style="font-size:12px">A peça precisa estar cadastrada no almoxarifado. Se não estiver, peça o cadastro ao almoxarifado antes de lançar.</span></label>
+        <span class="muted" style="font-size:12px">Só entram na OS peças cadastradas no almoxarifado.</span>${typeof mcPedirPeca === 'function' ? '<button type="button" class="btn peq" id="mo-pedir" style="margin-top:4px">Não achou? Pedir cadastro ao almoxarifado</button>' : ''}</label>
       <label class="campo">Quantidade *<input name="quantidade" inputmode="decimal" value="1"></label>
       <label class="campo" id="b-pv">Valor unitário cobrado pelo terceiro (R$) *<input name="valor_unitario" inputmode="decimal"></label>
       <div class="campo" id="b-pe"><span>Estado *</span><div class="mo-chips"><label><input type="radio" name="estado_peca" value="nova">Nova</label><label><input type="radio" name="estado_peca" value="usada">Usada</label></div></div></div>
       <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Lançar</button></div></form>`,
-      { aoAbrir: raiz => { const f = $('form', raiz); const vis = () => { const ter = f.querySelector('[name=tipo]:checked').value === 'peca_terceiro'; $('#b-pv', raiz).hidden = $('#b-pe', raiz).hidden = !ter; }; f.onchange = vis; vis(); },
+      { aoAbrir: (raiz, fechar) => { $('#mo-pedir', raiz)?.addEventListener('click', async () => { if (await mcPedirPeca(id)) { fechar(null); navegar(); } }); const f = $('form', raiz); const vis = () => { const ter = f.querySelector('[name=tipo]:checked').value === 'peca_terceiro'; $('#b-pv', raiz).hidden = $('#b-pe', raiz).hidden = !ter; }; f.onchange = vis; vis(); },
         validar: d => { const p = P[d.almox_item_id], q = num(d.quantidade); if (!p) return 'Escolha a peça do cadastro.'; if (!(q > 0)) return 'Informe a quantidade.';
           if (d.tipo === 'peca_estoque' && Number(p.saldo) < q) return `Estoque insuficiente (${Number(p.saldo).toLocaleString('pt-BR')} ${p.unidade}). Se a peça veio do terceiro, marque "Peça do terceiro".`;
           if (d.tipo === 'peca_terceiro') { if (!(num(d.valor_unitario) > 0)) return 'Informe o valor cobrado pelo terceiro.'; if (!d.estado_peca) return 'Informe se a peça é nova ou usada.'; } return null; } });
