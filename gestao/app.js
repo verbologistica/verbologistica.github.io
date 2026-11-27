@@ -424,7 +424,7 @@ const MENU = [
   ['DM das frotas', '#/operacao/dm', [...P_MAN, 'operacao', 'ssma'], 'monitor', null, true],
   ['Ordens de serviço', '#/manut/os', [...P_MAN, 'almoxarifado', 'financeiro'], 'maleta', 'manut_os_abertas', true],
   ['Checklists da OS', '#/manut/checklists', P_MAN, 'checklist', null, true],
-  ['Planos preventivos', '#/manut/preventivas', P_MAN, 'calendario_ok', 'manut_preventivas_proximas', true],
+  ['Preventivas e planos', '#/manut/preventivas', P_MAN, 'calendario_ok', 'manut_preventivas_proximas', true],
   ['Pneus', '#/manut/pneus', P_MAN, 'pneu', 'pneus_sulco_baixo', true],
   ['Checklist do veículo', '#/manut/checklist', [...P_MAN, 'motorista'], 'checklist', null, true],
   ['Km / horímetro', '#/manut/hodometro', [...P_MAN, 'motorista'], 'velocimetro', null, true],

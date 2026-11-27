@@ -102,7 +102,7 @@ async function moForm(tela, o = null) {
   const [eqs, fs] = await Promise.all([api.listar('equipamentos', 'select=id,codigo_frota,tipo,tipo_outro,marca,modelo,km_atual,comps:veiculos(id,placa,ordem,descricao_composicao,ativo)&ativo=eq.true&order=codigo_frota'),
     cad('fornecedores', 'select=id,razao_social,nome_fantasia,documento,ativo&order=razao_social')]);
   const eqSel = o?.equipamento_id || estado.params.get('eq') || '';
-  const tipo = o?.tipo && MO_TIPOS[o.tipo] ? o.tipo : 'corretiva';
+  const tipo = o?.tipo && MO_TIPOS[o.tipo] ? o.tipo : MO_TIPOS[estado.params.get('tipo')] ? estado.params.get('tipo') : 'corretiva';
   tela.innerHTML = `<div class="topo"><div><h1>${o ? 'Editar abertura · ' + esc(o.numero) : 'Nova ordem de serviço'}</h1><p class="sub">Campos com * são obrigatórios. Depois de abrir, descreva o problema de cada unidade e lance os serviços.</p></div></div>
     <form id="f-mo"><div class="cartao"><h2>Equipamento</h2><div class="form">
       <label class="campo largo">Frota *<select name="equipamento_id" required><option value="">Selecione…</option>${eqs.map(e => `<option value="${e.id}" ${e.id === eqSel ? 'selected' : ''}>${esc(e.codigo_frota || '')} · ${esc(nomeTipoEq(e))} · ${esc((e.comps || []).filter(c => c.ativo).sort((a, b) => a.ordem - b.ordem).map(c => c.placa).join(' · '))}</option>`).join('')}</select></label>
@@ -111,6 +111,7 @@ async function moForm(tela, o = null) {
       <div class="campo largo"><span>Tipo de serviço *</span><div class="mo-chips">${Object.entries(MO_TIPOS).map(([k, t]) => `<label><input type="radio" name="tipo" value="${k}" ${k === tipo ? 'checked' : ''}>${t}</label>`).join('')}</div></div>
       <div class="campo largo" id="b-atd"><span>Corretiva: onde foi o atendimento? *</span><div class="mo-chips"><label><input type="radio" name="atendimento" value="base" ${o?.atendimento !== 'sos' ? 'checked' : ''}>Na base</label><label><input type="radio" name="atendimento" value="sos" ${o?.atendimento === 'sos' ? 'checked' : ''}>SOS (socorro em campo)</label></div></div>
       <label class="campo" id="b-sos1">Km inicial do SOS<input name="km_sos_inicial" inputmode="numeric" value="${o?.km_sos_inicial ?? ''}" placeholder="o km final é pedido na liberação"></label>
+      <div class="campo largo" id="b-prev"><span>Preventiva: plano(s) executado(s) *</span><div id="mo-planos" class="mo-chips"><span class="muted">Selecione a frota.</span></div></div>
       <label class="campo">Abertura (data e hora) *<input type="datetime-local" name="aberta_em" required value="${o ? moLocal(o.aberta_em || o.criado_em) : agoraLocal()}"></label>
       <label class="campo">Previsão de liberação *<input type="datetime-local" name="previsao_liberacao" required value="${moLocal(o?.previsao_liberacao)}"></label>
       <label class="campo" id="b-km">Km de entrada *<input name="km_entrada" inputmode="numeric" value="${o?.km_entrada ?? ''}"></label>
@@ -129,10 +130,14 @@ async function moForm(tela, o = null) {
     const cl = moClasse(e?.tipo); $('#b-km').hidden = cl === 'reboque'; f.km_entrada.required = cl !== 'reboque' && !!e;
     if (e && cl !== 'reboque' && !f.km_entrada.value && e.km_atual != null) f.km_entrada.placeholder = 'último: ' + Number(e.km_atual).toLocaleString('pt-BR'); };
   const vis = () => { const t = f.querySelector('[name=tipo]:checked')?.value, sos = f.querySelector('[name=atendimento]:checked')?.value === 'sos', ext = f.querySelector('[name=oficina]:checked')?.value === 'externa';
-    $('#b-atd').hidden = t !== 'corretiva'; $('#b-sos1').hidden = !(t === 'corretiva' && sos); $('#b-forn').hidden = !(ext || t === 'inspecao'); };
-  f.equipamento_id.onchange = unis; f.addEventListener('change', vis); unis(); vis();
+    $('#b-atd').hidden = t !== 'corretiva'; if ($('#b-prev')) $('#b-prev').hidden = t !== 'preventiva'; $('#b-sos1').hidden = !(t === 'corretiva' && sos); $('#b-forn').hidden = !(ext || t === 'inspecao'); };
+  const prevSel = o ? (await api.listar('manut_os_planos', `os_id=eq.${o.id}&ativo=eq.true&select=plano_equipamento_id`).catch(() => [])).map(x => x.plano_equipamento_id) : estado.params.get('pe') ? [estado.params.get('pe')] : null;
+  const planos = () => typeof mpCarregarPlanos === 'function' && mpCarregarPlanos($('#mo-planos'), f.equipamento_id.value, prevSel, f);
+  f.equipamento_id.onchange = () => { unis(); planos(); }; f.addEventListener('change', vis); unis(); vis(); planos();
   f.onsubmit = async e => { e.preventDefault(); const d = formDados(f), eq = eqs.find(x => x.id === d.equipamento_id);
     const us = Object.keys(d).filter(k => k.startsWith('u_') && d[k]).map(k => k.slice(2));
+    const pes = Object.keys(d).filter(k => k.startsWith('pe_') && d[k]).map(k => k.slice(3));
+    if (d.tipo === 'preventiva' && typeof mpCarregarPlanos === 'function' && !pes.length) return aviso(Number($('#mo-planos')?.dataset.n) ? 'Preventiva: marque o(s) plano(s) que serão executados.' : 'Este equipamento não está em nenhum plano preventivo: cadastre ou aplique o plano antes (Manutenção › Preventivas › Planos).', true);
     if (!us.length) return aviso('Marque ao menos uma unidade afetada.', true);
     if (new Date(d.previsao_liberacao) <= new Date(d.aberta_em)) return aviso('A previsão de liberação precisa ser depois da abertura.', true);
     const kmn = v => v ? Number(soDigitos(v)) : null, cl = moClasse(eq?.tipo);
@@ -142,6 +147,7 @@ async function moForm(tela, o = null) {
       prioridade: d.prioridade, equipamento_parado: !!d.equipamento_parado, problema: d.problema, oficina: d.oficina || 'interna', fornecedor_id: d.fornecedor_id || null };
     await ocupado(e.submitter, async () => { try {
       let id = o?.id; if (o) await api.alterar('manut_os', `id=eq.${id}`, dados); else [{ id }] = await api.inserir('manut_os', { ...dados, origem: 'manual' });
+      if (d.tipo === 'preventiva' && pes.length) await api.rpc('manut_os_definir_planos', { p_os: id, p_pes: pes });
       aviso(o ? 'OS salva.' : 'OS aberta. Agora descreva o problema de cada unidade.'); location.hash = '#/manut/os/ver/' + id;
     } catch (err) { falha(err); } }); };
 }
@@ -205,6 +211,7 @@ rota('/manut/os/ver/:id', async (tela, id) => {
     <div class="cartao"><h2>Liberação</h2><div class="form">
       <div><div class="muted">Liberado por (manutenção)</div><b>${esc(moColab(CO[o.liberado_por]) || '—')}</b>${o.liberado_assinatura ? `<div><img class="mo-ass-img" src="${o.liberado_assinatura}" alt="assinatura"></div>` : ''}</div>
       <div><div class="muted">Recebido por (motorista / operação)</div><b>${esc(moColab(CO[o.recebido_por]) || '—')}</b>${o.recebido_assinatura ? `<div><img class="mo-ass-img" src="${o.recebido_assinatura}" alt="assinatura"></div>` : ''}</div></div></div>
+    <div class="cartao" id="mo-prev" hidden></div>
     <div class="cartao" id="mo-chk"><p class="muted">Carregando checklists…</p></div>
 
     ${o.inconsistencias?.length || prz.length ? `<div class="cartao"><h2>Controle</h2>
@@ -213,6 +220,7 @@ rota('/manut/os/ver/:id', async (tela, id) => {
     <div class="cartao"><h2>Anexos</h2><div id="mo-anx"></div>${ed ? '<label class="campo" style="margin-top:8px">Anexar fotos ou documentos<input type="file" id="mo-anx-in" multiple></label>' : ''}</div>`;
   $('#mo-anx').innerHTML = await htmlAnexos('manut_os', id);
   if (typeof mcSecaoOS === 'function') mcSecaoOS($('#mo-chk'), o, { ed, aberta, CO, cs, U, afet }).catch(falha);
+  if (o.tipo === 'preventiva' && typeof mpSecaoOS === 'function') mpSecaoOS($('#mo-prev'), o, { ed, aberta }).catch(falha);
   $('#mo-anx-in')?.addEventListener('change', async ev => { try { await anexar('manut_os', id, [...ev.target.files]); navegar(); } catch (err) { falha(err); } });
 
   // + problema na unidade

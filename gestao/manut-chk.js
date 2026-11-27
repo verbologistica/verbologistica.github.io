@@ -1,11 +1,11 @@
-// Verbo Gestão — Manutenção › Checklists da OS (etapa 3) e pedido de cadastro de peça ao almoxarifado
+// Verbo Gestão — Manutenção › Checklists da OS (etapa 3), pré-uso do motorista e pedido de cadastro de peça ao almoxarifado
 // A manutenção (analista / coordenador) monta os checklists de recebimento e de liberação: itens com resposta
 // Conforme/Não conforme/N.A., Sim/Não, texto livre, formatado (data, hora, km, valor, placa, CPF…) ou lista
 // (personalizada ou com dados do sistema). Ao publicar, vira documento padrão na biblioteca de modelos (com versão).
 // Na OS o checklist é preenchido no sistema ou no app do mecânico e é obrigatório para encerrar.
 'use strict';
 
-const MC_MOM = { recebimento: 'Recebimento', liberacao: 'Liberação' };
+const MC_MOM = { recebimento: 'Recebimento', liberacao: 'Liberação', pre_uso: 'Pré-uso (motorista)' };
 const MC_TIPOS = { conforme: 'Conforme / Não conforme / N.A.', sim_nao: 'Sim / Não', texto: 'Texto livre', formatado: 'Formatado (data, km, valor…)', lista: 'Lista suspensa' };
 const MC_FMT = { data: 'Data', hora: 'Hora', data_hora: 'Data e hora', numero: 'Número', km: 'Km', moeda: 'Valor (R$)', placa: 'Placa', cpf: 'CPF', telefone: 'Telefone' };
 const MC_FONTE = { personalizada: 'Lista personalizada (opções digitadas)', colaboradores: 'Colaboradores', motoristas: 'Motoristas', mecanicos: 'Mecânicos (setor Manutenção)',
@@ -73,7 +73,7 @@ function mcCampo(i, r, F, so = false) {
   else { const f = i.formato, tp = { data: 'date', hora: 'time', data_hora: 'datetime-local' }[f] || 'text', im = ['numero', 'km', 'moeda'].includes(f) ? 'inputmode="decimal"' : ['cpf', 'telefone'].includes(f) ? 'inputmode="numeric"' : '';
     campo = `<input name="v_${id}" type="${tp}" ${im} value="${esc(v)}" ${f === 'placa' ? 'style="text-transform:uppercase" maxlength="8"' : ''} placeholder="${esc(MC_FMT[f] || '')}" ${dis}>`; }
   const precisaFoto = i.foto_obrigatoria || i.foto_nc;
-  return `<div class="mc-item ${v === 'nc' ? 'nc' : ''}" data-item="${id}"><div class="rot">${esc(i.rotulo)}${i.obrigatorio ? ' <span style="color:#C62828">*</span>' : ''}</div>${i.ajuda ? `<div class="aj">${esc(i.ajuda)}</div>` : ''}
+  return `<div class="mc-item ${v === 'nc' ? 'nc' : ''}" data-item="${id}"><div class="rot">${esc(i.rotulo)}${i.obrigatorio ? ' <span style="color:#C62828">*</span>' : ''}${i.critico ? ' <span class="tag vermelho">crítico</span>' : ''}</div>${i.ajuda ? `<div class="aj">${esc(i.ajuda)}</div>` : ''}
     <div style="margin-top:6px">${campo}</div>
     <label class="campo" style="margin-top:6px" data-obs="${id}"><span class="muted" style="font-size:12px">Observação${i.tipo === 'conforme' ? ' (obrigatória se não conforme)' : ''}</span><input name="obs_${id}" value="${esc(r?.obs || '')}" ${dis}></label>
     ${precisaFoto ? `<label class="campo" style="margin-top:6px"><span class="muted" style="font-size:12px">Foto${i.foto_obrigatoria ? ' (obrigatória)' : ' (obrigatória se não conforme)'}${r?.foto ? ' · <b style="color:#00684A">✓ já anexada</b>' : ''}</span>${so ? '' : `<input type="file" name="f_${id}" accept="image/*" capture="environment">`}</label>` : ''}</div>`;
@@ -116,7 +116,7 @@ rota('/manut/checklists', async tela => {
   const sit = m => m.situacao === 'arquivado' ? '<span class="tag">Arquivado</span>' : m.versao ? `<span class="tag verde">Publicado · v${m.versao}</span>` : '<span class="tag amarelo">Rascunho</span>';
   tela.innerHTML = `<div class="topo"><div><h1>Checklists da OS</h1><p class="sub">Recebimento e liberação do equipamento. Quem cadastra: analista ou coordenador de manutenção. Ao publicar, o checklist passa a valer nas OS e vira documento padrão na biblioteca de modelos.</p></div>
     <div class="acoes">${ed ? '<a class="btn prim" href="#/manut/checklists/novo">+ Novo checklist</a>' : ''}<a class="btn" href="#/modelos">Biblioteca de modelos</a></div></div>
-    ${['recebimento', 'liberacao'].map(mo => { const l = ms.filter(m => m.momento === mo);
+    ${['recebimento', 'liberacao', 'pre_uso'].map(mo => { const l = ms.filter(m => m.momento === mo);
       return `<div class="cartao"><h2>${MC_MOM[mo]}</h2>${l.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Código</th><th>Checklist</th><th>Aplica a</th><th>Tipos de OS</th><th class="num">Itens</th><th>Obrigatório</th><th>Situação</th><th></th></tr></thead><tbody>
         ${l.map(m => `<tr><td data-r="Código"><b>${esc(m.codigo || '')}</b></td><td data-r="Checklist">${esc(m.nome)}</td><td data-r="Aplica a">${(m.classes || []).map(c => MC_CLASSES[c] || c).join(', ')}</td>
           <td data-r="Tipos de OS">${(m.tipos_os || []).map(t => MO_TIPOS[t] || t).join(', ')}</td><td class="num" data-r="Itens">${qt(m.id)}</td><td data-r="Obrigatório">${m.obrigatorio ? 'Sim' : 'Não'}</td><td data-r="Situação">${sit(m)}</td>
@@ -132,7 +132,7 @@ rota('/manut/checklists/:id', async (tela, id) => {
   const alterado = m.versao > 0 && (its.some(i => new Date(i.atualizado_em) > new Date(new Date(m.publicado_em).getTime() + 3000)) ||
     JSON.stringify(its.map(i => i.id)) !== JSON.stringify((m.itens_pub || []).map(i => i.id)));
   const resumo = i => [MC_TIPOS[i.tipo], i.tipo === 'formatado' && MC_FMT[i.formato], i.tipo === 'lista' && (i.fonte === 'personalizada' ? (i.opcoes || []).join(' / ') : MC_FONTE[i.fonte]), i.multipla && 'várias escolhas',
-    i.obrigatorio ? 'obrigatório' : 'opcional', i.foto_nc && 'foto se NC', i.foto_obrigatoria && 'foto obrigatória'].filter(Boolean).join(' · ');
+    i.critico && 'CRÍTICO (bloqueia a saída)', i.obrigatorio ? 'obrigatório' : 'opcional', i.foto_nc && 'foto se NC', i.foto_obrigatoria && 'foto obrigatória'].filter(Boolean).join(' · ');
   tela.innerHTML = `<div class="topo"><div><h1>${novo ? 'Novo checklist' : esc(m.codigo + ' · ' + m.nome)}</h1>
       <p class="sub">${novo ? 'Preencha o cabeçalho, salve e depois inclua os itens.' : `${MC_MOM[m.momento]} · ${m.situacao === 'arquivado' ? 'arquivado' : m.versao ? `publicado na versão ${m.versao} em ${dataHoraBR(m.publicado_em)}` : 'rascunho (ainda não vale nas OS)'}${alterado ? ' · <span class="tag amarelo">há alterações não publicadas</span>' : ''}`}</p></div>
     <div class="acoes">${!novo ? `<button class="btn" id="mc-prev">Pré-visualizar</button><button class="btn" id="mc-pdf">⬇ PDF em branco</button>` : ''}
@@ -141,9 +141,9 @@ rota('/manut/checklists/:id', async (tela, id) => {
     <form class="cartao" id="mc-cab"><h2>Cabeçalho</h2><div class="form">
       <label class="campo largo">Nome do checklist *<input name="nome" required value="${esc(m.nome)}" placeholder="Ex.: Recebimento de cavalo mecânico" ${ed ? '' : 'disabled'}></label>
       <div class="campo"><span>Momento *</span><div class="mo-chips">${Object.entries(MC_MOM).map(([k, t]) => `<label><input type="radio" name="momento" value="${k}" ${m.momento === k ? 'checked' : ''} ${ed ? '' : 'disabled'}>${t}</label>`).join('')}</div></div>
-      <label class="campo"><span>Obrigatório para encerrar a OS</span><select name="obrigatorio" ${ed ? '' : 'disabled'}><option value="1" ${m.obrigatorio ? 'selected' : ''}>Sim</option><option value="0" ${m.obrigatorio ? '' : 'selected'}>Não</option></select></label>
+      <label class="campo" id="mc-b-obr"><span>Obrigatório para encerrar a OS</span><select name="obrigatorio" ${ed ? '' : 'disabled'}><option value="1" ${m.obrigatorio ? 'selected' : ''}>Sim</option><option value="0" ${m.obrigatorio ? '' : 'selected'}>Não</option></select></label>
       <div class="campo largo"><span>Aplica a *</span><div class="mo-chips">${Object.entries(MC_CLASSES).map(([k, t]) => `<label><input type="checkbox" name="cl_${k}" ${m.classes?.includes(k) ? 'checked' : ''} ${ed ? '' : 'disabled'}>${t}</label>`).join('')}</div></div>
-      <div class="campo largo"><span>Tipos de OS *</span><div class="mo-chips">${Object.entries(MO_TIPOS).map(([k, t]) => `<label><input type="checkbox" name="tp_${k}" ${m.tipos_os?.includes(k) ? 'checked' : ''} ${ed ? '' : 'disabled'}>${t}</label>`).join('')}</div></div>
+      <div class="campo largo" id="mc-b-tp"><span>Tipos de OS *</span><div class="mo-chips">${Object.entries(MO_TIPOS).map(([k, t]) => `<label><input type="checkbox" name="tp_${k}" ${m.tipos_os?.includes(k) ? 'checked' : ''} ${ed ? '' : 'disabled'}>${t}</label>`).join('')}</div></div>
       <label class="campo largo">Descrição / instruções<textarea name="descricao" rows="2" ${ed ? '' : 'disabled'}>${esc(m.descricao || '')}</textarea></label></div>
       ${ed ? `<div class="acoes" style="margin-top:10px"><button class="btn prim">${novo ? 'Salvar e incluir itens' : 'Salvar cabeçalho'}</button></div>` : ''}
       ${!novo && m.versao ? '<p class="muted" style="margin-bottom:0">Cabeçalho (a que equipamentos e OS se aplica, obrigatório) vale na hora. Itens alterados só valem depois de publicar a nova versão; OS já preenchidas guardam a versão que usaram.</p>' : ''}</form>
@@ -153,6 +153,7 @@ rota('/manut/checklists/:id', async (tela, id) => {
         ${ed ? `<div class="acoes"><button class="btn peq" data-up="${k}" ${k ? '' : 'disabled'}>↑</button><button class="btn peq" data-dn="${k}" ${k < its.length - 1 ? '' : 'disabled'}>↓</button><button class="btn peq" data-ed="${i.id}">Editar</button><button class="btn peq perigo" data-rm="${i.id}">Retirar</button></div>` : '<div></div>'}</div>`).join('')
         : '<div class="vazio">Nenhum item. Inclua os pontos que o mecânico deve conferir.</div>'}</div>`}`;
 
+  { const f0 = $('#mc-cab'), v0 = () => { const pu = f0.querySelector('[name=momento]:checked')?.value === 'pre_uso'; $('#mc-b-obr').hidden = $('#mc-b-tp').hidden = pu; }; f0.addEventListener('change', v0); v0(); }
   $('#mc-cab').onsubmit = async e => { e.preventDefault(); if (!ed) return; const d = formDados(e.target);
     const dados = { nome: d.nome, momento: d.momento, obrigatorio: d.obrigatorio === '1', descricao: d.descricao || null,
       classes: Object.keys(MC_CLASSES).filter(k => d['cl_' + k]), tipos_os: Object.keys(MO_TIPOS).filter(k => d['tp_' + k]) };
@@ -173,7 +174,8 @@ rota('/manut/checklists/:id', async (tela, id) => {
       <label class="campo" id="b-mul"><span><input type="checkbox" name="multipla" ${i?.multipla ? 'checked' : ''}> Permite marcar mais de uma opção</span></label>
       <label class="campo"><span><input type="checkbox" name="obrigatorio" ${i ? (i.obrigatorio ? 'checked' : '') : 'checked'}> Resposta obrigatória</span></label>
       <label class="campo" id="b-fnc"><span><input type="checkbox" name="foto_nc" ${i?.foto_nc ? 'checked' : ''}> Exigir foto quando não conforme</span></label>
-      <label class="campo"><span><input type="checkbox" name="foto_obrigatoria" ${i?.foto_obrigatoria ? 'checked' : ''}> Exigir foto sempre</span></label></div>
+      <label class="campo"><span><input type="checkbox" name="foto_obrigatoria" ${i?.foto_obrigatoria ? 'checked' : ''}> Exigir foto sempre</span></label>
+      ${m.momento === 'pre_uso' ? `<label class="campo largo" id="b-crit"><span><input type="checkbox" name="critico" ${i?.critico ? 'checked' : ''}> Item crítico: reprovado bloqueia a saída do veículo e abre OS urgente</span></label>` : ''}</div>
       <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Salvar</button></div></form>`,
       { aoAbrir: raiz => { const f = $('form', raiz), vis = () => { const t = f.tipo.value; $('#b-fmt', raiz).hidden = t !== 'formatado'; $('#b-fon', raiz).hidden = $('#b-mul', raiz).hidden = t !== 'lista';
           $('#b-ops', raiz).hidden = !(t === 'lista' && f.fonte.value === 'personalizada'); $('#b-fnc', raiz).hidden = t !== 'conforme'; }; f.onchange = vis; vis(); },
@@ -182,7 +184,7 @@ rota('/manut/checklists/:id', async (tela, id) => {
     if (!r) return;
     const dados = { secao: r.secao || null, rotulo: r.rotulo, ajuda: r.ajuda || null, tipo: r.tipo, formato: r.tipo === 'formatado' ? r.formato : null, fonte: r.tipo === 'lista' ? r.fonte : null,
       opcoes: r.tipo === 'lista' && r.fonte === 'personalizada' ? [...new Set(r.opcoes.split('\n').map(x => x.trim()).filter(Boolean))] : null, multipla: r.tipo === 'lista' && !!r.multipla,
-      obrigatorio: !!r.obrigatorio, foto_nc: r.tipo === 'conforme' && !!r.foto_nc, foto_obrigatoria: !!r.foto_obrigatoria };
+      obrigatorio: !!r.obrigatorio, foto_nc: r.tipo === 'conforme' && !!r.foto_nc, foto_obrigatoria: !!r.foto_obrigatoria, critico: m.momento === 'pre_uso' && r.tipo === 'conforme' && !!r.critico };
     try { if (i) await api.alterar('manut_chk_itens', `id=eq.${i.id}`, dados);
       else await api.inserir('manut_chk_itens', { ...dados, modelo_id: id, ordem: (its.reduce((a, x) => Math.max(a, x.ordem || 0), 0)) + 10 });
       navegar(); } catch (err) { falha(err); } };
@@ -335,4 +337,44 @@ rota('/almox/pedidos-cadastro', async tela => {
     if (!r) return; try { await api.rpc('almox_decidir_cadastro', { p_id: p.id, p_acao: 'vincular', d: { item_id: r.item_id } }); aviso('Pedido respondido com o item existente.'); navegar(); } catch (err) { falha(err); } });
   $$('[data-rec]', tela).forEach(b => b.onclick = async () => { const mot = await confirmar('Recusar o pedido de cadastro?', { comMotivo: true, botao: 'Recusar' }); if (!mot) return;
     try { await api.rpc('almox_decidir_cadastro', { p_id: b.dataset.rec, p_acao: 'recusar', d: { motivo: mot } }); navegar(); } catch (err) { falha(err); } });
+});
+// ===================== Checklist pré-uso do motorista (modelo configurável) =====================
+rota('/manut/checklist', async tela => {
+  const [eqs, ult] = await Promise.all([eqsAtivos(), api.listar('manut_checklists', 'ativo=eq.true&select=*,eq:equipamentos(codigo_frota,tipo,tipo_outro,marca,modelo),u:usuarios(nome)&order=data_hora.desc&limit=50')]);
+  const eqSel = estado.params.get('eq') || '';
+  tela.innerHTML = `<div class="topo"><div><h1>Checklist pré-uso</h1><p class="sub">Antes de sair: confira o veículo. Item crítico reprovado bloqueia a saída e abre OS urgente; os demais abrem OS normal.</p></div>
+      ${mcEdita() ? '<div class="acoes"><a class="btn" href="#/manut/checklists">Editar os itens do checklist</a></div>' : ''}</div>
+    ${typeof avisoLei === 'function' ? avisoLei('checklist_motorista') : ''}
+    <form id="f-chk" class="cartao"><div class="form">
+      <label class="campo largo">Equipamento *<select name="equipamento_id" required><option value="">Selecione…</option>${optEq(eqs, eqSel)}</select></label>
+      <label class="campo">Km no painel *<input name="km" inputmode="numeric" required></label><label class="campo">Horímetro<input name="horimetro" inputmode="decimal"></label></div>
+      <div id="pu-itens" style="margin-top:10px"><p class="muted">Escolha o equipamento para ver os itens.</p></div>
+      <label class="campo" style="margin-top:8px">Observações gerais<input name="observacao"></label>
+      <label class="campo">Fotos gerais<input type="file" name="arquivos" multiple accept="image/*"></label>
+      <div class="acoes" style="margin-top:10px"><button class="btn prim">Enviar checklist</button></div></form>
+    <div class="cartao"><h2>Últimos checklists</h2>${ult.length ? `<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Data</th><th>Equipamento</th><th>Motorista</th><th class="num">Km</th><th>Resultado</th></tr></thead><tbody>
+      ${ult.map(c => `<tr><td data-r="Data">${dataHoraBR(c.data_hora)}</td><td data-r="Equipamento">${esc(c.eq ? rotuloEq(c.eq) : '')}</td><td data-r="Motorista">${esc(c.u?.nome || '')}</td><td data-r="Km" class="num">${kmBR(c.km)}</td>
+        <td data-r="Resultado">${c.nao_conformes ? `<span class="tag ${c.bloqueante ? 'vermelho' : 'amarelo'}">${c.nao_conformes} não conforme(s)${c.bloqueante ? ' · bloqueado' : ''}</span>${c.os_id ? ` <a href="#/manut/os/ver/${c.os_id}">ver OS</a>` : ''}` : '<span class="tag verde">Aprovado</span>'}</td></tr>`).join('')}</tbody></table></div>` : '<div class="vazio">Nenhum checklist ainda.</div>'}</div>`;
+  const f = $('#f-chk'); let M = null;
+  const carregar = async () => { const eq = f.equipamento_id.value; M = null;
+    if (!eq) { $('#pu-itens').innerHTML = '<p class="muted">Escolha o equipamento para ver os itens.</p>'; return; }
+    M = await api.rpc('manut_chk_pre_uso', { p_eq: eq }).catch(() => null);
+    if (!M) M = { id: null, codigo: '', versao: null, itens: CHECK_PADRAO.map(([t, c], k) => ({ id: 'p' + k, rotulo: t, tipo: 'conforme', critico: c, obrigatorio: true })) };
+    const F = await mcFontes(M.itens);
+    $('#pu-itens').innerHTML = `${M.codigo ? `<p class="muted" style="margin:0">${esc(M.codigo)} · versão ${M.versao} · responda todos os itens com *</p>` : ''}${mcFormItens(M.itens, {}, F)}`; };
+  f.equipamento_id.onchange = carregar; carregar();
+  f.addEventListener('change', ev => { const it = ev.target.closest('[data-item]'); if (it && ev.target.name?.startsWith('v_')) it.classList.toggle('nc', f.querySelector(`[name="${ev.target.name}"]:checked`)?.value === 'nc'); });
+  f.onsubmit = async e => { e.preventDefault(); if (!M) return aviso('Escolha o equipamento.', true);
+    const d = formDados(f), R = mcColetar(f, M.itens, {}), er = mcValidar(M.itens, R, true); if (er) return aviso(er, true);
+    const itens = M.itens.map(i => ({ item: i.rotulo, critico: !!i.critico, ok: R[i.id].v !== 'nc', obs: R[i.id].obs || '', resposta: mcTxt(i, R[i.id]) }));
+    const nok = itens.filter(i => !i.ok);
+    if (nok.some(i => i.critico) && !await confirmar('Há item CRÍTICO reprovado: o veículo ficará bloqueado e será aberta OS urgente. Confirmar?', { botao: 'Enviar' })) return;
+    await ocupado(e.submitter, async () => { try {
+      const fotos = []; for (const i of M.itens) { const fl = R[i.id]._file; delete R[i.id]._file; if (fl) fotos.push([i, fl]); }
+      const [c] = await api.inserir('manut_checklists', { equipamento_id: d.equipamento_id, km: Number(soDigitos(d.km)), horimetro: num(d.horimetro), itens, observacao: d.observacao || null,
+        modelo_id: M.id, modelo_versao: M.versao, respostas: R });
+      for (const [i, fl] of fotos) await anexar('manut_checklist', c.id, [fl], ('Item: ' + i.rotulo).slice(0, 200));
+      if (d.arquivos?.length) await anexar('manut_checklist', c.id, d.arquivos);
+      aviso(c.bloqueante ? 'Checklist enviado. NÃO saia com o veículo: a manutenção foi avisada.' : nok.length ? 'Checklist enviado. A manutenção vai avaliar os itens.' : 'Checklist aprovado. Boa viagem!', c.bloqueante); navegar();
+    } catch (err) { falha(err); } }); };
 });
