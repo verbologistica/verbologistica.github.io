@@ -76,7 +76,7 @@ rota('/manut/os', async tela => {
   const [os, eqs] = await Promise.all([api.listar('manut_os', `${filtro}&select=*,eq:equipamentos(codigo_frota,tipo,tipo_outro,marca,modelo),forn:fornecedores(razao_social)&order=aberta_em.desc.nullslast,criado_em.desc&limit=400`), eqsAtivos()]);
   const atr = os.filter(o => o.previsao_liberacao && !['concluida', 'cancelada'].includes(o.status) && new Date(o.previsao_liberacao) < new Date()).length;
   tela.innerHTML = `
-    <div class="topo"><div><h1>Ordens de serviço</h1><p class="sub">${os.length} OS${atr ? ` · <b style="color:#C62828">${atr} atrasada(s)</b>` : ''}</p></div>${editaManut() ? '<a class="btn prim" href="#/manut/os/nova">+ Nova OS</a>' : ''}</div>
+    <div class="topo"><div><h1>Ordens de serviço</h1><p class="sub">${os.length} OS${atr ? ` · <b style="color:#C62828">${atr} atrasada(s)</b>` : ''}</p></div><div class="acoes"><button type="button" class="btn" id="mo-app">📲 App do mecânico</button>${editaManut() ? '<a class="btn prim" href="#/manut/os/nova">+ Nova OS</a>' : ''}</div></div>
     <form class="filtros" id="filtros">
       <select name="status"><option value="abertas" ${st === 'abertas' ? 'selected' : ''}>Em aberto</option>${Object.entries(ST_OS).map(([k, [t]]) => `<option value="${k}">${t}</option>`).join('')}<option value="todas">Todas</option></select>
       <select name="eq"><option value="">Todas as frotas</option>${optEq(eqs, '')}</select>
@@ -89,6 +89,11 @@ rota('/manut/os', async tela => {
         <td data-r="Previsão">${o.previsao_liberacao ? dataHoraBR(o.previsao_liberacao) + ' ' + moPrazo(o) : '—'}</td><td data-r="Situação">${tagSt(ST_OS, o.status)}</td>
         <td data-r="Validação">${o.validacao ? tagSt(MO_VAL, o.validacao) : '—'}</td><td data-r="Custo" class="num">${brl(Number(o.custo_total || 0) + Number(o.valor_terceiro || 0))}</td></tr>`).join('')}</tbody></table></div>` : '<div class="vazio">Nenhuma OS.</div>'}</div>`;
   $('#filtros').onsubmit = e => { e.preventDefault(); const d = formDados(e.target); location.hash = '#/manut/os?' + new URLSearchParams(Object.entries(d).filter(([, v]) => v)); };
+  $('#mo-app').onclick = () => { const L = 'https://verbologistica.github.io/mecanico/';
+    modal(`<div><h2>📲 App do mecânico</h2><p>Os mecânicos abrem no celular, entram com a <b>matrícula</b> e os <b>4 últimos dígitos do CPF</b> (só quem é da manutenção) e veem apenas as OS em aberto.</p>
+      <p style="font-size:18px"><b class="mono">${L}</b></p><p class="muted">No celular: abrir o link e "Adicionar à tela inicial" para virar um ícone.</p>
+      <div class="rodape"><button type="button" class="btn" id="cp-mec">Copiar link</button><a class="btn" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent('App do mecânico da Verbo: ' + L)}">Enviar no WhatsApp</a><button type="button" class="btn prim" data-fechar>Fechar</button></div></div>`,
+      { aoAbrir: f => { $('#cp-mec', f).onclick = async () => { try { await navigator.clipboard.writeText(L); aviso('Link copiado.'); } catch { aviso(L); } }; } }); };
 });
 
 // ===================== Abertura / edição =====================
@@ -105,8 +110,7 @@ async function moForm(tela, o = null) {
     <div class="cartao"><h2>Atendimento</h2><div class="form">
       <div class="campo largo"><span>Tipo de serviço *</span><div class="mo-chips">${Object.entries(MO_TIPOS).map(([k, t]) => `<label><input type="radio" name="tipo" value="${k}" ${k === tipo ? 'checked' : ''}>${t}</label>`).join('')}</div></div>
       <div class="campo largo" id="b-atd"><span>Corretiva: onde foi o atendimento? *</span><div class="mo-chips"><label><input type="radio" name="atendimento" value="base" ${o?.atendimento !== 'sos' ? 'checked' : ''}>Na base</label><label><input type="radio" name="atendimento" value="sos" ${o?.atendimento === 'sos' ? 'checked' : ''}>SOS (socorro em campo)</label></div></div>
-      <label class="campo" id="b-sos1">Km inicial do SOS<input name="km_sos_inicial" inputmode="numeric" value="${o?.km_sos_inicial ?? ''}" placeholder="obrigatório para encerrar"></label>
-      <label class="campo" id="b-sos2">Km final do SOS<input name="km_sos_final" inputmode="numeric" value="${o?.km_sos_final ?? ''}" placeholder="obrigatório para encerrar"></label>
+      <label class="campo" id="b-sos1">Km inicial do SOS<input name="km_sos_inicial" inputmode="numeric" value="${o?.km_sos_inicial ?? ''}" placeholder="o km final é pedido na liberação"></label>
       <label class="campo">Abertura (data e hora) *<input type="datetime-local" name="aberta_em" required value="${o ? moLocal(o.aberta_em || o.criado_em) : agoraLocal()}"></label>
       <label class="campo">Previsão de liberação *<input type="datetime-local" name="previsao_liberacao" required value="${moLocal(o?.previsao_liberacao)}"></label>
       <label class="campo" id="b-km">Km de entrada *<input name="km_entrada" inputmode="numeric" value="${o?.km_entrada ?? ''}"></label>
@@ -125,7 +129,7 @@ async function moForm(tela, o = null) {
     const cl = moClasse(e?.tipo); $('#b-km').hidden = cl === 'reboque'; f.km_entrada.required = cl !== 'reboque' && !!e;
     if (e && cl !== 'reboque' && !f.km_entrada.value && e.km_atual != null) f.km_entrada.placeholder = 'último: ' + Number(e.km_atual).toLocaleString('pt-BR'); };
   const vis = () => { const t = f.querySelector('[name=tipo]:checked')?.value, sos = f.querySelector('[name=atendimento]:checked')?.value === 'sos', ext = f.querySelector('[name=oficina]:checked')?.value === 'externa';
-    $('#b-atd').hidden = t !== 'corretiva'; $('#b-sos1').hidden = $('#b-sos2').hidden = !(t === 'corretiva' && sos); $('#b-forn').hidden = !(ext || t === 'inspecao'); };
+    $('#b-atd').hidden = t !== 'corretiva'; $('#b-sos1').hidden = !(t === 'corretiva' && sos); $('#b-forn').hidden = !(ext || t === 'inspecao'); };
   f.equipamento_id.onchange = unis; f.addEventListener('change', vis); unis(); vis();
   f.onsubmit = async e => { e.preventDefault(); const d = formDados(f), eq = eqs.find(x => x.id === d.equipamento_id);
     const us = Object.keys(d).filter(k => k.startsWith('u_') && d[k]).map(k => k.slice(2));
@@ -133,7 +137,7 @@ async function moForm(tela, o = null) {
     if (new Date(d.previsao_liberacao) <= new Date(d.aberta_em)) return aviso('A previsão de liberação precisa ser depois da abertura.', true);
     const kmn = v => v ? Number(soDigitos(v)) : null, cl = moClasse(eq?.tipo);
     const dados = { equipamento_id: d.equipamento_id, unidades: us, veiculo_id: us.length === 1 ? us[0] : null, tipo: d.tipo, atendimento: d.tipo === 'corretiva' ? d.atendimento : null,
-      km_sos_inicial: d.tipo === 'corretiva' && d.atendimento === 'sos' ? kmn(d.km_sos_inicial) : null, km_sos_final: d.tipo === 'corretiva' && d.atendimento === 'sos' ? kmn(d.km_sos_final) : null,
+      km_sos_inicial: d.tipo === 'corretiva' && d.atendimento === 'sos' ? kmn(d.km_sos_inicial) : null,
       aberta_em: moISO(d.aberta_em), previsao_liberacao: moISO(d.previsao_liberacao), km_entrada: cl === 'reboque' ? null : kmn(d.km_entrada), km: cl === 'reboque' ? null : kmn(d.km_entrada),
       prioridade: d.prioridade, equipamento_parado: !!d.equipamento_parado, problema: d.problema, oficina: d.oficina || 'interna', fornecedor_id: d.fornecedor_id || null };
     await ocupado(e.submitter, async () => { try {
@@ -283,23 +287,22 @@ rota('/manut/os/ver/:id', async (tela, id) => {
   $$('[data-srvrem]', tela).forEach(b => b.onclick = async () => { if (pecasDe(b.dataset.srvrem).length) return aviso('Retire as peças desta linha antes.', true);
     if (!await confirmar('Retirar este serviço?')) return; try { await api.alterar('manut_os_servicos', `id=eq.${b.dataset.srvrem}`, { ativo: false }); navegar(); } catch (err) { falha(err); } });
   $$('[data-peca]', tela).forEach(b => b.onclick = async () => {
-    const pecas = await api.listar('almox_itens', 'ativo=eq.true&select=id,codigo,descricao,unidade,saldo,custo_medio&order=descricao').catch(() => []);
-    const fs = await cad('fornecedores', 'select=id,razao_social,nome_fantasia,documento,ativo&order=razao_social');
+    const pecas = await api.listar('almox_itens', 'ativo=eq.true&select=id,codigo,descricao,unidade,saldo,custo_medio&order=descricao').catch(() => []), P = Object.fromEntries(pecas.map(p => [p.id, p]));
     const r = await modal(`<form><h2>Peça aplicada</h2><p class="muted">${esc(srv.find(s => s.id === b.dataset.peca)?.descricao || '')}</p><div class="form">
-      <div class="campo largo"><div class="mo-chips"><label><input type="radio" name="tipo" value="peca_estoque" checked>Do almoxarifado</label><label><input type="radio" name="tipo" value="peca_compra">Comprada fora / do terceiro</label></div></div>
-      <label class="campo largo" id="b-pe">Peça do almoxarifado<select name="almox_item_id"><option value="">Selecione…</option>${pecas.map(p => `<option value="${p.id}" ${Number(p.saldo) <= 0 ? 'disabled' : ''}>${esc(p.codigo + ' · ' + p.descricao)} · estoque ${Number(p.saldo).toLocaleString('pt-BR')} ${esc(p.unidade)}</option>`).join('')}</select></label>
-      <label class="campo largo" id="b-pd">Descrição da peça<input name="descricao"></label>
-      <label class="campo">Quantidade<input name="quantidade" inputmode="decimal" value="1"></label>
-      <label class="campo" id="b-pv">Valor unitário (R$)<input name="valor_unitario" inputmode="decimal"></label>
-      <label class="campo" id="b-pf">Fornecedor<select name="fornecedor_id"><option value="">—</option>${fs.filter(f => f.ativo).map(f => `<option value="${f.id}" ${f.id === o.fornecedor_id ? 'selected' : ''}>${esc(rotForn(f))}</option>`).join('')}</select></label>
-      <label class="campo" id="b-pn">Nota fiscal<input name="documento"></label></div>
+      <div class="campo largo"><div class="mo-chips"><label><input type="radio" name="tipo" value="peca_estoque" checked>Do nosso almoxarifado</label><label><input type="radio" name="tipo" value="peca_terceiro">Peça do terceiro</label></div></div>
+      <label class="campo largo">Peça (cadastro do almoxarifado) *<select name="almox_item_id" required><option value="">Selecione…</option>${pecas.map(p => `<option value="${p.id}">${esc(p.codigo + ' · ' + p.descricao)} · estoque ${Number(p.saldo).toLocaleString('pt-BR')} ${esc(p.unidade)}</option>`).join('')}</select>
+        <span class="muted" style="font-size:12px">A peça precisa estar cadastrada no almoxarifado. Se não estiver, peça o cadastro ao almoxarifado antes de lançar.</span></label>
+      <label class="campo">Quantidade *<input name="quantidade" inputmode="decimal" value="1"></label>
+      <label class="campo" id="b-pv">Valor unitário cobrado pelo terceiro (R$) *<input name="valor_unitario" inputmode="decimal"></label>
+      <div class="campo" id="b-pe"><span>Estado *</span><div class="mo-chips"><label><input type="radio" name="estado_peca" value="nova">Nova</label><label><input type="radio" name="estado_peca" value="usada">Usada</label></div></div></div>
       <div class="rodape"><button type="button" class="btn" data-fechar>Voltar</button><button class="btn prim">Lançar</button></div></form>`,
-      { aoAbrir: raiz => { const f = $('form', raiz); const vis = () => { const est = f.querySelector('[name=tipo]:checked').value === 'peca_estoque';
-          $('#b-pe', raiz).hidden = !est; ['#b-pd', '#b-pv', '#b-pf', '#b-pn'].forEach(s => ($(s, raiz).hidden = est)); }; f.onchange = vis; vis(); },
-        validar: d => d.tipo === 'peca_estoque' ? (!d.almox_item_id ? 'Escolha a peça.' : null) : (!d.descricao ? 'Descreva a peça.' : !(num(d.valor_unitario) >= 0) ? 'Informe o valor.' : null) });
+      { aoAbrir: raiz => { const f = $('form', raiz); const vis = () => { const ter = f.querySelector('[name=tipo]:checked').value === 'peca_terceiro'; $('#b-pv', raiz).hidden = $('#b-pe', raiz).hidden = !ter; }; f.onchange = vis; vis(); },
+        validar: d => { const p = P[d.almox_item_id], q = num(d.quantidade); if (!p) return 'Escolha a peça do cadastro.'; if (!(q > 0)) return 'Informe a quantidade.';
+          if (d.tipo === 'peca_estoque' && Number(p.saldo) < q) return `Estoque insuficiente (${Number(p.saldo).toLocaleString('pt-BR')} ${p.unidade}). Se a peça veio do terceiro, marque "Peça do terceiro".`;
+          if (d.tipo === 'peca_terceiro') { if (!(num(d.valor_unitario) > 0)) return 'Informe o valor cobrado pelo terceiro.'; if (!d.estado_peca) return 'Informe se a peça é nova ou usada.'; } return null; } });
     if (!r) return;
-    try { await api.inserir('manut_os_itens', { os_id: id, servico_id: b.dataset.peca, tipo: r.tipo, almox_item_id: r.tipo === 'peca_estoque' ? r.almox_item_id : null, descricao: r.tipo === 'peca_estoque' ? null : r.descricao,
-        quantidade: num(r.quantidade) || 1, valor_unitario: r.tipo === 'peca_estoque' ? 0 : (num(r.valor_unitario) || 0), fornecedor_id: r.tipo === 'peca_compra' ? (r.fornecedor_id || null) : null, documento: r.documento || null });
+    try { await api.inserir('manut_os_itens', { os_id: id, servico_id: b.dataset.peca, tipo: r.tipo, almox_item_id: r.almox_item_id, quantidade: num(r.quantidade),
+        valor_unitario: r.tipo === 'peca_terceiro' ? num(r.valor_unitario) : 0, estado_peca: r.tipo === 'peca_terceiro' ? r.estado_peca : null, fornecedor_id: r.tipo === 'peca_terceiro' ? o.fornecedor_id || null : null });
       delete estado.cache.almox_itens; navegar(); } catch (err) { falha(err); } });
   $$('[data-itrem]', tela).forEach(b => b.onclick = async () => { if (!await confirmar('Retirar esta peça? Peça do estoque volta ao almoxarifado.')) return;
     try { await api.alterar('manut_os_itens', `id=eq.${b.dataset.itrem}`, { ativo: false }); delete estado.cache.almox_itens; navegar(); } catch (err) { falha(err); } });
