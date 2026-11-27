@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#00684A">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Mecânico">
+<title>Mecânico · Verbo Logística</title>
+<link rel="icon" href="../icon-192.png">
+<link rel="apple-touch-icon" href="../icon-192.png">
+<style>
+:root{--bg:#F1F5F3;--sf:#fff;--ink:#10241C;--mu:#5C6B66;--ln:#D5DEDA;--br:#00684A;--brs:#E3F1EB;--ac:#DDA936;--acs:#FBF1D9;--bad:#C62828;--bads:#FBE3E1;--ok:#1E8257;--f:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+*{box-sizing:border-box}[hidden]{display:none!important}html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:16px/1.45 var(--f);padding-bottom:90px;-webkit-tap-highlight-color:transparent}
+button,input,select,textarea{font:inherit;color:inherit}
+header{background:var(--br);color:#fff;padding:calc(10px + env(safe-area-inset-top)) 14px 12px;position:sticky;top:0;z-index:10}
+.hr{display:flex;align-items:center;gap:10px;max-width:680px;margin:0 auto}.hr img{height:30px}.hr .t{flex:1;line-height:1.1}.hr .t b{display:block;font-size:17px}.hr .t span{font-size:12px;opacity:.8}
+.hb{background:rgba(255,255,255,.15);border:0;color:#fff;border-radius:999px;padding:6px 12px;font-size:13px;font-weight:600}
+main{max-width:680px;margin:0 auto;padding:12px}
+.card{background:var(--sf);border:1px solid var(--ln);border-radius:14px;padding:14px;margin-bottom:12px}
+.card h2{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--br);margin:0 0 10px}
+.f{display:flex;flex-direction:column;gap:5px;margin-bottom:12px}.f>span{font-size:13px;font-weight:600;color:var(--mu)}
+.in{width:100%;min-height:48px;background:#fff;border:1px solid var(--ln);border-radius:10px;padding:10px 12px;font-size:16px}
+textarea.in{min-height:70px}
+.r2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.btn{min-height:48px;border-radius:12px;border:1px solid var(--ln);background:#fff;padding:10px 14px;font-weight:700;cursor:pointer}
+.btn.p{background:var(--br);border-color:var(--br);color:#fff}.btn.a{background:var(--ac);border-color:var(--ac);color:#2B1F00}.btn.x{color:var(--bad);border-color:var(--bad)}
+.btn.s{min-height:38px;padding:6px 10px;font-size:14px;border-radius:10px}.btn.w{width:100%}
+.chips{display:flex;flex-wrap:wrap;gap:6px}.chips label{border:1px solid var(--ln);border-radius:999px;padding:8px 14px;background:#fff;cursor:pointer;font-weight:600;font-size:14px}
+.chips input{display:none}.chips label:has(input:checked){background:var(--br);color:#fff;border-color:var(--br)}
+.os{display:block;text-decoration:none;color:inherit;border-left:6px solid var(--br)}
+.os.atr{border-left-color:var(--bad)}.os .l1{display:flex;justify-content:space-between;gap:8px;font-weight:800;font-size:17px}.os .l2{color:var(--mu);font-size:14px;margin-top:4px}
+.tag{display:inline-block;border-radius:999px;padding:2px 9px;font-size:12px;font-weight:700;background:var(--brs);color:var(--br)}
+.tag.r{background:var(--bads);color:var(--bad)}.tag.y{background:var(--acs);color:#7A5600}
+@keyframes pisca{0%,100%{background:#C62828;color:#fff}50%{background:#F6C343;color:#1F1606}}
+.pisca{animation:pisca 1s steps(1) infinite}
+#alerta{position:sticky;top:58px;z-index:9;padding:10px 14px;font-weight:800;text-align:center}
+.lin{border-left:4px solid var(--br);background:#F7FAF8;border-radius:8px;padding:8px 10px;margin:8px 0}
+.mu{color:var(--mu);font-size:14px}.err li{color:var(--bad)}.av li{color:#8A5A00}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#10241C;color:#fff;padding:12px 16px;border-radius:12px;z-index:99;max-width:92%;font-weight:600}
+.toast.e{background:var(--bad)}
+.ass{width:100%;height:170px;border:1.5px dashed #9AA6AC;border-radius:10px;background:#fff;touch-action:none;display:block}
+.pn rect.r{fill:#2E3A36}.pn rect.r.s{fill:#DDA936}
+.mod{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:50;display:flex;align-items:flex-end;justify-content:center}
+.mod>div{background:var(--bg);width:100%;max-width:680px;max-height:92vh;overflow:auto;border-radius:18px 18px 0 0;padding:14px 14px calc(18px + env(safe-area-inset-bottom))}
+.mod h3{margin:4px 0 12px;font-size:18px}
+.acts{display:flex;gap:8px;flex-wrap:wrap}.acts>*{flex:1}
+</style>
+</head>
+<body>
+<header><div class="hr"><img src="../logo.png" alt=""><div class="t"><b>Mecânico</b><span id="quem">Verbo Logística</span></div><button class="hb" id="bSair" hidden>Sair</button></div></header>
+<div id="alerta" class="pisca" hidden></div>
+<main id="app"></main>
+<script>
+(function(){
+"use strict";
+const SB='https://qxuwokglibazfgwuhbah.supabase.co',SBK='sb_publishable_16Vb2lYj-aWyKaGVq7nh1g_LRkSCFAr';
+const $=(s,r=document)=>r.querySelector(s),$$=(s,r=document)=>[...r.querySelectorAll(s)];
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pad=n=>String(n).padStart(2,'0');
+const local=d=>{d=d?new Date(d):new Date();return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`};
+const iso=v=>v?new Date(v).toISOString():null;
+const dh=s=>s?new Date(s).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—';
+const brl=v=>Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+const numBR=s=>{s=String(s||'').trim().replace(/R\$|\s/g,'');if(!s)return null;if(s.includes(','))s=s.replace(/\./g,'').replace(',','.');const n=Number(s);return isNaN(n)?null:n};
+const km=s=>{const n=String(s||'').replace(/\D/g,'');return n?Number(n):null};
+const dur=(a,b)=>{if(!a||!b)return '—';const m=Math.round((new Date(b)-new Date(a))/6e4);return m<60?m+' min':Math.floor(m/60)+' h '+pad(m%60)+' min'};
+const TIPOS={corretiva:'Corretiva',preventiva:'Preventiva',preditiva:'Preditiva',inspecao:'Inspeção'};
+const classe=t=>['carreta','bitrem','tritrem','rodotrem'].includes(t)?'reboque':['cavalo_mecanico','caminhao'].includes(t)?'cavalo':'veiculo';
+const loc=f=>[f.lado&&(f.lado==='esquerdo'?'Lado esquerdo':'Lado direito'),f.eixo&&'eixo '+f.eixo,f.posicao,f.barrote&&'barrote '+f.barrote].filter(Boolean).join(' · ');
+let S=null;try{S=JSON.parse(localStorage.getItem('vg.mec')||'null')}catch(e){}
+let D=null;
+function toast(m,e){const t=document.createElement('div');t.className='toast'+(e?' e':'');t.textContent=m;document.body.append(t);setTimeout(()=>t.remove(),e?5000:3000)}
+async function rpc(fn,args){const r=await fetch(SB+'/rest/v1/rpc/'+fn,{method:'POST',headers:{apikey:SBK,'Content-Type':'application/json'},body:JSON.stringify(args||{})});
+  const t=await r.text();let j=null;try{j=t?JSON.parse(t):null}catch(e){}
+  if(!r.ok){const m=(j&&(j.message||j.hint))||('Erro '+r.status);if(/SESSAO/.test(m)){sair();throw new Error('Entre de novo com sua matrícula.')}throw new Error(m)}
+  return j}
+const salvar=(acao,d)=>rpc('app_mec_salvar',{p_token:S.token,p_acao:acao,d});
+function sair(){S=null;try{localStorage.removeItem('vg.mec')}catch(e){};D=null;rota()}
+$('#bSair').onclick=()=>{if(confirm('Sair do app?'))sair()};
+
+// ---------- janela (modal de baixo para cima) ----------
+function janela(html,{aoAbrir,validar}={}){return new Promise(ok=>{const m=document.createElement('div');m.className='mod';m.innerHTML=`<div>${html}</div>`;document.body.append(m);
+  const fim=v=>{m.remove();ok(v)};m.onclick=e=>{if(e.target===m)fim(null)};$$('[data-x]',m).forEach(b=>b.onclick=()=>fim(null));
+  const f=$('form',m);if(f)f.onsubmit=e=>{e.preventDefault();const d={};for(const el of f.elements){if(!el.name)continue;if(el.type==='checkbox')d[el.name]=el.checked;else if(el.type==='radio'){if(el.checked)d[el.name]=el.value}else if(el.type==='file')d[el.name]=[...el.files];else d[el.name]=el.value.trim()}
+    const er=validar&&validar(d);if(er){toast(er,true);return}fim(d)};
+  aoAbrir&&aoAbrir(m)})}
+
+// ---------- assinatura ----------
+function assinatura(cv){const x=cv.getContext('2d');let des=false,usou=false;
+  const aj=()=>{const r=cv.getBoundingClientRect();cv.width=r.width*2;cv.height=r.height*2;x.scale(2,2);x.lineWidth=2.4;x.lineCap='round';x.strokeStyle='#10241C';x.fillStyle='#fff';x.fillRect(0,0,r.width,r.height)};aj();
+  const p=e=>{const r=cv.getBoundingClientRect();return[e.clientX-r.left,e.clientY-r.top]};
+  cv.onpointerdown=e=>{des=usou=true;cv.setPointerCapture(e.pointerId);x.beginPath();x.moveTo(...p(e))};cv.onpointermove=e=>{if(des){x.lineTo(...p(e));x.stroke()}};cv.onpointerup=()=>des=false;
+  return{limpar:()=>{usou=false;aj()},vazia:()=>!usou,png:()=>cv.toDataURL('image/png')}}
+
+// ---------- desenho dos pneus ----------
+function pneuSvg(cl,eixos,sel){const W=230,y0=34,dy=46,H=y0+eixos*dy+10,r=[];
+  for(let e=1;e<=eixos;e++){const y=y0+(e-1)*dy,simp=cl!=='reboque'&&e===1;r.push(`<text x="${W/2}" y="${y+18}" text-anchor="middle" font-size="11" fill="#6B7378">eixo ${e}</text><line x1="62" x2="${W-62}" y1="${y+12}" y2="${y+12}" stroke="#9AA6AC" stroke-width="4"/>`);
+    const rs=simp?[['esquerdo','externo',30],['direito','externo',W-50]]:[['esquerdo','externo',8],['esquerdo','interno',34],['direito','interno',W-54],['direito','externo',W-28]];
+    for(const[l,p,x]of rs){const k=`${l}|${e}|${p}`;r.push(`<rect class="r ${sel.includes(k)?'s':''}" data-k="${k}" x="${x}" y="${y}" width="22" height="28" rx="4"></rect>`)}}
+  return `<svg class="pn" viewBox="0 0 ${W} ${H}" width="100%" style="max-width:300px"><text x="${W/2}" y="14" text-anchor="middle" font-size="11" fill="#00684A">▲ frente</text><rect x="${W/2-18}" y="22" width="36" height="${H-30}" rx="6" fill="#E3F1EB" stroke="#9AA6AC"/>${r.join('')}<text x="6" y="${H-2}" font-size="10" fill="#6B7378">esquerdo</text><text x="${W-6}" y="${H-2}" text-anchor="end" font-size="10" fill="#6B7378">direito</text></svg>`}
+
+// ---------- foto (comprime e envia) ----------
+async function enviarFoto(osId,file,descricao){const img=await createImageBitmap(file);const e=Math.min(1,1800/Math.max(img.width,img.height));const c=document.createElement('canvas');c.width=Math.round(img.width*e);c.height=Math.round(img.height*e);
+  const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);x.drawImage(img,0,0,c.width,c.height);const b=await new Promise(r=>c.toBlob(r,'image/jpeg',.85));
+  const nome=Date.now().toString(36)+Math.random().toString(36).slice(2,8);const caminho=`mecanico-app/${osId}/${nome}.jpg`;
+  const r=await fetch(SB+'/storage/v1/object/anexos/'+caminho,{method:'POST',headers:{apikey:SBK,'Content-Type':'image/jpeg','x-upsert':'false'},body:b});if(!r.ok)throw new Error('A foto não subiu (sem sinal?). Tente de novo.');
+  await salvar('anexo',{os_id:osId,caminho,nome:file.name||'foto.jpg',descricao})}
+
+// ---------- alerta de OS atrasada ----------
+let AU=null;document.addEventListener('pointerdown',()=>{if(!AU)try{AU=new(window.AudioContext||window.webkitAudioContext)()}catch(e){}},{once:true});
+function bip(){try{if(!AU)return;AU.resume&&AU.resume();[0,.35,.7].forEach(t=>{const o=AU.createOscillator(),g=AU.createGain();o.type='square';o.frequency.value=880;g.gain.value=.1;o.connect(g);g.connect(AU.destination);o.start(AU.currentTime+t);o.stop(AU.currentTime+t+.2)});navigator.vibrate&&navigator.vibrate([300,150,300])}catch(e){}}
+let LISTA=[];
+function alerta(){const a=LISTA.filter(o=>o.previsao&&new Date(o.previsao)<new Date());const el=$('#alerta');
+  if(!S||!a.length){el.hidden=true;return}el.hidden=false;el.innerHTML='⏰ '+a.map(o=>`<a href="#os/${o.id}" style="color:inherit">${esc(o.numero)} ${esc(o.frota)} atrasada</a>`).join(' · ');bip()}
+setInterval(async()=>{if(!S)return;try{LISTA=await rpc('app_mec_lista',{p_token:S.token});alerta()}catch(e){}},60000);
+
+// ---------- telas ----------
+const app=$('#app');
+async function rota(){const h=location.hash.slice(1);$('#bSair').hidden=!S;$('#quem').textContent=S?`${S.nome} · mat. ${S.matricula||''}`:'Verbo Logística';
+  if(!S)return telaLogin();
+  try{if(!D)D=await rpc('app_mec_dados',{p_token:S.token});
+    if(h==='nova')return telaNova();if(h.startsWith('os/'))return telaOS(h.slice(3));return telaLista()}catch(e){app.innerHTML=`<div class="card"><b>Sem conexão ou erro.</b><p class="mu">${esc(e.message)}</p><button class="btn w" onclick="location.reload()">Tentar de novo</button></div>`}}
+window.addEventListener('hashchange',rota);
+
+function telaLogin(){app.innerHTML=`<div class="card"><h2>Entrar</h2><p class="mu">Use sua matrícula e os 4 últimos dígitos do seu CPF.</p><form id="fL">
+  <label class="f"><span>Matrícula</span><input class="in" name="m" inputmode="numeric" required></label>
+  <label class="f"><span>4 últimos dígitos do CPF</span><input class="in" name="c" inputmode="numeric" maxlength="4" required></label><button class="btn p w">Entrar</button></form></div>`;
+  $('#fL').onsubmit=async e=>{e.preventDefault();const f=e.target;try{S=await rpc('app_mec_entrar',{p_matricula:f.m.value.trim(),p_cpf4:f.c.value.trim()});localStorage.setItem('vg.mec',JSON.stringify(S));location.hash='';rota()}catch(err){toast(err.message,true)}}}
+
+async function telaLista(){app.innerHTML='<div class="card mu">Carregando…</div>';LISTA=await rpc('app_mec_lista',{p_token:S.token});alerta();
+  const agora=new Date();
+  app.innerHTML=`<div class="acts" style="margin-bottom:12px"><a class="btn p" href="#nova" style="text-align:center;text-decoration:none;line-height:28px">＋ Nova OS</a><button class="btn" id="bAt">Atualizar</button></div>
+  ${LISTA.length?LISTA.map(o=>{const atr=o.previsao&&new Date(o.previsao)<agora;const h=o.previsao?Math.abs(new Date(o.previsao)-agora)/36e5:null;
+    return `<a class="card os ${atr?'atr':''}" href="#os/${o.id}"><div class="l1"><span>${esc(o.numero)} · ${esc(o.frota)}</span><span class="tag ${atr?'r pisca':h!=null&&h<2?'y':''}">${o.previsao?(atr?'atrasada':'faltam')+' '+(h<48?Math.floor(h)+'h'+pad(Math.round(h%1*60)):Math.round(h/24)+'d'):'sem previsão'}</span></div>
+      <div class="l2">${esc(TIPOS[o.tipo]||o.tipo)}${o.atendimento==='sos'?' · <b>SOS</b>':''} · previsão ${dh(o.previsao)}</div><div class="l2">${esc((o.problema||'').slice(0,90))}</div>${o.devolvida?`<div class="l2" style="color:var(--bad)"><b>Devolvida:</b> ${esc(o.devolucao||'')}</div>`:''}</a>`}).join(''):'<div class="card mu">Nenhuma OS em aberto. 👍</div>'}`;
+  $('#bAt').onclick=()=>rota()}
+
+function telaNova(){const eqs=D.eqs;app.innerHTML=`<form id="fN"><div class="card"><h2>Nova OS</h2>
+  <label class="f"><span>Frota *</span><select class="in" name="eq" required><option value="">Selecione…</option>${eqs.map(e=>`<option value="${e.id}">${esc(e.codigo||'')} · ${e.unis.map(u=>esc(u.placa)).join(' · ')}</option>`).join('')}</select></label>
+  <div class="f"><span>Unidades afetadas *</span><div class="chips" id="unis"><span class="mu">Escolha a frota.</span></div></div>
+  <div class="f"><span>Tipo *</span><div class="chips">${Object.entries(TIPOS).map(([k,t],i)=>`<label><input type="radio" name="tipo" value="${k}" ${i?'':'checked'}>${t}</label>`).join('')}</div></div>
+  <div class="f" id="bAtd"><span>Atendimento *</span><div class="chips"><label><input type="radio" name="atd" value="base" checked>Na base</label><label><input type="radio" name="atd" value="sos">SOS</label></div></div>
+  <label class="f" id="bSos"><span>Km inicial do SOS</span><input class="in" name="kmsos" inputmode="numeric" placeholder="o km final é pedido na liberação"></label>
+  <div class="r2"><label class="f"><span>Abertura *</span><input class="in" type="datetime-local" name="ab" value="${local()}" required></label><label class="f"><span>Previsão de liberação *</span><input class="in" type="datetime-local" name="prev" required></label></div>
+  <label class="f" id="bKm"><span>Km de entrada *</span><input class="in" name="km" inputmode="numeric"></label>
+  <div class="f"><span>Quem executa</span><div class="chips"><label><input type="radio" name="ofi" value="interna" checked>Equipe própria</label><label><input type="radio" name="ofi" value="externa">Terceiro</label></div></div>
+  <label class="f" id="bForn"><span>Fornecedor (terceiro / inspeção)</span><select class="in" name="forn"><option value="">Selecione…</option>${D.fornecedores.map(f=>`<option value="${f.id}">${esc(f.nome)}</option>`).join('')}</select><span class="mu">Não achou? Peça ao financeiro para cadastrar.</span></label>
+  <label class="f"><span>Relato do problema *</span><textarea class="in" name="prob" required></textarea></label>
+  <div class="acts"><a class="btn" href="#" style="text-align:center;text-decoration:none;line-height:28px">Voltar</a><button class="btn p">Abrir OS</button></div></div></form>`;
+  const f=$('#fN');const vis=()=>{const e=eqs.find(x=>x.id===f.eq.value),t=f.querySelector('[name=tipo]:checked').value,sos=f.querySelector('[name=atd]:checked').value==='sos',ext=f.querySelector('[name=ofi]:checked').value==='externa';
+    $('#bAtd').hidden=t!=='corretiva';$('#bSos').hidden=!(t==='corretiva'&&sos);$('#bKm').hidden=!e||classe(e.tipo)==='reboque';$('#bForn').hidden=!(ext||t==='inspecao')};
+  f.eq.onchange=()=>{const e=eqs.find(x=>x.id===f.eq.value);$('#unis').innerHTML=e?(e.unis.length>1?'<label><input type="checkbox" id="todas">Todas</label>':'')+e.unis.map(u=>`<label><input type="checkbox" name="u_${u.id}" ${e.unis.length===1?'checked':''}>${esc((u.desc||'Unidade '+u.ordem)+' · '+u.placa)}</label>`).join(''):'';
+    $('#todas')&&($('#todas').onchange=ev=>$$('#unis input[name^=u_]').forEach(i=>i.checked=ev.target.checked));if(e&&e.km!=null)f.km.placeholder='último: '+Number(e.km).toLocaleString('pt-BR');vis()};
+  f.onchange=vis;vis();
+  f.onsubmit=async e=>{e.preventDefault();const eq=eqs.find(x=>x.id===f.eq.value),us=$$('#unis input[name^=u_]').filter(i=>i.checked).map(i=>i.name.slice(2)),t=f.querySelector('[name=tipo]:checked').value;
+    if(!us.length)return toast('Marque a(s) unidade(s) afetada(s).',true);if(new Date(f.prev.value)<=new Date(f.ab.value))return toast('A previsão precisa ser depois da abertura.',true);
+    const cl=classe(eq.tipo);if(cl!=='reboque'&&!km(f.km.value))return toast('Informe o km de entrada.',true);
+    try{const r=await salvar('abrir',{equipamento_id:eq.id,unidades:us,tipo:t,atendimento:t==='corretiva'?f.querySelector('[name=atd]:checked').value:'',km_sos_inicial:km(f.kmsos.value),aberta_em:iso(f.ab.value),previsao_liberacao:iso(f.prev.value),
+      km_entrada:cl==='reboque'?null:km(f.km.value),oficina:f.querySelector('[name=ofi]:checked').value,fornecedor_id:f.forn.value,problema:f.prob.value.trim()});toast('OS aberta.');location.hash='os/'+r.id}catch(err){toast(err.message,true)}}}
+
+async function telaOS(id){app.innerHTML='<div class="card mu">Carregando…</div>';const X=await rpc('app_mec_os',{p_token:S.token,p_os:id});
+  if(!X){app.innerHTML='<div class="card">OS encerrada ou não encontrada. <a href="#">Voltar</a></div>';return}
+  const o=X.os,eq=D.eqs.find(e=>e.id===o.equipamento_id)||{unis:[]},cl=classe(o.tipo_eq),C=Object.fromEntries(D.comps.map(c=>[c.codigo,c])),P=Object.fromEntries(D.pessoas.map(p=>[p.id,p]));
+  const U=Object.fromEntries(eq.unis.map(u=>[u.id,u])),afet=(o.unidades&&o.unidades.length?o.unidades:eq.unis.map(u=>u.id)).map(k=>U[k]).filter(Boolean),uni=u=>u?(u.desc||'Unidade '+u.ordem)+' · '+u.placa:'—';
+  const atr=o.previsao_liberacao&&new Date(o.previsao_liberacao)<new Date(),ck=X.checagem;
+  const pes=(sel='')=>`<option value="">Selecione…</option>${D.pessoas.map(p=>`<option value="${p.id}" ${p.id===sel?'selected':''}>${esc(p.nome)}${p.matricula?' · '+esc(p.matricula):''}</option>`).join('')}`;
+  app.innerHTML=`<div class="card ${atr?'pisca':''}"><div class="os"><div class="l1" style="font-size:19px"><span>${esc(o.numero)} · ${esc(o.frota)}</span><span class="tag">${esc(TIPOS[o.tipo]||o.tipo)}${o.atendimento==='sos'?' · SOS':''}</span></div>
+    <div class="l2">Aberta ${dh(o.aberta_em)} · previsão <b>${dh(o.previsao_liberacao)}</b>${atr?' · <b>ATRASADA</b>':''}</div><div class="l2">${esc(o.problema||'')}</div>
+    ${o.validacao==='devolvida'?`<div class="l2" style="color:var(--bad)"><b>Devolvida:</b> ${esc(o.devolucao_motivo||'')}</div>`:''}</div>
+    <div class="acts" style="margin-top:10px"><a class="btn s" href="#" style="text-align:center;text-decoration:none;line-height:26px">← Lista</a><button class="btn s" id="bPrazo">Repactuar prazo</button></div></div>
+  ${ck.erros.length?`<div class="card" style="border-color:var(--ac)"><h2>O que falta para encerrar</h2><ul class="err" style="margin:0;padding-left:18px">${ck.erros.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div>`:''}
+  <div class="card"><h2>Problema de cada unidade</h2>${afet.map(u=>`<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b>${esc(uni(u))}</b><button class="btn s p" data-fal="${u.id}">＋ Problema</button></div>
+    ${X.falhas.filter(f=>f.veiculo_id===u.id).map(f=>`<div class="lin"><b>${esc(C[f.componente]?.nome||f.componente)}</b>${loc(f)?' · '+esc(loc(f)):''}<div>${esc(f.descricao)}</div>
+      ${C[f.componente]?.pneu?`<div class="mu">${f.pneu?'Dados do pneu ✓':'<span class="tag y">faltam os dados do pneu</span>'}</div>`:''}
+      <div class="acts" style="margin-top:6px">${C[f.componente]?.pneu?`<button class="btn s" data-pneu="${f.id}">Dados do pneu</button>`:''}<button class="btn s x" data-falrem="${f.id}">Retirar</button></div></div>`).join('')||'<div class="mu">Nenhum problema lançado.</div>'}</div>`).join('')}</div>
+  <div class="card"><h2>Serviços</h2>${X.servicos.map(s=>{const ps=X.itens.filter(i=>i.servico_id===s.id);return `<div class="lin"><b>${esc(s.descricao)}</b><div class="mu">${s.executor==='terceiro'?'Terceiro'+(s.mecanico_terceiro?': '+esc(s.mecanico_terceiro):''):esc(P[s.mecanico_id]?.nome||'')} · ${dh(s.inicio)} → ${s.fim?dh(s.fim):'<span class="tag y">em andamento</span>'} · ${dur(s.inicio,s.fim)}</div>
+      ${ps.map(i=>`<div class="mu">🔩 ${esc(i.descricao)} · ${Number(i.quantidade).toLocaleString('pt-BR')} · ${brl(i.valor_total)} <button class="btn s x" data-itrem="${i.id}" style="min-height:28px;padding:2px 8px">×</button></div>`).join('')}
+      <div class="acts" style="margin-top:6px">${s.fim?'':`<button class="btn s a" data-fim="${s.id}">Finalizar agora</button>`}<button class="btn s" data-srved="${s.id}">Editar</button><button class="btn s" data-peca="${s.id}">＋ Peça</button><button class="btn s x" data-srvrem="${s.id}">Retirar</button></div></div>`}).join('')||'<div class="mu">Nenhum serviço.</div>'}
+    <button class="btn p w" id="bSrv" style="margin-top:8px">＋ Iniciar serviço</button></div>
+  ${o.oficina==='externa'||o.tipo==='inspecao'?`<div class="card"><h2>${o.tipo==='inspecao'?'Inspeção':'Terceiro'}</h2><div class="mu">Fornecedor: <b>${esc(o.fornecedor||'—')}</b>${o.oficina==='externa'?` · valor ${o.valor_terceiro?brl(o.valor_terceiro):'—'}`:''}</div><button class="btn w" id="bTer" style="margin-top:8px">Preencher fornecedor e valores</button></div>`:''}
+  <div class="card"><h2>Fotos e documentos</h2><div class="mu">${X.anexos.map(a=>esc((a.descricao?a.descricao+': ':'')+a.nome)).join('<br>')||'Nenhum.'}</div>
+    <div class="r2" style="margin-top:8px"><select class="in" id="fDesc"><option value="">Foto do serviço</option><option>Orçamento do fornecedor</option><option>Laudo de inspeção</option><option>Orçamento do retrabalho</option></select><label class="btn" style="text-align:center">📷 Tirar foto<input type="file" accept="image/*" capture="environment" id="fFoto" hidden></label></div></div>
+  <div class="card"><h2>Liberação</h2><div class="mu">${o.liberado_em?`Liberado em ${dh(o.liberado_em)} por ${esc(P[o.liberado_por]?.nome||'')} ${o.assinado_lib?'✓':''} · recebido por ${esc(P[o.recebido_por]?.nome||'')} ${o.assinado_rec?'✓':''}`:'Ainda não liberado.'}</div>
+    <button class="btn a w" id="bLib" style="margin-top:8px">Liberar equipamento (assinaturas)</button>
+    <button class="btn p w" id="bEnc" style="margin-top:8px">Encerrar OS</button></div>`;
+  const re=()=>telaOS(id);
+  $$('[data-fal]').forEach(b=>b.onclick=async()=>{const u=U[b.dataset.fal],ucl=/cavalo|caminh/i.test(u.desc||'')?'cavalo':cl,ne=ucl==='reboque'?2:3,lista=D.comps.filter(c=>c.aplica==='todos'||c.aplica===(ucl==='veiculo'?'cavalo':ucl));let sel=[];
+    const r=await janela(`<form><h3>Problema · ${esc(uni(u))}</h3><label class="f"><span>Componente *</span><select class="in" name="comp" required><option value="">Selecione…</option>${[...new Set(lista.map(c=>c.grupo))].map(g=>`<optgroup label="${esc(g)}">${lista.filter(c=>c.grupo===g).map(c=>`<option value="${c.codigo}">${esc(c.nome)}</option>`).join('')}</optgroup>`).join('')}</select></label>
+      <div class="f" id="bPn" hidden><span>Toque nos pneus com problema</span><div id="pnS">${pneuSvg(ucl,ne,sel)}</div></div>
+      <div class="r2"><label class="f" id="bL"><span>Lado *</span><select class="in" name="lado"><option value="">—</option><option value="esquerdo">Esquerdo</option><option value="direito">Direito</option></select></label>
+      <label class="f" id="bE"><span>Eixo *</span><select class="in" name="eixo"><option value="">—</option>${Array.from({length:ne},(_,i)=>`<option>${i+1}</option>`).join('')}</select></label>
+      <label class="f" id="bP"><span>Interno/externo *</span><select class="in" name="pos"><option value="">—</option><option value="interno">Interno</option><option value="externo">Externo</option></select></label>
+      <label class="f" id="bB"><span>Barrote (frente → trás) *</span><select class="in" name="bar"><option value="">—</option>${Array.from({length:10},(_,i)=>`<option value="${i+1}">${i+1}º</option>`).join('')}</select></label></div>
+      <label class="f"><span>Descrição *</span><textarea class="in" name="desc" required></textarea></label><div class="acts"><button type="button" class="btn" data-x>Voltar</button><button class="btn p">Lançar</button></div></form>`,
+      {aoAbrir:m=>{const f=$('form',m),v=()=>{const c=C[f.comp.value]||{};$('#bPn',m).hidden=!c.pneu;$('#bL',m).hidden=!c.exige_lado||c.pneu;$('#bE',m).hidden=!c.exige_eixo||c.pneu;$('#bP',m).hidden=!c.exige_posicao||c.pneu;$('#bB',m).hidden=!c.exige_barrote};f.comp.onchange=v;v();
+        $('#pnS',m).onclick=e=>{const k=e.target.closest('rect.r')?.dataset.k;if(!k)return;sel=sel.includes(k)?sel.filter(x=>x!==k):[...sel,k];$('#pnS',m).innerHTML=pneuSvg(ucl,ne,sel)}},
+       validar:d=>{const c=C[d.comp];if(!c)return 'Escolha o componente.';if(c.pneu)return sel.length?null:'Toque nos pneus.';if(c.exige_lado&&!d.lado)return 'Informe o lado.';if(c.exige_eixo&&!d.eixo)return 'Informe o eixo.';if(c.exige_posicao&&!d.pos)return 'Interno ou externo?';if(c.exige_barrote&&!d.bar)return 'Informe o barrote.';return null}});
+    if(!r)return;const c=C[r.comp],base={veiculo_id:u.id,componente:r.comp,descricao:r.desc};
+    const linhas=c.pneu?sel.map(k=>{const[l,e,p]=k.split('|');return{...base,lado:l,eixo:+e,posicao:p}}):[{...base,lado:c.exige_lado?r.lado:'',eixo:c.exige_eixo?+r.eixo:null,posicao:c.exige_posicao?r.pos:'',barrote:c.exige_barrote?+r.bar:null}];
+    try{await salvar('falhas',{os_id:id,linhas});re()}catch(e){toast(e.message,true)}});
+  $$('[data-falrem]').forEach(b=>b.onclick=async()=>{if(!confirm('Retirar este problema?'))return;try{await salvar('falha_rem',{os_id:id,id:b.dataset.falrem});re()}catch(e){toast(e.message,true)}});
+  $$('[data-pneu]').forEach(b=>b.onclick=async()=>{const fx=X.falhas.find(f=>f.id===b.dataset.pneu),p=fx.pneu||{};
+    const bl=(k,rot)=>`<label class="f"><span>${rot}</span><input class="in" name="${k}" value="${esc(p[k]||'')}" ${k.startsWith('sulco')?'inputmode="decimal"':''}></label><label class="mu"><input type="checkbox" name="${k}_sem" ${p[k+'_just']?'checked':''}> ${k.startsWith('fogo')?'Sem número de fogo':'Sem informação de sulco'}</label><label class="f" data-j="${k}"><span>Justificativa *</span><input class="in" name="${k}_just" value="${esc(p[k+'_just']||'')}"></label>`;
+    const r=await janela(`<form><h3>Pneu · ${esc(loc(fx))}</h3><b>Retirado</b><div class="r2">${bl('fogo_ret','Nº de fogo')}${bl('sulco_ret','Sulco (mm)')}</div><b>Aplicado</b><div class="r2">${bl('fogo_apl','Nº de fogo')}${bl('sulco_apl','Sulco (mm)')}</div>
+      <div class="f"><span>Estado do aplicado *</span><div class="chips"><label><input type="radio" name="est" value="novo" ${p.estado_apl==='novo'?'checked':''}>Novo</label><label><input type="radio" name="est" value="reformado" ${p.estado_apl==='reformado'?'checked':''}>Reformado</label></div></div>
+      <label class="f" id="bRec"><span>Recapagem *</span><select class="in" name="rec"><option value="">—</option>${[1,2,3,4,5].map(n=>`<option value="${n}" ${String(p.recapagem)===String(n)?'selected':''}>${n}ª recapagem</option>`).join('')}</select></label>
+      <div class="acts"><button type="button" class="btn" data-x>Voltar</button><button class="btn p">Salvar</button></div></form>`,
+      {aoAbrir:m=>{const f=$('form',m),v=()=>{['fogo_ret','sulco_ret','fogo_apl','sulco_apl'].forEach(k=>{const s=f[k+'_sem'].checked;$(`[data-j="${k}"]`,m).hidden=!s;f[k].disabled=s});$('#bRec',m).hidden=f.querySelector('[name=est]:checked')?.value!=='reformado'};f.onchange=v;v()},
+       validar:d=>{for(const k of['fogo_ret','sulco_ret','fogo_apl','sulco_apl'])if(d[k+'_sem']?!d[k+'_just']:!d[k])return 'Preencha todos os campos (ou marque e justifique).';if(!d.est)return 'Estado do pneu aplicado?';if(d.est==='reformado'&&!d.rec)return 'Qual recapagem?';return null}});
+    if(!r)return;const pn={};for(const k of['fogo_ret','sulco_ret','fogo_apl','sulco_apl']){if(r[k+'_sem'])pn[k+'_just']=r[k+'_just'];else pn[k]=r[k]}pn.estado_apl=r.est;if(r.est==='reformado')pn.recapagem=r.rec;
+    try{await salvar('pneu',{os_id:id,id:fx.id,pneu:pn});re()}catch(e){toast(e.message,true)}});
+  const servico=async(s=null)=>{const r=await janela(`<form><h3>${s?'Serviço':'Iniciar serviço'}</h3><label class="f"><span>Serviço realizado *</span><input class="in" name="desc" required value="${esc(s?.descricao||'')}" placeholder="Ex.: troca do fueiro 2º barrote LD"></label>
+      <label class="f"><span>Problema relacionado</span><select class="in" name="fal"><option value="">—</option>${X.falhas.map(f=>`<option value="${f.id}" ${f.id===s?.falha_id?'selected':''}>${esc((C[f.componente]?.nome||'')+(loc(f)?' · '+loc(f):''))}</option>`).join('')}</select></label>
+      <div class="f"><span>Quem executou</span><div class="chips"><label><input type="radio" name="ex" value="interno" ${(s?.executor||'interno')==='interno'?'checked':''}>Mecânico próprio</label><label><input type="radio" name="ex" value="terceiro" ${s?.executor==='terceiro'?'checked':''}>Terceiro</label></div></div>
+      <label class="f" id="bMec"><span>Mecânico</span><select class="in" name="mec">${pes(s?.mecanico_id||S.id)}</select></label><label class="f" id="bTe"><span>Nome de quem executou no terceiro</span><input class="in" name="ter" value="${esc(s?.mecanico_terceiro||'')}"></label>
+      <div class="r2"><label class="f"><span>Início *</span><input class="in" type="datetime-local" name="ini" required value="${local(s?.inicio)}"></label><label class="f"><span>Fim</span><input class="in" type="datetime-local" name="fim" value="${s?.fim?local(s.fim):''}"></label></div>
+      <div class="acts"><button type="button" class="btn" data-x>Voltar</button><button class="btn p">Salvar</button></div></form>`,
+      {aoAbrir:m=>{const f=$('form',m),v=()=>{const t=f.querySelector('[name=ex]:checked').value;$('#bMec',m).hidden=t!=='interno';$('#bTe',m).hidden=t!=='terceiro'};f.onchange=v;v()},
+       validar:d=>d.ex==='interno'&&!d.mec?'Selecione o mecânico.':d.fim&&new Date(d.fim)<=new Date(d.ini)?'O fim precisa ser depois do início.':null});
+    if(!r)return;try{await salvar('servico',{os_id:id,...(s?{id:s.id}:{}),descricao:r.desc,falha_id:r.fal,executor:r.ex,mecanico_id:r.ex==='interno'?r.mec:'',mecanico_terceiro:r.ex==='terceiro'?r.ter:'',inicio:iso(r.ini),fim:r.fim?iso(r.fim):''});re()}catch(e){toast(e.message,true)}};
+  $('#bSrv').onclick=()=>servico();
+  $$('[data-srved]').forEach(b=>b.onclick=()=>servico(X.servicos.find(s=>s.id===b.dataset.srved)));
+  $$('[data-fim]').forEach(b=>b.onclick=async()=>{const s=X.servicos.find(x=>x.id===b.dataset.fim);try{await salvar('servico',{os_id:id,id:s.id,descricao:s.descricao,falha_id:s.falha_id||'',executor:s.executor,mecanico_id:s.mecanico_id||'',mecanico_terceiro:s.mecanico_terceiro||'',inicio:s.inicio,fim:new Date().toISOString()});re()}catch(e){toast(e.message,true)}});
+  $$('[data-srvrem]').forEach(b=>b.onclick=async()=>{if(!confirm('Retirar este serviço?'))return;try{await salvar('servico_rem',{os_id:id,id:b.dataset.srvrem});re()}catch(e){toast(e.message,true)}});
+  $$('[data-itrem]').forEach(b=>b.onclick=async()=>{if(!confirm('Retirar esta peça? Se for do estoque, volta ao almoxarifado.'))return;try{await salvar('peca_rem',{os_id:id,id:b.dataset.itrem});re()}catch(e){toast(e.message,true)}});
+  $$('[data-peca]').forEach(b=>b.onclick=async()=>{const PC=Object.fromEntries(D.pecas.map(p=>[p.id,p]));
+    const r=await janela(`<form><h3>Peça aplicada</h3><div class="f"><div class="chips"><label><input type="radio" name="tp" value="peca_estoque" checked>Do nosso almoxarifado</label><label><input type="radio" name="tp" value="peca_terceiro">Peça do terceiro</label></div></div>
+      <label class="f"><span>Buscar peça</span><input class="in" id="qP" placeholder="código ou nome"></label><label class="f"><span>Peça (cadastro do almoxarifado) *</span><select class="in" name="pc" required size="6" style="min-height:150px">${D.pecas.map(p=>`<option value="${p.id}">${esc(p.codigo+' · '+p.descricao)} (estoque ${Number(p.saldo).toLocaleString('pt-BR')})</option>`).join('')}</select><span class="mu">Não achou? A peça precisa ser cadastrada no almoxarifado antes.</span></label>
+      <div class="r2"><label class="f"><span>Quantidade *</span><input class="in" name="q" inputmode="decimal" value="1"></label><label class="f" id="bV"><span>Valor unitário cobrado (R$) *</span><input class="in" name="v" inputmode="decimal"></label></div>
+      <div class="f" id="bEs"><span>Estado *</span><div class="chips"><label><input type="radio" name="es" value="nova">Nova</label><label><input type="radio" name="es" value="usada">Usada</label></div></div>
+      <div class="acts"><button type="button" class="btn" data-x>Voltar</button><button class="btn p">Lançar</button></div></form>`,
+      {aoAbrir:m=>{const f=$('form',m),v=()=>{const t=f.querySelector('[name=tp]:checked').value==='peca_terceiro';$('#bV',m).hidden=$('#bEs',m).hidden=!t};f.onchange=v;v();
+        $('#qP',m).oninput=e=>{const q=e.target.value.toLowerCase();[...f.pc.options].forEach(o=>o.hidden=q&&!o.text.toLowerCase().includes(q))}},
+       validar:d=>{const p=PC[d.pc],q=numBR(d.q);if(!p)return 'Escolha a peça.';if(!(q>0))return 'Quantidade?';if(d.tp==='peca_estoque'&&Number(p.saldo)<q)return 'Sem estoque suficiente. Se veio do terceiro, marque "Peça do terceiro".';if(d.tp==='peca_terceiro'&&(!(numBR(d.v)>0)||!d.es))return 'Informe valor e estado (nova/usada).';return null}});
+    if(!r)return;try{await salvar('peca',{os_id:id,servico_id:b.dataset.peca,tipo:r.tp,almox_item_id:r.pc,quantidade:numBR(r.q),valor_unitario:r.tp==='peca_terceiro'?numBR(r.v):0,estado_peca:r.tp==='peca_terceiro'?r.es:''});
+      if(r.tp==='peca_estoque'){const p=PC[r.pc];p.saldo=Number(p.saldo)-numBR(r.q)}re()}catch(e){toast(e.message,true)}});
+  $('#fFoto').onchange=async e=>{const f=e.target.files[0];if(!f)return;toast('Enviando foto…');try{await enviarFoto(id,f,$('#fDesc').value||'Foto do serviço');toast('Foto enviada.');re()}catch(err){toast(err.message,true)}};
+  $('#bTer')&&($('#bTer').onclick=async()=>{const r=await janela(`<form><h3>${o.tipo==='inspecao'?'Inspeção':'Terceiro'}</h3><label class="f"><span>Fornecedor *</span><select class="in" name="fo" required><option value="">Selecione…</option>${D.fornecedores.map(f=>`<option value="${f.id}" ${f.id===o.fornecedor_id?'selected':''}>${esc(f.nome)}</option>`).join('')}</select></label>
+      ${o.oficina==='externa'?`<label class="f"><span>Valor total cobrado (R$) *</span><input class="in" name="vt" inputmode="decimal" value="${o.valor_terceiro??''}"></label>`:''}
+      ${o.tipo==='inspecao'?`<label class="f"><span>Cobrança</span><select class="in" name="cb"><option value="">—</option><option value="sem_cobranca" ${o.inspecao_cobranca==='sem_cobranca'?'selected':''}>Sem cobrança</option><option value="retrabalho" ${o.inspecao_cobranca==='retrabalho'?'selected':''}>Cobrança por retrabalho</option><option value="cliente" ${o.inspecao_cobranca==='cliente'?'selected':''}>Cobrança é do cliente</option></select></label><label class="f"><span>Valor do retrabalho (R$)</span><input class="in" name="vr" inputmode="decimal" value="${o.valor_retrabalho??''}"></label>`:''}
+      <p class="mu">Orçamento e laudo: tire a foto em "Fotos e documentos".</p><div class="acts"><button type="button" class="btn" data-x>Voltar</button><button class="btn p">Salvar</button></div></form>`);
+    if(!r)return;try{await salvar('terceiro',{os_id:id,fornecedor_id:r.fo,valor_terceiro:numBR(r.vt),inspecao_cobranca:r.cb||'',valor_retrabalho:numBR(r.vr)});re()}catch(e){toast(e.message,true)}});
+  $('#bLib').onclick=async()=>{let A1,A2;const r=await janela(`<form><h3>Liberação do equipamento</h3><label class="f"><span>Data e hora *</span><input class="in" type="datetime-local" name="em" required value="${local(o.liberado_em)}"></label>
+      ${cl!=='reboque'?`<label class="f"><span>Km de saída *</span><input class="in" name="ks" inputmode="numeric" required value="${o.km_saida??''}" placeholder="entrada: ${o.km_entrada??'—'}"></label>`:''}
+      ${o.atendimento==='sos'?`<div class="r2"><label class="f"><span>Km inicial do SOS *</span><input class="in" name="k1" inputmode="numeric" required value="${o.km_sos_inicial??''}"></label><label class="f"><span>Km final do SOS *</span><input class="in" name="k2" inputmode="numeric" required value="${o.km_sos_final??''}"></label></div>`:''}
+      <label class="f"><span>Responsável pela manutenção *</span><select class="in" name="lp" required>${pes(o.liberado_por||S.id)}</select></label><canvas class="ass" id="a1"></canvas><button type="button" class="btn s" id="l1" style="margin:6px 0 12px">Limpar assinatura</button>
+      <label class="f"><span>Quem recebeu (motorista / operação) *</span><select class="in" name="rp" required>${pes(o.recebido_por||'')}</select></label><canvas class="ass" id="a2"></canvas><button type="button" class="btn s" id="l2" style="margin:6px 0 12px">Limpar assinatura</button>
+      <div class="acts"><button type="button" class="btn" data-x>Voltar</button><button class="btn p">Salvar liberação</button></div></form>`,
+      {aoAbrir:m=>{A1=assinatura($('#a1',m));A2=assinatura($('#a2',m));$('#l1',m).onclick=()=>A1.limpar();$('#l2',m).onclick=()=>A2.limpar()},
+       validar:d=>A1.vazia()?'Falta a assinatura do responsável.':A2.vazia()?'Falta a assinatura de quem recebeu.':d.lp===d.rp?'Quem libera e quem recebe devem ser pessoas diferentes.':(o.atendimento==='sos'&&km(d.k2)<km(d.k1))?'Km final do SOS menor que o inicial.':null});
+    if(!r)return;try{await salvar('liberacao',{os_id:id,liberado_em:iso(r.em),liberado_por:r.lp,liberado_assinatura:A1.png(),recebido_por:r.rp,recebido_assinatura:A2.png(),km_saida:km(r.ks),km_sos_inicial:km(r.k1),km_sos_final:km(r.k2)});toast('Liberação salva.');re()}catch(e){toast(e.message,true)}};
+  $('#bEnc').onclick=async()=>{if(ck.erros.length){toast('Ainda falta preencher: veja a lista no topo.',true);window.scrollTo(0,0);return}if(!confirm('Encerrar a OS? Ela sai do app e vai para a validação da analista.'))return;
+    try{const c=await salvar('encerrar',{os_id:id});toast('OS encerrada.'+(c.avisos&&c.avisos.length?' A analista vai conferir '+c.avisos.length+' aviso(s).':''));location.hash=''}catch(e){toast(e.message,true)}};
+  $('#bPrazo').onclick=async()=>{const r=await janela(`<form><h3>Repactuar prazo</h3><p class="mu">Previsão atual: ${dh(o.previsao_liberacao)}</p><label class="f"><span>Nova previsão *</span><input class="in" type="datetime-local" name="n" required></label><label class="f"><span>Justificativa *</span><textarea class="in" name="j" required></textarea></label><div class="acts"><button type="button" class="btn" data-x>Voltar</button><button class="btn p">Salvar</button></div></form>`,
+      {validar:d=>new Date(d.n)<=new Date()?'A nova previsão precisa ser no futuro.':null});if(!r)return;try{await salvar('prazo',{os_id:id,nova:iso(r.n),justificativa:r.j});LISTA=await rpc('app_mec_lista',{p_token:S.token});alerta();re()}catch(e){toast(e.message,true)}};
+}
+rota();if(S)rpc('app_mec_lista',{p_token:S.token}).then(l=>{LISTA=l;alerta()}).catch(()=>{});
+})();
+</script>
+</body>
+</html>
