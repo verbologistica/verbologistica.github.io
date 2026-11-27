@@ -106,7 +106,7 @@ async function enviarFoto(osId,file,descricao){const img=await createImageBitmap
   const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);x.drawImage(img,0,0,c.width,c.height);const b=await new Promise(r=>c.toBlob(r,'image/jpeg',.85));
   const nome=Date.now().toString(36)+Math.random().toString(36).slice(2,8);const caminho=`mecanico-app/${osId}/${nome}.jpg`;
   const r=await fetch(SB+'/storage/v1/object/anexos/'+caminho,{method:'POST',headers:{apikey:SBK,'Content-Type':'image/jpeg','x-upsert':'false'},body:b});if(!r.ok)throw new Error('A foto não subiu (sem sinal?). Tente de novo.');
-  await salvar('anexo',{os_id:osId,caminho,nome:file.name||'foto.jpg',descricao})}
+  if(descricao===null)return caminho;await salvar('anexo',{os_id:osId,caminho,nome:file.name||'foto.jpg',descricao});return caminho}
 
 // ---------- alerta de OS atrasada ----------
 let AU=null;document.addEventListener('pointerdown',()=>{if(!AU)try{AU=new(window.AudioContext||window.webkitAudioContext)()}catch(e){}},{once:true});
@@ -160,7 +160,8 @@ function telaNova(){const eqs=D.eqs;app.innerHTML=`<form id="fN"><div class="car
     try{const r=await salvar('abrir',{equipamento_id:eq.id,unidades:us,tipo:t,atendimento:t==='corretiva'?f.querySelector('[name=atd]:checked').value:'',km_sos_inicial:km(f.kmsos.value),aberta_em:iso(f.ab.value),previsao_liberacao:iso(f.prev.value),
       km_entrada:cl==='reboque'?null:km(f.km.value),oficina:f.querySelector('[name=ofi]:checked').value,fornecedor_id:f.forn.value,problema:f.prob.value.trim()});toast('OS aberta.');location.hash='os/'+r.id}catch(err){toast(err.message,true)}}}
 
-async function telaOS(id){app.innerHTML='<div class="card mu">Carregando…</div>';const X=await rpc('app_mec_os',{p_token:S.token,p_os:id});
+async function telaOS(id){app.innerHTML='<div class="card mu">Carregando…</div>';const [X,XX]=await Promise.all([rpc('app_mec_os',{p_token:S.token,p_os:id}),rpc('app_mec_extra',{p_token:S.token,p_os:id}).catch(()=>({checklists:[],pedidos:[]}))]);
+  if(X&&XX.pedidos.some(p=>p.item_id&&!D.pecas.some(x=>x.id===p.item_id)))D=await rpc('app_mec_dados',{p_token:S.token});
   if(!X){app.innerHTML='<div class="card">OS encerrada ou não encontrada. <a href="#">Voltar</a></div>';return}
   const o=X.os,eq=D.eqs.find(e=>e.id===o.equipamento_id)||{unis:[]},cl=classe(o.tipo_eq),C=Object.fromEntries(D.comps.map(c=>[c.codigo,c])),P=Object.fromEntries(D.pessoas.map(p=>[p.id,p]));
   const U=Object.fromEntries(eq.unis.map(u=>[u.id,u])),afet=(o.unidades&&o.unidades.length?o.unidades:eq.unis.map(u=>u.id)).map(k=>U[k]).filter(Boolean),uni=u=>u?(u.desc||'Unidade '+u.ordem)+' · '+u.placa:'—';
@@ -178,14 +179,19 @@ async function telaOS(id){app.innerHTML='<div class="card mu">Carregando…</div
   <div class="card"><h2>Serviços</h2>${X.servicos.map(s=>{const ps=X.itens.filter(i=>i.servico_id===s.id);return `<div class="lin"><b>${esc(s.descricao)}</b><div class="mu">${s.executor==='terceiro'?'Terceiro'+(s.mecanico_terceiro?': '+esc(s.mecanico_terceiro):''):esc(P[s.mecanico_id]?.nome||'')} · ${dh(s.inicio)} → ${s.fim?dh(s.fim):'<span class="tag y">em andamento</span>'} · ${dur(s.inicio,s.fim)}</div>
       ${ps.map(i=>`<div class="mu">🔩 ${esc(i.descricao)} · ${Number(i.quantidade).toLocaleString('pt-BR')} · ${brl(i.valor_total)} <button class="btn s x" data-itrem="${i.id}" style="min-height:28px;padding:2px 8px">×</button></div>`).join('')}
       <div class="acts" style="margin-top:6px">${s.fim?'':`<button class="btn s a" data-fim="${s.id}">Finalizar agora</button>`}<button class="btn s" data-srved="${s.id}">Editar</button><button class="btn s" data-peca="${s.id}">＋ Peça</button><button class="btn s x" data-srvrem="${s.id}">Retirar</button></div></div>`}).join('')||'<div class="mu">Nenhum serviço.</div>'}
+    ${XX.pedidos.length?`<div class="mu" style="margin-top:8px"><b>Pedidos de cadastro de peça:</b><br>${XX.pedidos.map(p=>esc(p.descricao)+' · '+(p.situacao==='pendente'?'aguardando almoxarifado':p.situacao==='aprovado'?'cadastrada: '+esc(p.item||''):'recusado: '+esc(p.motivo||''))).join('<br>')}</div>`:''}
     <button class="btn p w" id="bSrv" style="margin-top:8px">＋ Iniciar serviço</button></div>
   ${o.oficina==='externa'||o.tipo==='inspecao'?`<div class="card"><h2>${o.tipo==='inspecao'?'Inspeção':'Terceiro'}</h2><div class="mu">Fornecedor: <b>${esc(o.fornecedor||'—')}</b>${o.oficina==='externa'?` · valor ${o.valor_terceiro?brl(o.valor_terceiro):'—'}`:''}</div><button class="btn w" id="bTer" style="margin-top:8px">Preencher fornecedor e valores</button></div>`:''}
+  <div class="card"><h2>Checklists</h2>${XX.checklists.length?XX.checklists.map((x,k)=>`<div class="lin" style="border-left-color:${x.chk&&x.chk.situacao==='concluido'?'var(--ok)':'var(--ac)'}"><b>${MOM[x.momento]}</b> · ${esc(x.nome)}
+    <div class="mu">${!x.chk?(x.obrigatorio?'<span class="tag y">pendente · obrigatório</span>':'não preenchido'):x.chk.situacao==='concluido'?`<span class="tag ${x.chk.nao_conformes?'r':''}">concluído${x.chk.nao_conformes?' · '+x.chk.nao_conformes+' não conforme(s)':''}</span>`:'<span class="tag y">em preenchimento</span>'}</div>
+    <button class="btn s ${x.chk?'':'p'}" data-chk="${k}" style="margin-top:6px">${!x.chk?'Preencher':x.chk.situacao==='concluido'?'Revisar':'Continuar'}</button></div>`).join(''):'<div class="mu">Nenhum checklist para esta OS.</div>'}</div>
   <div class="card"><h2>Fotos e documentos</h2><div class="mu">${X.anexos.map(a=>esc((a.descricao?a.descricao+': ':'')+a.nome)).join('<br>')||'Nenhum.'}</div>
     <div class="r2" style="margin-top:8px"><select class="in" id="fDesc"><option value="">Foto do serviço</option><option>Orçamento do fornecedor</option><option>Laudo de inspeção</option><option>Orçamento do retrabalho</option></select><label class="btn" style="text-align:center">📷 Tirar foto<input type="file" accept="image/*" capture="environment" id="fFoto" hidden></label></div></div>
   <div class="card"><h2>Liberação</h2><div class="mu">${o.liberado_em?`Liberado em ${dh(o.liberado_em)} por ${esc(P[o.liberado_por]?.nome||'')} ${o.assinado_lib?'✓':''} · recebido por ${esc(P[o.recebido_por]?.nome||'')} ${o.assinado_rec?'✓':''}`:'Ainda não liberado.'}</div>
     <button class="btn a w" id="bLib" style="margin-top:8px">Liberar equipamento (assinaturas)</button>
     <button class="btn p w" id="bEnc" style="margin-top:8px">Encerrar OS</button></div>`;
   const re=()=>telaOS(id);
+  $$('[data-chk]').forEach(b=>b.onclick=()=>preencherChk(id,XX.checklists[+b.dataset.chk]).then(ok=>ok&&re()));
   $$('[data-fal]').forEach(b=>b.onclick=async()=>{const u=U[b.dataset.fal],ucl=/cavalo|caminh/i.test(u.desc||'')?'cavalo':cl,ne=ucl==='reboque'?2:3,lista=D.comps.filter(c=>c.aplica==='todos'||c.aplica===(ucl==='veiculo'?'cavalo':ucl));let sel=[];
     const r=await janela(`<form><h3>Problema · ${esc(uni(u))}</h3><label class="f"><span>Componente *</span><select class="in" name="comp" required><option value="">Selecione…</option>${[...new Set(lista.map(c=>c.grupo))].map(g=>`<optgroup label="${esc(g)}">${lista.filter(c=>c.grupo===g).map(c=>`<option value="${c.codigo}">${esc(c.nome)}</option>`).join('')}</optgroup>`).join('')}</select></label>
       <div class="f" id="bPn" hidden><span>Toque nos pneus com problema</span><div id="pnS">${pneuSvg(ucl,ne,sel)}</div></div>
@@ -227,11 +233,12 @@ async function telaOS(id){app.innerHTML='<div class="card mu">Carregando…</div
   $$('[data-itrem]').forEach(b=>b.onclick=async()=>{if(!confirm('Retirar esta peça? Se for do estoque, volta ao almoxarifado.'))return;try{await salvar('peca_rem',{os_id:id,id:b.dataset.itrem});re()}catch(e){toast(e.message,true)}});
   $$('[data-peca]').forEach(b=>b.onclick=async()=>{const PC=Object.fromEntries(D.pecas.map(p=>[p.id,p]));
     const r=await janela(`<form><h3>Peça aplicada</h3><div class="f"><div class="chips"><label><input type="radio" name="tp" value="peca_estoque" checked>Do nosso almoxarifado</label><label><input type="radio" name="tp" value="peca_terceiro">Peça do terceiro</label></div></div>
-      <label class="f"><span>Buscar peça</span><input class="in" id="qP" placeholder="código ou nome"></label><label class="f"><span>Peça (cadastro do almoxarifado) *</span><select class="in" name="pc" required size="6" style="min-height:150px">${D.pecas.map(p=>`<option value="${p.id}">${esc(p.codigo+' · '+p.descricao)} (estoque ${Number(p.saldo).toLocaleString('pt-BR')})</option>`).join('')}</select><span class="mu">Não achou? A peça precisa ser cadastrada no almoxarifado antes.</span></label>
+      <label class="f"><span>Buscar peça</span><input class="in" id="qP" placeholder="código ou nome"></label><label class="f"><span>Peça (cadastro do almoxarifado) *</span><select class="in" name="pc" required size="6" style="min-height:150px">${D.pecas.map(p=>`<option value="${p.id}">${esc(p.codigo+' · '+p.descricao)} (estoque ${Number(p.saldo).toLocaleString('pt-BR')})</option>`).join('')}</select><button type="button" class="btn s" id="bPed" style="margin-top:6px">Não achou? Pedir cadastro ao almoxarifado</button></label>
       <div class="r2"><label class="f"><span>Quantidade *</span><input class="in" name="q" inputmode="decimal" value="1"></label><label class="f" id="bV"><span>Valor unitário cobrado (R$) *</span><input class="in" name="v" inputmode="decimal"></label></div>
       <div class="f" id="bEs"><span>Estado *</span><div class="chips"><label><input type="radio" name="es" value="nova">Nova</label><label><input type="radio" name="es" value="usada">Usada</label></div></div>
       <div class="acts"><button type="button" class="btn" data-x>Voltar</button><button class="btn p">Lançar</button></div></form>`,
       {aoAbrir:m=>{const f=$('form',m),v=()=>{const t=f.querySelector('[name=tp]:checked').value==='peca_terceiro';$('#bV',m).hidden=$('#bEs',m).hidden=!t};f.onchange=v;v();
+        $('#bPed',m).onclick=()=>pedirPeca(id).then(ok=>{if(ok){$('[data-x]',m).click();re()}});
         $('#qP',m).oninput=e=>{const q=e.target.value.toLowerCase();[...f.pc.options].forEach(o=>o.hidden=q&&!o.text.toLowerCase().includes(q))}},
        validar:d=>{const p=PC[d.pc],q=numBR(d.q);if(!p)return 'Escolha a peça.';if(!(q>0))return 'Quantidade?';if(d.tp==='peca_estoque'&&Number(p.saldo)<q)return 'Sem estoque suficiente. Se veio do terceiro, marque "Peça do terceiro".';if(d.tp==='peca_terceiro'&&(!(numBR(d.v)>0)||!d.es))return 'Informe valor e estado (nova/usada).';return null}});
     if(!r)return;try{await salvar('peca',{os_id:id,servico_id:b.dataset.peca,tipo:r.tp,almox_item_id:r.pc,quantidade:numBR(r.q),valor_unitario:r.tp==='peca_terceiro'?numBR(r.v):0,estado_peca:r.tp==='peca_terceiro'?r.es:''});
@@ -256,6 +263,60 @@ async function telaOS(id){app.innerHTML='<div class="card mu">Carregando…</div
   $('#bPrazo').onclick=async()=>{const r=await janela(`<form><h3>Repactuar prazo</h3><p class="mu">Previsão atual: ${dh(o.previsao_liberacao)}</p><label class="f"><span>Nova previsão *</span><input class="in" type="datetime-local" name="n" required></label><label class="f"><span>Justificativa *</span><textarea class="in" name="j" required></textarea></label><div class="acts"><button type="button" class="btn" data-x>Voltar</button><button class="btn p">Salvar</button></div></form>`,
       {validar:d=>new Date(d.n)<=new Date()?'A nova previsão precisa ser no futuro.':null});if(!r)return;try{await salvar('prazo',{os_id:id,nova:iso(r.n),justificativa:r.j});LISTA=await rpc('app_mec_lista',{p_token:S.token});alerta();re()}catch(e){toast(e.message,true)}};
 }
+// ---------- checklists da OS ----------
+const MOM={recebimento:'Recebimento',liberacao:'Liberação'};
+function opsFonte(i){const P=D.pessoas||[],nm=p=>p.nome+(p.matricula?' · mat. '+p.matricula:'');
+  switch(i.fonte){case 'personalizada':return i.opcoes||[];case 'colaboradores':return P.map(nm);case 'motoristas':return P.filter(p=>/motorista/i.test(p.cargo||'')).map(nm);
+    case 'mecanicos':return P.filter(p=>/manuten/i.test(p.setor||'')||/mec[aâ]nic|eletricista|borracheir|soldador|lubrific/i.test(p.cargo||'')).map(nm);
+    case 'fornecedores':return D.fornecedores.map(f=>f.nome);case 'equipamentos':return D.eqs.map(e=>(e.codigo||'')+' · '+e.unis.map(u=>u.placa).join(' · '));
+    case 'componentes':return D.comps.map(c=>c.nome);case 'pecas':return D.pecas.map(p=>p.codigo+' · '+p.descricao);default:return[]}}
+function campoChk(i,r){const id=i.id,v=r&&r.v!=null?r.v:'';let c='';
+  if(i.tipo==='conforme')c=`<div class="chips">${[['c','Conforme'],['nc','Não conforme'],['na','N.A.']].map(([k,t])=>`<label><input type="radio" name="v_${id}" value="${k}" ${v===k?'checked':''}>${t}</label>`).join('')}</div>`;
+  else if(i.tipo==='sim_nao')c=`<div class="chips">${[['sim','Sim'],['nao','Não']].map(([k,t])=>`<label><input type="radio" name="v_${id}" value="${k}" ${v===k?'checked':''}>${t}</label>`).join('')}</div>`;
+  else if(i.tipo==='texto')c=`<textarea class="in" name="v_${id}">${esc(v)}</textarea>`;
+  else if(i.tipo==='lista'){const ops=opsFonte(i),sel=Array.isArray(v)?v:[v];
+    c=i.multipla?`<div class="chips">${ops.map(o=>`<label><input type="checkbox" name="m_${id}" value="${esc(o)}" ${sel.includes(o)?'checked':''}>${esc(o)}</label>`).join('')}</div>`
+      :`<select class="in" name="v_${id}"><option value="">Selecione…</option>${ops.map(o=>`<option ${o===v?'selected':''}>${esc(o)}</option>`).join('')}</select>`}
+  else{const f=i.formato,tp={data:'date',hora:'time',data_hora:'datetime-local'}[f]||'text',im=['numero','km','moeda'].includes(f)?'inputmode="decimal"':['cpf','telefone'].includes(f)?'inputmode="numeric"':'';
+    c=`<input class="in" name="v_${id}" type="${tp}" ${im} value="${esc(v)}" ${f==='placa'?'style="text-transform:uppercase" maxlength="8"':''}>`}
+  const ft=i.foto_obrigatoria||i.foto_nc;
+  return `<div class="lin" data-item="${id}"><b>${esc(i.rotulo)}${i.obrigatorio?' <span style="color:var(--bad)">*</span>':''}</b>${i.ajuda?`<div class="mu">${esc(i.ajuda)}</div>`:''}<div style="margin-top:6px">${c}</div>
+    <input class="in" name="obs_${id}" placeholder="Observação${i.tipo==='conforme'?' (obrigatória se não conforme)':''}" value="${esc(r&&r.obs||'')}" style="margin-top:6px;min-height:40px">
+    ${ft?`<div style="margin-top:6px"><label class="btn s" style="display:inline-block">📷 Foto${i.foto_obrigatoria?' (obrigatória)':' (se não conforme)'}<input type="file" accept="image/*" capture="environment" name="f_${id}" hidden></label> <span class="mu" data-ft="${id}">${r&&r.foto?'✓ foto anexada':''}</span></div>`:''}</div>`}
+function coletarChk(f,itens,antes){const R={};for(const i of itens){let v='';
+    if(i.tipo==='conforme'||i.tipo==='sim_nao')v=(f.querySelector(`[name="v_${i.id}"]:checked`)||{}).value||'';
+    else if(i.tipo==='lista'&&i.multipla)v=[...f.querySelectorAll(`[name="m_${i.id}"]:checked`)].map(x=>x.value);
+    else v=((f.elements['v_'+i.id]||{}).value||'').trim();
+    if(i.formato==='placa'&&v)v=v.toUpperCase();const obs=((f.elements['obs_'+i.id]||{}).value||'').trim(),fl=f.elements['f_'+i.id]&&f.elements['f_'+i.id].files[0]||null;
+    R[i.id]={v};if(obs)R[i.id].obs=obs;if(antes[i.id]&&antes[i.id].foto)R[i.id].foto=antes[i.id].foto;R[i.id]._file=fl}return R}
+function validarChk(itens,R,conc){for(const i of itens){const r=R[i.id],vz=r.v===''||(Array.isArray(r.v)&&!r.v.length),dg=String(r.v||'').replace(/\D/g,'');
+    if(i.tipo==='formatado'&&r.v){if(i.formato==='placa'&&!/^[A-Z]{3}-?\d[A-Z0-9]\d{2}$/i.test(r.v))return `"${i.rotulo}": placa inválida.`;if(i.formato==='cpf'&&dg.length!==11)return `"${i.rotulo}": CPF com 11 dígitos.`;
+      if(i.formato==='telefone'&&!(dg.length===10||dg.length===11))return `"${i.rotulo}": telefone com DDD.`;if(['numero','km','moeda'].includes(i.formato)&&numBR(r.v)==null)return `"${i.rotulo}": número inválido.`}
+    if(!conc)continue;if(i.obrigatorio&&vz)return `Responda: "${i.rotulo}".`;if(r.v==='nc'&&!r.obs)return `"${i.rotulo}": descreva a não conformidade.`;
+    if(((r.v==='nc'&&i.foto_nc)||i.foto_obrigatoria)&&!r.foto&&!r._file)return `"${i.rotulo}": falta a foto.`}return null}
+async function preencherChk(osId,x){const antes=(x.chk&&x.chk.respostas)||{};let F=null,A=null;let h='',sec=null;
+  for(const i of x.itens){if((i.secao||'')!==sec){sec=i.secao||'';if(sec)h+=`<h2 style="margin:14px 0 4px">${esc(sec)}</h2>`}h+=campoChk(i,antes[i.id])}
+  const pes=`<option value="">Selecione…</option>${D.pessoas.map(p=>`<option value="${p.id}" ${p.id===((x.chk&&x.chk.preenchido_por)||S.id)?'selected':''}>${esc(p.nome)}${p.matricula?' · '+esc(p.matricula):''}</option>`).join('')}`;
+  const d=await janela(`<form><h3>${MOM[x.momento]} · ${esc(x.nome)}</h3><p class="mu">${esc(x.codigo||'')} v${x.versao} · itens com * são obrigatórios. Pode salvar e continuar depois.</p>${h}
+    <div class="card" style="margin-top:12px"><label class="f"><span>Quem preencheu *</span><select class="in" name="colab">${pes}</select></label>
+      <div class="f"><span>Assinatura ${x.chk&&x.chk.assinatura?'(já assinada; assine de novo para trocar)':'*'}</span><canvas class="ass" id="aC"></canvas><button type="button" class="btn s" id="lC" style="margin-top:6px">Limpar assinatura</button></div></div>
+    <input type="hidden" name="acao" value="conc"><div class="acts"><button type="button" class="btn" data-x>Voltar</button><button class="btn" onclick="this.form.acao.value='rasc'">Salvar rascunho</button><button class="btn p" onclick="this.form.acao.value='conc'">Concluir</button></div></form>`,
+    {aoAbrir:m=>{F=$('form',m);A=assinatura($('#aC',m));$('#lC',m).onclick=()=>A.limpar();
+       F.addEventListener('change',e=>{if(e.target.type==='file'&&e.target.files[0]){const s=$(`[data-ft="${e.target.name.slice(2)}"]`,m);if(s)s.textContent='✓ foto escolhida'}})},
+     validar:dd=>{const conc=dd.acao==='conc',R=coletarChk(F,x.itens,antes),e=validarChk(x.itens,R,conc);if(e)return e;if(conc&&!dd.colab)return 'Selecione quem preencheu.';
+       if(conc&&A.vazia()&&!(x.chk&&x.chk.assinatura))return 'Falta a assinatura.';return null}});
+  if(!d)return false;const R=coletarChk(F,x.itens,antes),conc=d.acao==='conc';
+  try{toast('Salvando…');
+    for(const i of x.itens){const fl=R[i.id]._file;delete R[i.id]._file;if(fl){const cam=await enviarFoto(osId,fl,null);await rpc('app_mec_chk_foto',{p_token:S.token,p_os:osId,p_caminho:cam,p_descricao:`Checklist ${x.codigo} · ${i.rotulo}`});R[i.id].foto=cam}}
+    const r=await rpc('app_mec_chk_salvar',{p_token:S.token,p_os:osId,p_modelo:x.modelo_id,p_resp:R,p_concluir:conc,p_assinatura:A&&!A.vazia()?A.png():null,p_colab:d.colab||null});
+    toast(conc?'Checklist concluído'+(r.nao_conformes?' com '+r.nao_conformes+' não conforme(s).':'.'):'Rascunho salvo.');return true}catch(e){toast(e.message,true);return false}}
+async function pedirPeca(osId){const d=await janela(`<form><h3>Pedir cadastro de peça</h3><p class="mu">O almoxarifado cadastra a peça (ou indica a que já existe). Depois você lança na OS.</p>
+    <label class="f"><span>Descrição da peça *</span><input class="in" name="descricao" required placeholder="Ex.: Fueiro 1,20 m"></label>
+    <div class="r2"><label class="f"><span>Marca</span><input class="in" name="marca"></label><label class="f"><span>Referência / código</span><input class="in" name="referencia"></label></div>
+    <div class="r2"><label class="f"><span>Unidade</span><select class="in" name="unidade">${['un','pç','jg','kit','par','l','kg','m','cx'].map(u=>`<option>${u}</option>`).join('')}</select></label><label class="f"><span>Categoria</span><select class="in" name="categoria">${['Peças','Pneus','Óleos e lubrificantes','Filtros','Ferramentas','Outro'].map(c=>`<option>${c}</option>`).join('')}</select></label></div>
+    <label class="f"><span>Onde é usada</span><input class="in" name="aplicacao"></label><label class="f"><span>Observação</span><textarea class="in" name="observacao"></textarea></label>
+    <div class="acts"><button type="button" class="btn" data-x>Voltar</button><button class="btn p">Enviar ao almoxarifado</button></div></form>`,{validar:v=>v.descricao.length<3?'Descreva a peça.':null});
+  if(!d)return false;try{await rpc('app_mec_pedir_peca',{p_token:S.token,d:{...d,os_id:osId}});toast('Pedido enviado ao almoxarifado.');return true}catch(e){toast(e.message,true);return false}}
 rota();if(S)rpc('app_mec_lista',{p_token:S.token}).then(l=>{LISTA=l;alerta()}).catch(()=>{});
 })();
 </script>
